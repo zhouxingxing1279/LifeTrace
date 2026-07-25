@@ -209,3 +209,36 @@ test("ships a persistent, secure Electron notes workspace", async () => {
   assert.match(styles, /grid-template-columns/);
   assert.match(styles, /cursor:col-resize/);
 });
+
+test("shares one compatible persist-project editor with live personalization", async () => {
+  const [shell, dialog, controls, model, types, store, workoutSync, englishSync, styles] = await Promise.all([
+    readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/persist-project/PersistProjectDialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/persist-project/ProjectControls.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/persist-project/projectModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/types/index.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/stores/useLifeStore.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/xunjiImportRepository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/englishRepository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/persist-project.css", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(shell, /<PersistProjectDialog/);
+  assert.doesNotMatch(shell, /function ActivityForm/);
+  assert.match(dialog, /mode = activity \? "edit" : "create"/);
+  assert.match(dialog, /ProjectLivePreview/);
+  assert.match(dialog, /window\.confirm/);
+  assert.match(dialog, /focusableSelector/);
+  assert.match(controls, /更多图标/);
+  assert.match(controls, /PROJECT_COLORS/);
+  assert.match(model, /projectDraftToActivity/);
+  assert.match(model, /validateProjectDraft/);
+  for (const field of ["color", "scheduleType", "startDate", "checkinMethod", "syncSource"]) {
+    assert.match(types, new RegExp(`${field}\\?`));
+    assert.match(store, new RegExp(field));
+  }
+  assert.match(workoutSync, /syncSource === "fitness"/);
+  assert.match(englishSync, /syncSource === "english"/);
+  assert.match(styles, /grid-template-columns:\s*minmax\(330px,\s*35%\)\s*minmax\(0,\s*1fr\)/);
+  assert.match(styles, /prefers-reduced-motion/);
+});

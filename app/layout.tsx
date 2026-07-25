@@ -7,6 +7,7 @@ import "./english.css";
 import "./xunji-import.css";
 import "./notes.css";
 import "./redesign.css";
+import "./persist-project.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://lifetrace-personal.zxxzxxzxx.chatgpt.site"),

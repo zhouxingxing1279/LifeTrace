@@ -23,8 +23,8 @@ interface LifeState {
   addLog: (activityId: string, value?: number, status?: ActivityLog["status"], metadata?: ActivityLog["metadata"], note?: string) => Promise<void>;
   addTransaction: (data: Pick<Transaction, "type" | "amount" | "category" | "account"> & Partial<Pick<Transaction, "note" | "occurredAt" | "accountId" | "counterparty" | "item">>) => Promise<void>;
   saveReview: (data: Pick<DailyReview, "energy" | "mood" | "bestThing" | "problem" | "tomorrowPriority" | "note">) => Promise<void>;
-  addActivity: (data: Pick<Activity, "name" | "type" | "unit" | "normalTarget" | "targetPeriod"> & Partial<Pick<Activity, "minimumTarget" | "targetDays" | "icon" | "description">>) => Promise<void>;
-  updateActivity: (id: string, data: Partial<Pick<Activity, "name" | "type" | "unit" | "minimumTarget" | "normalTarget" | "targetPeriod" | "targetDays" | "icon" | "description">>) => Promise<void>;
+  addActivity: (data: Pick<Activity, "name" | "type" | "unit" | "normalTarget" | "targetPeriod"> & Partial<Pick<Activity, "minimumTarget" | "targetDays" | "icon" | "color" | "scheduleType" | "startDate" | "checkinMethod" | "syncSource" | "description">>) => Promise<void>;
+  updateActivity: (id: string, data: Partial<Pick<Activity, "name" | "type" | "unit" | "minimumTarget" | "normalTarget" | "targetPeriod" | "targetDays" | "icon" | "color" | "scheduleType" | "startDate" | "checkinMethod" | "syncSource" | "description">>) => Promise<void>;
   archiveActivity: (id: string) => Promise<void>;
   saveAccount: (data: Partial<FinanceAccount> & Pick<FinanceAccount, "name" | "type" | "color" | "icon">) => Promise<void>;
   deleteAccount: (id: string) => Promise<void>;

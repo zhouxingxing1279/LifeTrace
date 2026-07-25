@@ -1,4 +1,8 @@
 export type ActivityType = "duration" | "count" | "completion" | "weekly" | "control";
+export type ActivityColorKey = "emerald" | "blue" | "cyan" | "violet" | "rose" | "orange" | "amber" | "slate";
+export type ActivityScheduleType = "daily" | "weekly" | "custom";
+export type ActivityCheckinMethod = "manual" | "automatic";
+export type ActivitySyncSource = "fitness" | "english";
 
 export interface Activity {
   id: string;
@@ -11,6 +15,11 @@ export interface Activity {
   targetPeriod: "daily" | "weekly";
   targetDays?: number[];
   icon?: string;
+  color?: ActivityColorKey;
+  scheduleType?: ActivityScheduleType;
+  startDate?: string;
+  checkinMethod?: ActivityCheckinMethod;
+  syncSource?: ActivitySyncSource;
   description?: string;
   isArchived: boolean;
   createdAt: string;

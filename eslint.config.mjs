@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "dist/**",
     "out/**",
     "build/**",
+    "desktop/**/*.cjs",
     "恒序个人管理平台整合Demo/**",
     "next-env.d.ts",
   ]),

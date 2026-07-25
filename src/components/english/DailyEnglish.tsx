@@ -71,7 +71,7 @@ export default function DailyEnglish() {
   const [summary, setSummary] = useState("");
   const [analysis, setAnalysis] = useState<EnglishAIAnalysis | null>(null);
   const [recordId, setRecordId] = useState<string>();
-  const [readingStartedAt, setReadingStartedAt] = useState(Date.now());
+  const [readingStartedAt, setReadingStartedAt] = useState(() => Date.now());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -102,7 +102,10 @@ export default function DailyEnglish() {
     }
   };
 
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void load(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const startReading = (article = today?.article) => {
     if (!article) return;
@@ -351,7 +354,8 @@ function Feedback({ analysis, article, done }: { analysis: EnglishAIAnalysis; ar
 }
 
 function VocabularyBook({ items, review }: { items: EnglishVocabulary[]; review: (id: string, mastered: boolean) => Promise<void> }) {
-  const due = items.filter((item) => new Date(item.nextReviewTime).getTime() <= Date.now());
+  const [referenceTime] = useState(() => Date.now());
+  const due = items.filter((item) => new Date(item.nextReviewTime).getTime() <= referenceTime);
   const [reviewItem, setReviewItem] = useState<EnglishVocabulary | null>(due[0] ?? items[0] ?? null);
   const nextRandom = () => setReviewItem((due.length ? due : items)[Math.floor(Math.random() * Math.max(1, (due.length ? due : items).length))] ?? null);
   return <div>

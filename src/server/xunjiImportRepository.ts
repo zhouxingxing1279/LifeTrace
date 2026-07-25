@@ -152,22 +152,31 @@ export async function confirmWorkoutImport(importId: string, editedWorkout?: Xun
   };
 
   const activities = await readTable<Activity>("activities");
-  const fitness = activities.find((item) => !item.isArchived && (item.name.includes("健身") || item.name.includes("训练"))) ?? {
+  const configuredFitness = activities.filter((item) => !item.isArchived && item.checkinMethod === "automatic" && item.syncSource === "fitness");
+  const legacyFitness = activities.find((item) => !item.isArchived && (item.name.includes("健身") || item.name.includes("训练")));
+  const fallbackFitness: Activity = {
     id: "system-fitness-training",
     userId: USER_ID,
     name: "健身训练",
-    type: "weekly" as const,
+    type: "count",
     unit: "次",
     normalTarget: 4,
-    targetPeriod: "weekly" as const,
-    icon: "训",
+    targetPeriod: "weekly",
+    targetDays: [1, 3, 5],
+    scheduleType: "weekly",
+    startDate: occurredAt.slice(0, 10),
+    checkinMethod: "automatic",
+    syncSource: "fitness",
+    icon: "fitness",
+    color: "emerald",
     description: "由训练记录自动完成打卡。",
     isArchived: false,
     createdAt: stamp,
     updatedAt: stamp,
   };
-  const log: ActivityLog = {
-    id: `workout-log-${history.id}`,
+  const fitnessActivities = configuredFitness.length ? configuredFitness : [legacyFitness ?? fallbackFitness];
+  const activityLogs: ActivityLog[] = fitnessActivities.map((fitness) => ({
+    id: `workout-log-${history.id}-${fitness.id}`,
     userId: USER_ID,
     activityId: fitness.id,
     value: 1,
@@ -175,7 +184,7 @@ export async function confirmWorkoutImport(importId: string, editedWorkout?: Xun
     note: `完成「${workout.title}」· ${workout.durationMinutes} 分钟 · ${setCount} 组 · 训记同步`,
     createdAt: occurredAt,
     updatedAt: stamp,
-  };
+  }));
   const note: TrainingNote = {
     id: `training-note-${history.id}`,
     userId: USER_ID,
@@ -197,8 +206,8 @@ export async function confirmWorkoutImport(importId: string, editedWorkout?: Xun
 
   await env.DB.batch([
     put(HISTORY_TABLE, history),
-    put("activities", fitness),
-    put("activity_logs", log),
+    ...(!legacyFitness && !configuredFitness.length ? [put("activities", fallbackFitness)] : []),
+    ...activityLogs.map((log) => put("activity_logs", log)),
     put(NOTES_TABLE, note),
     put(IMPORT_TABLE, completedImport),
   ]);

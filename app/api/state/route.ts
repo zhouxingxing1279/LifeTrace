@@ -17,10 +17,10 @@ const tableNames: Record<TableKey, string> = {
 };
 
 const seedActivities: Activity[] = [
-  { id: "piano", userId: "local-user", name: "钢琴练习", type: "duration", unit: "分钟", minimumTarget: 10, normalTarget: 30, targetPeriod: "daily", icon: "music", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-  { id: "fitness", userId: "local-user", name: "健身", type: "weekly", unit: "次", normalTarget: 3, targetPeriod: "weekly", icon: "fitness", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-  { id: "english", userId: "local-user", name: "英语学习", type: "duration", unit: "分钟", minimumTarget: 10, normalTarget: 30, targetPeriod: "daily", icon: "book", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
-  { id: "control", userId: "local-user", name: "行为管理", type: "control", unit: "状态", targetPeriod: "daily", icon: "shield", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "piano", userId: "local-user", name: "钢琴练习", type: "duration", unit: "分钟", minimumTarget: 10, normalTarget: 30, targetPeriod: "daily", targetDays: [1,2,3,4,5,6,7], scheduleType: "daily", startDate: "2026-01-01", checkinMethod: "manual", icon: "piano", color: "violet", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "fitness", userId: "local-user", name: "健身", type: "count", unit: "次", normalTarget: 3, targetPeriod: "weekly", targetDays: [1,3,5], scheduleType: "weekly", startDate: "2026-01-01", checkinMethod: "automatic", syncSource: "fitness", icon: "fitness", color: "emerald", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "english", userId: "local-user", name: "英语学习", type: "completion", unit: "篇", normalTarget: 1, targetPeriod: "daily", targetDays: [1,2,3,4,5,6,7], scheduleType: "daily", startDate: "2026-01-01", checkinMethod: "automatic", syncSource: "english", icon: "english", color: "blue", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
+  { id: "control", userId: "local-user", name: "行为管理", type: "control", unit: "状态", normalTarget: 1, targetPeriod: "daily", targetDays: [1,2,3,4,5,6,7], scheduleType: "daily", startDate: "2026-01-01", checkinMethod: "manual", icon: "target", color: "slate", isArchived: false, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" },
 ];
 
 const seedAccounts: FinanceAccount[] = [

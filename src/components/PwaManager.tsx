@@ -14,19 +14,13 @@ const isStandalone = () =>
 
 export default function PwaManager() {
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
-  const [installed, setInstalled] = useState(false);
-  const [isIos, setIsIos] = useState(false);
+  const [installed, setInstalled] = useState(() => typeof window !== "undefined" && isStandalone());
+  const [isIos] = useState(() => typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent));
   const [showIosGuide, setShowIosGuide] = useState(false);
-  const [online, setOnline] = useState(true);
-  const [fitnessMode, setFitnessMode] = useState(false);
+  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
+  const [fitnessMode] = useState(() => typeof window !== "undefined" && window.location.pathname.startsWith("/fitness"));
 
   useEffect(() => {
-    const fitnessRoute = window.location.pathname.startsWith("/fitness");
-    setInstalled(isStandalone());
-    setOnline(navigator.onLine);
-    setIsIos(/iphone|ipad|ipod/i.test(navigator.userAgent));
-    setFitnessMode(fitnessRoute);
-
     // 新手机端只传输文件：清理旧版本的 Service Worker 与离线缓存。
     if ("serviceWorker" in navigator) {
       void navigator.serviceWorker.getRegistrations().then((registrations) =>

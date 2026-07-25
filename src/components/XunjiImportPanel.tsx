@@ -37,7 +37,10 @@ export default function XunjiImportPanel() {
     }
   };
 
-  useEffect(() => { void loadPending(); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadPending(), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const upload = async (file?: File) => {
     if (!file) return;

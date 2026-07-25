@@ -273,7 +273,11 @@ const ensureEnglishHabitLog = async (record: EnglishLearningRecord, article: Eng
     env.DB.prepare("CREATE TABLE IF NOT EXISTS activity_logs (id TEXT PRIMARY KEY, data_json TEXT NOT NULL, updated_at TEXT NOT NULL)"),
   ]);
   const stamp = record.updatedAt;
-  const activity: Activity = {
+  const rows = await env.DB.prepare("SELECT data_json FROM activities").all<{ data_json: string }>();
+  const activities = rows.results.map((row) => JSON.parse(row.data_json) as Activity);
+  const configuredEnglish = activities.filter((item) => !item.isArchived && item.checkinMethod === "automatic" && item.syncSource === "english");
+  const legacyEnglish = activities.find((item) => item.id === "system-daily-english");
+  const fallbackActivity: Activity = {
     id: "system-daily-english",
     userId: USER_ID,
     name: "每日英语",
@@ -281,14 +285,21 @@ const ensureEnglishHabitLog = async (record: EnglishLearningRecord, article: Eng
     unit: "篇",
     normalTarget: 1,
     targetPeriod: "daily",
-    icon: "英",
+    targetDays: [1, 2, 3, 4, 5, 6, 7],
+    scheduleType: "daily",
+    startDate: record.createdAt.slice(0, 10),
+    checkinMethod: "automatic",
+    syncSource: "english",
+    icon: "english",
+    color: "blue",
     description: "完成英文阅读、总结与 AI 反馈后自动记录。",
     isArchived: false,
     createdAt: record.createdAt,
     updatedAt: stamp,
   };
-  const log: ActivityLog = {
-    id: `english-log-${record.id}`,
+  const targetActivities = configuredEnglish.length ? configuredEnglish : [legacyEnglish ?? fallbackActivity];
+  const logs: ActivityLog[] = targetActivities.map((activity) => ({
+    id: `english-log-${record.id}-${activity.id}`,
     userId: USER_ID,
     activityId: activity.id,
     value: 1,
@@ -296,12 +307,14 @@ const ensureEnglishHabitLog = async (record: EnglishLearningRecord, article: Eng
     note: `完成「${article.title}」阅读与英文总结 · AI 评分 ${record.score ?? 0} 分`,
     createdAt: record.completedAt ?? stamp,
     updatedAt: stamp,
-  };
+  }));
   await env.DB.batch([
-    env.DB.prepare("INSERT INTO activities (id,data_json,updated_at) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at")
-      .bind(activity.id, JSON.stringify(activity), activity.updatedAt),
-    env.DB.prepare("INSERT INTO activity_logs (id,data_json,updated_at) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at")
-      .bind(log.id, JSON.stringify(log), log.updatedAt),
+    ...(!legacyEnglish && !configuredEnglish.length
+      ? [env.DB.prepare("INSERT INTO activities (id,data_json,updated_at) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at")
+          .bind(fallbackActivity.id, JSON.stringify(fallbackActivity), fallbackActivity.updatedAt)]
+      : []),
+    ...logs.map((log) => env.DB.prepare("INSERT INTO activity_logs (id,data_json,updated_at) VALUES (?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at")
+      .bind(log.id, JSON.stringify(log), log.updatedAt)),
   ]);
 };
 

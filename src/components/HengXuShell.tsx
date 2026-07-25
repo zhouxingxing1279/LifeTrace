@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
-  Activity as ActivityIcon, Archive, BarChart3, BookOpen, CalendarDays, Check, ChevronRight,
-  CircleDollarSign, Download, Dumbbell, FileUp, Home, Menu, Pencil, Plus,
-  Languages, NotebookPen, Settings, Shield, Trash2, UserRound, WalletCards, X,
+  Archive, BarChart3, BookOpen, CalendarDays, Check, ChevronRight,
+  CircleDollarSign, Dumbbell, FileUp, Home, Menu, Pencil, Plus,
+  Languages, NotebookPen, Settings, Trash2, WalletCards, X,
 } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import type { Activity, ActivityLog, FinanceAccount, Transaction, WorkoutHistory } from "@/src/types";
@@ -12,6 +12,8 @@ import DailyEnglish from "@/src/components/english/DailyEnglish";
 import XunjiImportPanel from "@/src/components/XunjiImportPanel";
 import NotesModule, { DashboardNotes } from "@/src/components/NotesModule";
 import { noteApi } from "@/src/services/noteApi";
+import PersistProjectDialog from "@/src/components/persist-project/PersistProjectDialog";
+import { ActivityGlyph, PROJECT_COLORS } from "@/src/components/persist-project/ProjectControls";
 
 type PlatformView = "dashboard" | "habits" | "english" | "fitness" | "finance" | "transactions" | "accounts" | "import" | "calendar" | "review" | "notes" | "settings";
 type Modal = null | { kind: "activity"; value?: Activity } | { kind: "record"; value: Activity } | { kind: "transaction"; value?: Transaction } | { kind: "account"; value?: FinanceAccount };
@@ -55,6 +57,7 @@ function Metric({ label, value, sub, positive }: { label: string; value: string;
 
 function Dashboard({ go, record }: { go: (view: PlatformView) => void; record: (value: Activity) => void }) {
   const { activities, logs, transactions, accounts, workoutHistory } = useLifeStore();
+  const [referenceTime] = useState(() => Date.now());
   const today = dayKey();
   const todayLogs = logs.filter((item) => item.createdAt.startsWith(today));
   const done = activities.filter((item) => todayLogs.some((log) => log.activityId === item.id && log.status !== "skipped")).length;
@@ -71,7 +74,7 @@ function Dashboard({ go, record }: { go: (view: PlatformView) => void; record: (
       <article className="hx-hero-dark"><span className="hx-pill">今日</span><h2>今天，从最重要的一小步开始。</h2><p>你的坚持、训练与消费记录会在这里形成统一反馈。</p><div className="hx-hero-progress"><div><strong>{done} / {activities.length}</strong><small>今日坚持</small></div><i><b style={{ width: `${activities.length ? done / activities.length * 100 : 0}%` }} /></i></div></article>
       <article className="hx-quote"><span>“</span><h3>不要打断两次。</h3><p>允许偶尔错过，但下一次按计划回来。</p></article>
     </div>
-    <div className="hx-metrics"><Metric label="今日完成" value={`${done} 项`} sub={`还有 ${Math.max(activities.length - done, 0)} 项等待完成`} /><Metric label="本周训练" value={`${workoutHistory.filter(item => Date.now() - new Date(item.occurredAt).getTime() < 7 * 86400000).length} 次`} sub="训练完成后自动同步坚持项目" positive /><Metric label="本月支出" value={money(monthExpense)} sub={`${transactions.filter(item => item.occurredAt.startsWith(month)).length} 笔收支记录`} /><Metric label="当前总资产" value={money(assets)} sub={`${accounts.length} 个账户`} positive /></div>
+    <div className="hx-metrics"><Metric label="今日完成" value={`${done} 项`} sub={`还有 ${Math.max(activities.length - done, 0)} 项等待完成`} /><Metric label="本周训练" value={`${workoutHistory.filter(item => referenceTime - new Date(item.occurredAt).getTime() < 7 * 86400000).length} 次`} sub="训练完成后自动同步坚持项目" positive /><Metric label="本月支出" value={money(monthExpense)} sub={`${transactions.filter(item => item.occurredAt.startsWith(month)).length} 笔收支记录`} /><Metric label="当前总资产" value={money(assets)} sub={`${accounts.length} 个账户`} positive /></div>
     <div className="hx-dashboard-grid">
       <article className="hx-panel"><PanelHead kicker="今日" title="今天的坚持" action="管理项目" onClick={() => go("habits")} /><div className="hx-panel-body hx-list">{activities.slice(0, 5).map((activity) => { const own = todayLogs.filter(log => log.activityId === activity.id); const value = own.reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0); return <div className="hx-row" key={activity.id}><span className="hx-row-icon">{activity.name.slice(0, 1)}</span><div><strong>{activity.name}</strong><small>{own.length ? `已记录 ${value} ${activity.unit}` : `${activity.targetPeriod === "weekly" ? "每周" : "每天"} · 目标 ${activity.normalTarget ?? 1} ${activity.unit}`}</small></div><button className={value>0 ? "done" : ""} onClick={() => record(activity)}>{value>0 ? "继续记录" : "记录"}</button></div>})}</div></article>
       <article className="hx-panel"><PanelHead kicker="财务" title="近 7 天支出" action="查看分析" onClick={() => go("finance")} /><div className="hx-panel-body"><div className="hx-bars">{spend.map((value, index) => <div key={days[index].toISOString()}><i style={{ height: `${Math.max(value / max * 100, value ? 8 : 2)}%` }} /><small>{pad(days[index].getMonth() + 1)}-{pad(days[index].getDate())}</small></div>)}</div></div></article>
@@ -93,7 +96,7 @@ function Habits({ edit, record, note }: { edit: (value?: Activity) => void; reco
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
   const today = dayKey();
   const shown = activities.filter(item => filter === "all" || (filter === "done") === logs.some(log => log.activityId === item.id && log.createdAt.startsWith(today) && log.status !== "skipped"));
-  return <div className="hx-view"><div className="hx-toolbar"><div className="hx-segmented">{[["all","全部"],["pending","待完成"],["done","已完成"]].map(([id,label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)}>{label}</button>)}</div><button className="hx-btn primary" onClick={() => edit()}><Plus /> 创建坚持项目</button></div><div className="hx-card-grid">{shown.map(item => { const itemLogs = logs.filter(log => log.activityId === item.id); const todayValue = itemLogs.filter(log => log.createdAt.startsWith(today)).reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0); const target = item.normalTarget ?? 1; return <article className="hx-habit-card" key={item.id}><div className="hx-card-actions"><span>{item.name.slice(0, 2)}</span><div><button onClick={() => edit(item)} aria-label={`编辑${item.name}`}><Pencil /></button><button onClick={() => archiveActivity(item.id)} aria-label={`归档${item.name}`}><Archive /></button></div></div><h3>{item.name}</h3><p>{item.description || "保持稳定节奏，关注长期积累。"}</p><div className="hx-progress-label"><span>今日进度</span><b>{todayValue} / {target} {item.unit}</b></div><i className="hx-track"><b style={{ width: `${Math.min(100, todayValue / target * 100)}%` }} /></i><footer><small>累计 {itemLogs.reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0)} {item.unit}</small><div><button className="note" onClick={()=>note(item)}><NotebookPen/>记录</button><button className={todayValue >= target ? "done" : ""} onClick={() => record(item)}>{todayValue >= target ? "继续记录" : "打卡"}</button></div></footer></article>})}</div><HabitAnalytics activities={activities} logs={logs}/></div>;
+  return <div className="hx-view"><div className="hx-toolbar"><div className="hx-segmented">{[["all","全部"],["pending","待完成"],["done","已完成"]].map(([id,label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)}>{label}</button>)}</div><button className="hx-btn primary" onClick={() => edit()}><Plus /> 创建坚持项目</button></div><div className="hx-card-grid">{shown.map(item => { const itemLogs = logs.filter(log => log.activityId === item.id); const todayValue = itemLogs.filter(log => log.createdAt.startsWith(today)).reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0); const target = item.normalTarget ?? 1; const projectColor=PROJECT_COLORS[item.color??"emerald"]??PROJECT_COLORS.emerald; return <article className="hx-habit-card" style={{"--habit-color":projectColor.value,"--habit-soft":projectColor.soft} as React.CSSProperties} key={item.id}><div className="hx-card-actions"><span><ActivityGlyph icon={item.icon}/></span><div><button onClick={() => edit(item)} aria-label={`编辑${item.name}`}><Pencil /></button><button onClick={() => archiveActivity(item.id)} aria-label={`归档${item.name}`}><Archive /></button></div></div><h3>{item.name}</h3><p>{item.description || "保持稳定节奏，关注长期积累。"}</p><div className="hx-progress-label"><span>今日进度</span><b>{todayValue} / {target} {item.unit}</b></div><i className="hx-track"><b style={{ width: `${Math.min(100, todayValue / target * 100)}%` }} /></i><footer><small>累计 {itemLogs.reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0)} {item.unit}</small><div><button className="note" onClick={()=>note(item)}><NotebookPen/>记录</button><button className={todayValue >= target ? "done" : ""} onClick={() => record(item)}>{todayValue >= target ? "继续记录" : "打卡"}</button></div></footer></article>})}</div><HabitAnalytics activities={activities} logs={logs}/></div>;
 }
 
 function HabitAnalytics({activities,logs}:{activities:Activity[];logs:ActivityLog[]}) {
@@ -107,7 +110,8 @@ function HabitAnalytics({activities,logs}:{activities:Activity[];logs:ActivityLo
 
 function Fitness({note}:{note:(value:WorkoutHistory)=>void}) {
   const { workoutHistory } = useLifeStore();
-  const weekCount = workoutHistory.filter(item => Date.now() - new Date(item.occurredAt).getTime() < 7 * 86400000).length;
+  const [referenceTime] = useState(() => Date.now());
+  const weekCount = workoutHistory.filter(item => referenceTime - new Date(item.occurredAt).getTime() < 7 * 86400000).length;
   return <div className="hx-view"><article className="hx-fitness-hero"><div><span className="hx-pill">训练数据中心</span><h2>导入训练截图，自动整理训练记录</h2><p>电脑端负责解析训练数据并长期保存，已有训练历史会继续保留。</p></div><div><span>本周训练</span><strong>{weekCount} / 4</strong><i className="hx-track"><b style={{ width: `${Math.min(100, weekCount / 4 * 100)}%` }} /></i></div></article><XunjiImportPanel/><article className="hx-panel hx-history"><PanelHead kicker="训练记录" title="训练历史" /><div>{workoutHistory.slice(0, 10).map(item => <div className="hx-history-row" key={item.id}><time>{new Date(item.occurredAt).toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}</time><div><strong>{item.name}</strong><small>{item.exerciseCount} 个动作 · {item.setCount} 组 · {Math.max(1, Math.round(item.durationSeconds / 60))} 分钟</small></div><button className="hx-btn secondary" onClick={()=>note(item)}><NotebookPen/>训练复盘</button></div>)}{!workoutHistory.length&&<Empty text="导入训练截图后，解析结果会出现在这里。"/>}</div></article></div>;
 }
 
@@ -147,7 +151,7 @@ function ImportBills() {
   const [phoneUploads,setPhoneUploads]=useState<ImportUploadItem[]>([]);
   const [loadingUploads,setLoadingUploads]=useState(true);
   const loadPhoneUploads=async()=>{setLoadingUploads(true);try{const response=await fetch("/api/imports");const payload=await response.json() as {items?:ImportUploadItem[]};setPhoneUploads(payload.items??[])}finally{setLoadingUploads(false)}};
-  useEffect(()=>{void loadPhoneUploads()},[]);
+  useEffect(()=>{const timer=window.setTimeout(()=>void loadPhoneUploads(),0);return()=>window.clearTimeout(timer)},[]);
   const parseLine=(line:string)=>{const result:string[]=[];let cell="",quoted=false;for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'&&line[i+1]==='"'){cell+='"';i++}else if(c==='"')quoted=!quoted;else if(c===","&&!quoted){result.push(cell);cell=""}else cell+=c}result.push(cell);return result};
   const cellText=(value:unknown)=>value instanceof Date?`${value.getFullYear()}-${pad(value.getMonth()+1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}:${pad(value.getSeconds())}`:String(value??"").trim();
   const inferCategory=(type:"income"|"expense",transactionType:string,counterparty:string,item:string)=>{
@@ -227,7 +231,7 @@ function ImportBills() {
     await loadPhoneUploads();
   };
   const deletePhoneUpload=async(id:string)=>{await fetch(`/api/imports?id=${encodeURIComponent(id)}`,{method:"DELETE"});await loadPhoneUploads()};
-  const commit=async()=>{setImporting(true);try{for(const row of rows){const {sourceId:_,...transaction}=row;await addTransaction(transaction)}setMessage(`已导入 ${rows.length} 笔微信账单到 SQLite`);setRows([]);notify("微信账单导入完成")}catch(error){setMessage(error instanceof Error?error.message:"账单导入失败")}finally{setImporting(false)}};
+  const commit=async()=>{setImporting(true);try{for(const row of rows){const transaction:Parameters<typeof addTransaction>[0]={type:row.type,amount:row.amount,category:row.category,account:row.account,note:row.note,occurredAt:row.occurredAt,accountId:row.accountId,counterparty:row.counterparty,item:row.item};await addTransaction(transaction)}setMessage(`已导入 ${rows.length} 笔微信账单到 SQLite`);setRows([]);notify("微信账单导入完成")}catch(error){setMessage(error instanceof Error?error.message:"账单导入失败")}finally{setImporting(false)}};
   return <div className="hx-view">
     <article className="hx-panel hx-phone-imports">
       <PanelHead kicker="手机传输" title="待处理导入文件"/>
@@ -273,7 +277,7 @@ function SettingsView() {
 
 function EditorModal({ modal, close }: { modal: Exclude<Modal,null>; close: () => void }) {
   if(modal.kind==="record")return <RecordForm activity={modal.value} close={close}/>;
-  if(modal.kind==="activity")return <ActivityForm value={modal.value} close={close}/>;
+  if(modal.kind==="activity")return <PersistProjectDialog activity={modal.value} onClose={close}/>;
   if(modal.kind==="transaction")return <TransactionForm value={modal.value} close={close}/>;
   if(modal.kind==="account")return <AccountForm value={modal.value} close={close}/>;
   return null;
@@ -315,21 +319,15 @@ function RecordForm({activity,close}:{activity:Activity;close:()=>void}) {
     <footer><button type="button" className="hx-btn secondary" onClick={close}>取消</button><button className="hx-btn primary">保存记录</button></footer>
   </form></ModalFrame>;
 }
-function ActivityForm({value,close}:{value?:Activity;close:()=>void}){const {addActivity,updateActivity}=useLifeStore();const [name,setName]=useState(value?.name??"");const [type,setType]=useState<Activity["type"]>(value?.type??"duration");const [unit,setUnit]=useState(value?.unit??"分钟");const [target,setTarget]=useState(value?.normalTarget??30);const [description,setDescription]=useState(value?.description??"");return <ModalFrame title={value?"编辑坚持项目":"创建坚持项目"} close={close}><form className="hx-form" onSubmit={async e=>{e.preventDefault();if(value)await updateActivity(value.id,{name,type,unit,normalTarget:target,description});else await addActivity({name,type,unit,normalTarget:target,targetPeriod:type==="weekly"?"weekly":"daily",description});close()}}><label>项目名称<input required value={name} onChange={e=>setName(e.target.value)}/></label><label>类型<select value={type} onChange={e=>setType(e.target.value as Activity["type"])}><option value="duration">时长型</option><option value="count">次数型</option><option value="completion">完成型</option><option value="weekly">每周型</option><option value="control">行为管理</option></select></label><div><label>目标值<input type="number" min="1" value={target} onChange={e=>setTarget(Number(e.target.value))}/></label><label>单位<input value={unit} onChange={e=>setUnit(e.target.value)}/></label></div><label>项目说明<textarea value={description} onChange={e=>setDescription(e.target.value)}/></label><footer><button type="button" className="hx-btn secondary" onClick={close}>取消</button><button className="hx-btn primary">保存</button></footer></form></ModalFrame>}
 function TransactionForm({value,close}:{value?:Transaction;close:()=>void}){const {accounts,addTransaction,updateTransaction}=useLifeStore();const [type,setType]=useState<Transaction["type"]>(value?.type??"expense");const [amount,setAmount]=useState(value?.amount??0);const [category,setCategory]=useState(value?.category??"餐饮");const [accountId,setAccountId]=useState(value?.accountId??accounts[0]?.id??"");const [counterparty,setCounterparty]=useState(value?.counterparty??"");const [item,setItem]=useState(value?.item??"");const [occurredAt,setOccurredAt]=useState(dateTimeLocal(value?.occurredAt));const account=accounts.find(i=>i.id===accountId);return <ModalFrame title={value?"编辑账单":"手动记账"} close={close}><form className="hx-form" onSubmit={async e=>{e.preventDefault();const data={type,amount,category,account:account?.name??"未分配",accountId,counterparty,item,occurredAt:new Date(occurredAt).toISOString()};if(value)await updateTransaction(value.id,data);else await addTransaction(data);close()}}><div><label>收支类型<select value={type} onChange={e=>setType(e.target.value as Transaction["type"])}><option value="expense">支出</option><option value="income">收入</option></select></label><label>金额<input required min="0.01" step="0.01" type="number" value={amount} onChange={e=>setAmount(Number(e.target.value))}/></label></div><div><label>分类<input required value={category} onChange={e=>setCategory(e.target.value)}/></label><label>账户<select value={accountId} onChange={e=>setAccountId(e.target.value)}>{accounts.map(i=><option value={i.id} key={i.id}>{i.name}</option>)}</select></label></div><label>交易对象<input required value={counterparty} onChange={e=>setCounterparty(e.target.value)}/></label><label>商品 / 说明<input value={item} onChange={e=>setItem(e.target.value)}/></label><label>交易时间<input type="datetime-local" value={occurredAt} onChange={e=>setOccurredAt(e.target.value)}/></label><footer><button type="button" className="hx-btn secondary" onClick={close}>取消</button><button className="hx-btn primary">保存</button></footer></form></ModalFrame>}
 function AccountForm({value,close}:{value?:FinanceAccount;close:()=>void}){const {saveAccount}=useLifeStore();const [name,setName]=useState(value?.name??"");const [type,setType]=useState<FinanceAccount["type"]>(value?.type??"bank");const [balance,setBalance]=useState(value?.balance??0);const [last4,setLast4]=useState(value?.last4??"");const [color,setColor]=useState(value?.color??"#2a7a5e");const [icon,setIcon]=useState(value?.icon??"账");return <ModalFrame title={value?"编辑账户":"添加账户"} close={close}><form className="hx-form" onSubmit={async e=>{e.preventDefault();await saveAccount({id:value?.id,name,type,balance,last4,color,icon});close()}}><label>账户名称<input required value={name} onChange={e=>setName(e.target.value)}/></label><div><label>账户类型<select value={type} onChange={e=>setType(e.target.value as FinanceAccount["type"])}><option value="bank">银行卡</option><option value="wechat">微信</option><option value="alipay">支付宝</option><option value="cash">现金</option><option value="investment">投资账户</option><option value="other">其他</option></select></label><label>当前余额<input type="number" step="0.01" value={balance??0} onChange={e=>setBalance(Number(e.target.value))}/></label></div><div><label>尾号<input maxLength={4} value={last4} onChange={e=>setLast4(e.target.value)}/></label><label>标识<input maxLength={2} value={icon} onChange={e=>setIcon(e.target.value)}/></label></div><label>颜色<input type="color" value={color} onChange={e=>setColor(e.target.value)}/></label><footer><button type="button" className="hx-btn secondary" onClick={close}>取消</button><button className="hx-btn primary">保存</button></footer></form></ModalFrame>}
 export default function HengXuShell() {
-  const {ready,storageError,initialize}=useLifeStore();const [view,setView]=useState<PlatformView>("dashboard");const [modal,setModal]=useState<Modal>(null);const [menu,setMenu]=useState(false);const [toast,setToast]=useState("");
+  const {ready,storageError,initialize}=useLifeStore();const [view,setView]=useState<PlatformView>(()=>{if(typeof window==="undefined")return"dashboard";const requested=new URLSearchParams(window.location.search).get("view");return requested&&requested in pageCopy?requested as PlatformView:"dashboard"});const [modal,setModal]=useState<Modal>(null);const [menu,setMenu]=useState(false);const [toast,setToast]=useState("");
   const makeLinkedNote=async(noteType:"habit_log"|"workout_review"|"expense_note",title:string,entityType:"habit"|"workout"|"transaction",entityId:string,content:string)=>{
     const created=await noteApi.create({title,noteType,folderId:null,contentJson:{type:"doc",content:[{type:"paragraph",content:[{type:"text",text:content}]}]},contentHtml:`<p>${escapeHtml(content).replace(/\n/g,"<br>")}</p>`,contentText:content,contentMarkdown:content,summary:content.replace(/\s+/g," ").slice(0,160),isPinned:false,isFavorite:false,isArchived:false,tagIds:[],relations:[{id:crypto.randomUUID(),noteId:"pending",entityType,entityId,relationType:"created_from",createdAt:new Date().toISOString()}]});
     window.localStorage.setItem("lifetrace:last-note",created.id);setView("notes");notify("关联笔记已创建");
   };
   useEffect(()=>{void initialize()},[initialize]);
-  useEffect(()=>{
-    const params=new URLSearchParams(window.location.search);
-    const requestedView=params.get("view");
-    if(requestedView&&requestedView in pageCopy)setView(requestedView as PlatformView);
-  },[]);
   useEffect(()=>{const receive=(event:Event)=>setToast((event as CustomEvent<string>).detail);window.addEventListener("hengxu-toast",receive);return()=>window.removeEventListener("hengxu-toast",receive)},[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(""),2200);return()=>window.clearTimeout(timer)},[toast]);
   if(!ready)return <div className="hx-loading"><span>LT</span><p>正在连接 SQLite 个人系统…</p></div>;
