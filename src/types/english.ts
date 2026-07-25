@@ -27,6 +27,12 @@ export interface EnglishArticle {
   externalId?: string;
   publishedAt?: string;
   imageUrl?: string;
+  audioUrl?: string;
+  author?: string;
+  summary?: string;
+  wordCount?: number;
+  fetchedAt?: string;
+  rightsNote?: string;
 }
 
 export interface EnglishSourceSyncResult {

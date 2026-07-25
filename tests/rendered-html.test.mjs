@@ -150,9 +150,15 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(source, /Associated Press\|Agence France-Presse\|Reuters\|AFP/);
   assert.match(source, /safeVoaUrl/);
   assert.match(syncRoute, /syncVoaArticles/);
-  for (const field of ["sourceUrl", "externalId", "publishedAt", "sourceName"]) {
+  for (const field of ["sourceUrl", "externalId", "publishedAt", "sourceName", "audioUrl", "author", "summary", "wordCount", "fetchedAt", "rightsNote"]) {
     assert.match(englishTypes, new RegExp(`${field}\\?`));
   }
+  assert.match(source, /parseArticleJsonLd/);
+  assert.match(source, /FETCH_ATTEMPTS\s*=\s*3/);
+  assert.match(source, /zmypyl-vomx-tpeyry_/);
+  assert.match(source, /audioFromHtml/);
+  assert.match(page, /VOA 原文音频/);
+  assert.match(page, /preload="none"/);
 });
 
 test("adds a confirmation-first Xunji workout import pipeline without OCR", async () => {

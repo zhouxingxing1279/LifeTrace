@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, BarChart3, BookOpen, Bot, Check, ChevronRight, Clock3, Flame,
-  ExternalLink, Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
+  ExternalLink, Headphones, Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
   Plus, RefreshCw, Sparkles, Sun, Type, Volume2,
 } from "lucide-react";
 import type {
@@ -298,9 +298,18 @@ function Reader({ article, back, finish, addWord, setMessage }: {
       <article className="en-reading-paper">
         <span>{article.level} · {categoryName[article.category]} · {article.estimatedMinutes} MIN</span>
         <h1>{article.title}</h1>
-        {article.sourceUrl && <a className="en-article-source" href={article.sourceUrl} target="_blank" rel="noreferrer">
-          {article.sourceName ?? "查看文章来源"} <ExternalLink aria-hidden />
-        </a>}
+        {(article.sourceUrl || article.author || article.publishedAt || article.wordCount) && <div className="en-article-provenance">
+          {article.sourceUrl && <a className="en-article-source" href={article.sourceUrl} target="_blank" rel="noreferrer">
+            {article.sourceName ?? "查看文章来源"} <ExternalLink aria-hidden />
+          </a>}
+          {article.author && <span>{article.author}</span>}
+          {article.publishedAt && <time dateTime={article.publishedAt}>{new Date(article.publishedAt).toLocaleDateString("zh-CN")}</time>}
+          {article.wordCount && <span>{article.wordCount} words</span>}
+        </div>}
+        {article.audioUrl && <section className="en-article-audio">
+          <span><Headphones aria-hidden /> VOA 原文音频</span>
+          <audio controls preload="none" src={article.audioUrl}>当前环境不支持音频播放。</audio>
+        </section>}
         <div className="en-reading-content" style={{ fontSize, lineHeight }} onMouseUp={() => {
           const text = window.getSelection()?.toString().trim() ?? "";
           if (text.length > 2) setSelectedText(text);

@@ -207,9 +207,17 @@
 .en-reader.dark .en-reading-paper { color: #e2e6e3; background: #222d29; }
 .en-reading-paper > span { color: #8a958f; font-size: 11px; font-weight: 800; letter-spacing: .12em; }
 .en-reading-paper h1 { max-width: 720px; margin: 18px 0 40px; font-family: Georgia, "Times New Roman", serif; font-size: clamp(32px, 4vw, 52px); line-height: 1.1; letter-spacing: -.035em; }
-.en-article-source { display: inline-flex; align-items: center; gap: 5px; margin: -25px 0 30px; color: var(--en-green); font-size: 11px; font-weight: 700; text-decoration: none; }
+.en-article-provenance { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; margin: -25px 0 24px; color: #7a8983; font-size: 11px; }
+.en-article-provenance > * + * { position: relative; }
+.en-article-provenance > * + *:before { content: ""; position: absolute; left: -7px; top: 50%; width: 2px; height: 2px; border-radius: 50%; background: currentColor; }
+.en-article-source { display: inline-flex; align-items: center; gap: 5px; color: var(--en-green); font-size: 11px; font-weight: 700; text-decoration: none; }
 .en-article-source:hover { text-decoration: underline; }
 .en-article-source svg { width: 13px; height: 13px; }
+.en-article-audio { display: grid; grid-template-columns: auto minmax(180px, 1fr); align-items: center; gap: 14px; margin: 0 0 30px; padding: 12px 14px; border: 1px solid rgba(25,113,85,.16); border-radius: 12px; background: rgba(227,243,238,.55); }
+.en-article-audio > span { display: inline-flex; align-items: center; gap: 7px; color: var(--en-green); font-size: 11px; font-weight: 750; white-space: nowrap; }
+.en-article-audio svg { width: 16px; }
+.en-article-audio audio { width: 100%; height: 36px; }
+.en-reader.dark .en-article-audio { border-color: rgba(158,225,197,.22); background: rgba(50,141,104,.12); }
 .en-reading-content { font-family: Georgia, "Times New Roman", serif; }
 .en-reading-content p { margin: 0 0 1.4em; }
 .en-reading-content button { display: inline; padding: 0; border: 0; color: inherit; background: transparent; font-family: inherit; font-size: inherit; line-height: inherit; cursor: pointer; }
@@ -403,6 +411,7 @@
   .en-reader > main { padding: 18px 12px 28px; }
   .en-reading-paper { padding: 28px 20px; }
   .en-reading-paper h1 { margin-bottom: 28px; }
+  .en-article-audio { grid-template-columns: 1fr; }
   .en-reader-side { grid-template-columns: 1fr; }
   .en-summary-grid { padding: 24px 18px; }
   .en-summary-editor { min-height: 470px; padding: 17px; }
