@@ -26,7 +26,7 @@ from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Iterable
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -42,6 +42,14 @@ FEEDS: dict[str, str] = {
     "science": f"{BASE_URL}/api/zmg_pl-vomx-tpeymtm",
     "health": f"{BASE_URL}/api/zmmpql-vomx-tpey-_q",
     "words": f"{BASE_URL}/api/zmypyl-vomx-tpeyry_",
+}
+
+CATEGORY_PAGES: dict[str, str] = {
+    "science": f"{BASE_URL}/z/1579",
+    "health": f"{BASE_URL}/z/955",
+    "words": f"{BASE_URL}/z/987/episodes",
+    "grammar": f"{BASE_URL}/z/4456/episodes",
+    "education": f"{BASE_URL}/z/959",
 }
 
 DEFAULT_HEADERS = {
@@ -87,6 +95,7 @@ class FeedEntry:
 
 @dataclass(slots=True)
 class Article:
+    source_key: str
     external_id: str
     source_name: str
     source_url: str
@@ -94,6 +103,7 @@ class Article:
     title: str
     author: str | None
     published_at: str | None
+    source_updated_at: str | None
     summary: str | None
     content: str
     word_count: int
@@ -102,6 +112,8 @@ class Article:
     language: str
     fetched_at: str
     rights_note: str
+    license_type: str
+    attribution: str
 
 
 class FetchError(RuntimeError):
@@ -136,6 +148,23 @@ def fetch_text(session: requests.Session, url: str, timeout: int = 20) -> str:
     if not response.encoding or response.encoding.lower() == "iso-8859-1":
         response.encoding = response.apparent_encoding or "utf-8"
     return response.text
+
+
+def normalize_url(value: str) -> str:
+    parsed = urlparse(value.strip())
+    tracking = {"fbclid", "gclid", "mc_cid", "mc_eid", "ref", "source"}
+    query = [
+        (key, item)
+        for key, item in parse_qsl(parsed.query, keep_blank_values=True)
+        if not key.lower().startswith("utm_") and key.lower() not in tracking
+    ]
+    path = re.sub(r"/+", "/", parsed.path)
+    if path != "/":
+        path = path.rstrip("/")
+    return urlunparse((
+        parsed.scheme.lower(), parsed.netloc.lower(), path, "",
+        urlencode(sorted(query)), "",
+    ))
 
 
 def strip_html(value: str | None) -> str | None:
@@ -203,6 +232,48 @@ def parse_rss(xml_text: str, base_url: str = BASE_URL) -> list[FeedEntry]:
         )
 
     return entries
+
+
+def discover_category_entries(
+    session: requests.Session,
+    category: str,
+    limit: int,
+    start_page: int = 0,
+    timeout: int = 20,
+) -> tuple[list[FeedEntry], int | None, int]:
+    """Discover article links from VOA category pagination."""
+    page_url = CATEGORY_PAGES[category]
+    entries: list[FeedEntry] = []
+    seen: set[str] = set()
+    page = max(0, start_page)
+    request_count = 0
+    while len(entries) < limit:
+        url = page_url if page == 0 else f"{page_url}?p={page}"
+        soup = BeautifulSoup(fetch_text(session, url, timeout=timeout), "html.parser")
+        request_count += 1
+        before = len(entries)
+        for anchor in soup.select('a[href*="/a/"]'):
+            absolute = normalize_url(urljoin(BASE_URL, str(anchor.get("href") or "")))
+            parsed = urlparse(absolute)
+            if parsed.hostname != urlparse(BASE_URL).hostname:
+                continue
+            if "/amp/" in parsed.path or not re.search(r"/a/(?:[^/]+/)?\d+\.html$", parsed.path):
+                continue
+            if absolute in seen:
+                continue
+            title = normalize_paragraph(anchor.get_text(" ", strip=True))
+            if len(title) < 5:
+                continue
+            seen.add(absolute)
+            entries.append(FeedEntry(title=title, url=absolute))
+            if len(entries) >= limit:
+                break
+        next_path = f"{urlparse(page_url).path}?p={page + 1}"
+        has_next = any(str(anchor.get("href") or "") == next_path for anchor in soup.select("a[href]"))
+        if len(entries) == before or not has_next:
+            return entries, None, request_count
+        page += 1
+    return entries, page, request_count
 
 
 def normalize_date(value: str | None) -> str | None:
@@ -397,7 +468,10 @@ def extract_audio_url(soup: BeautifulSoup, json_ld: dict[str, Any], page_url: st
 
 
 def stable_id(url: str, guid: str | None = None) -> str:
-    source = guid or url
+    numeric_id = re.search(r"/(\d+)\.html(?:$|\?)", url)
+    if numeric_id:
+        return numeric_id.group(1)
+    source = normalize_url(url)
     return hashlib.sha256(source.encode("utf-8")).hexdigest()[:24]
 
 
@@ -406,6 +480,7 @@ def parse_article_html(
     page_url: str,
     category: str | None = None,
     feed_entry: FeedEntry | None = None,
+    source_key: str | None = None,
 ) -> Article:
     soup = BeautifulSoup(html, "html.parser")
     json_ld = parse_json_ld(soup)
@@ -466,6 +541,7 @@ def parse_article_html(
         audio_url = feed_entry.audio_url
 
     return Article(
+        source_key=source_key or f"voa_{category or 'learning'}",
         external_id=stable_id(page_url, feed_entry.guid if feed_entry else None),
         source_name="VOA Learning English",
         source_url=page_url,
@@ -473,6 +549,7 @@ def parse_article_html(
         title=title,
         author=author,
         published_at=published_at,
+        source_updated_at=normalize_date(str(json_ld.get("dateModified", "")).strip() or None),
         summary=summary,
         content=content,
         word_count=len(re.findall(r"\b[\w'-]+\b", content)),
@@ -484,6 +561,8 @@ def parse_article_html(
             "Verify reuse rights before redistribution. VOA-produced material may be reusable, "
             "but third-party text, images, audio, or video can have separate rights."
         ),
+        license_type="VOA terms apply",
+        attribution=f"VOA Learning English — {page_url}",
     )
 
 
@@ -492,9 +571,13 @@ def fetch_article(
     url: str,
     category: str | None = None,
     feed_entry: FeedEntry | None = None,
+    source_key: str | None = None,
 ) -> Article:
     html = fetch_text(session, url)
-    return parse_article_html(html, url, category=category, feed_entry=feed_entry)
+    return parse_article_html(
+        html, normalize_url(url), category=category,
+        feed_entry=feed_entry, source_key=source_key,
+    )
 
 
 def write_json(path: Path, articles: list[Article]) -> None:
@@ -512,13 +595,17 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="获取 VOA Learning English 英文文章")
     parser.add_argument(
         "--category",
-        choices=sorted(FEEDS),
+        choices=sorted(CATEGORY_PAGES),
         default="science",
         help="内置栏目，默认 science",
     )
     parser.add_argument("--feed-url", help="自定义 RSS 地址；提供后会覆盖 --category")
     parser.add_argument("--article-url", help="只抓取一个文章详情页，不读取 RSS")
     parser.add_argument("--limit", type=int, default=5, help="最多抓取多少篇，默认 5")
+    parser.add_argument("--source-key", help="Stable content source key")
+    parser.add_argument("--mode", choices=("latest", "history", "detail"), default="latest")
+    parser.add_argument("--cursor", type=int, default=0, help="History pagination cursor")
+    parser.add_argument("--overlap-days", type=int, default=14, help="Incremental overlap window")
     parser.add_argument("--output", default="voa_articles.json", help="输出 JSON 文件")
     parser.add_argument("--delay", type=float, default=1.0, help="详情页请求间隔秒数，默认 1")
     parser.add_argument("--timeout", type=int, default=20, help="单次请求超时秒数，默认 20")
@@ -542,22 +629,49 @@ def main() -> int:
 
     session = build_session()
     articles: list[Article] = []
+    failures: list[dict[str, Any]] = []
+    entries: list[FeedEntry] = []
+    next_cursor: int | None = None
+    request_count = 0
 
     try:
         if args.article_url:
             logging.info("抓取文章: %s", args.article_url)
-            article = fetch_article(session, args.article_url, category=args.category)
+            article = fetch_article(
+                session, args.article_url, category=args.category,
+                source_key=args.source_key,
+            )
             articles.append(article)
+            request_count = 1
         else:
-            feed_url = args.feed_url or FEEDS[args.category]
-            logging.info("读取 RSS: %s", feed_url)
-            rss_text = fetch_text(session, feed_url, timeout=args.timeout)
-            entries = parse_rss(rss_text)[: args.limit]
-            logging.info("RSS 中找到 %d 个待处理条目", len(entries))
+            if args.mode == "latest":
+                feed_url = args.feed_url or FEEDS.get(args.category)
+                if feed_url:
+                    logging.info("读取 RSS: %s", feed_url)
+                    entries.extend(parse_rss(fetch_text(session, feed_url, timeout=args.timeout)))
+                    request_count += 1
+                page_entries, _, page_requests = discover_category_entries(
+                    session, args.category, args.limit, timeout=args.timeout,
+                )
+                entries.extend(page_entries)
+                request_count += page_requests
+            else:
+                entries, next_cursor, request_count = discover_category_entries(
+                    session, args.category, args.limit,
+                    start_page=args.cursor, timeout=args.timeout,
+                )
+
+            unique_entries: dict[str, FeedEntry] = {}
+            for entry in entries:
+                unique_entries.setdefault(normalize_url(entry.url), entry)
+            entries = list(unique_entries.values())
+            if args.mode != "latest":
+                entries = entries[:args.limit]
+            logging.info("共发现 %d 个待处理条目", len(entries))
 
             seen_urls: set[str] = set()
             for index, entry in enumerate(entries, start=1):
-                normalized_url = entry.url.split("#", 1)[0]
+                normalized_url = normalize_url(entry.url)
                 if normalized_url in seen_urls:
                     continue
                 seen_urls.add(normalized_url)
@@ -569,19 +683,37 @@ def main() -> int:
                         entry.url,
                         category=args.category,
                         feed_entry=entry,
+                        source_key=args.source_key,
                     )
                     articles.append(article)
                 except FetchError as exc:
                     logging.error("跳过文章: %s", exc)
+                    failures.append({
+                        "sourceUrl": normalized_url,
+                        "title": entry.title,
+                        "error": str(exc),
+                        "retryCount": 3,
+                    })
 
                 if index < len(entries) and args.delay:
                     time.sleep(args.delay)
 
-        if not articles:
-            raise FetchError("没有成功获取任何文章")
+        if not articles and not failures:
+            raise FetchError("没有发现或成功获取任何文章")
 
         output_path = Path(args.output).expanduser().resolve()
-        write_json(output_path, articles)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps({
+            "source": "VOA Learning English",
+            "count": len(articles),
+            "discovered_count": len(entries) if not args.article_url else 1,
+            "next_cursor": str(next_cursor) if next_cursor is not None else None,
+            "request_count": request_count,
+            "failed": len(failures),
+            "errors": failures,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "articles": [asdict(article) for article in articles],
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
         logging.info("已保存 %d 篇文章到 %s", len(articles), output_path)
 
         for article in articles:

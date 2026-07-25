@@ -1,29 +1,24 @@
+import type { EnglishArticle, EnglishCategory, EnglishSourceSyncResult } from "@/src/types/english";
 import type {
-  EnglishArticle,
-  EnglishCategory,
-  EnglishSourceSyncResult,
-} from "@/src/types/english";
-
-type PythonArticle = {
-  source_url?: unknown;
-  title?: unknown;
-  category?: unknown;
-  author?: unknown;
-  published_at?: unknown;
-  summary?: unknown;
-  content?: unknown;
-  word_count?: unknown;
-  audio_url?: unknown;
-  image_url?: unknown;
-  fetched_at?: unknown;
-  rights_note?: unknown;
-};
+  EnglishContentSource,
+  NormalizedEnglishArticle,
+  SourceFetchOptions,
+  SourceFetchResult,
+  SourceHealth,
+  SourceMode,
+} from "@/src/server/englishSync/source";
 
 type PythonFetchResponse = {
   engine?: unknown;
   articles?: unknown;
   skipped?: unknown;
   failed?: unknown;
+  errors?: unknown;
+  discovered_count?: unknown;
+  next_cursor?: unknown;
+  request_count?: unknown;
+  ok?: unknown;
+  rate_limited?: unknown;
   detail?: unknown;
   error?: unknown;
 };
@@ -31,119 +26,225 @@ type PythonFetchResponse = {
 const SERVICE_URL = process.env.VOA_SERVICE_URL
   ?? process.env.XUNJI_SERVICE_URL
   ?? "http://127.0.0.1:8001";
-const SERVICE_TIMEOUT_MS = 50_000;
-const VOA_HOST = "learningenglish.voanews.com";
+const SERVICE_TIMEOUT_MS = Number(process.env.VOA_SERVICE_TIMEOUT_MS || 180_000);
+
+const stringValue = (value: unknown) => typeof value === "string" ? value.trim() : "";
+
+const validateVoaUrl = (value: unknown) => {
+  const url = new URL(stringValue(value));
+  const allowedHosts = ["voanews.com", "voanews.eu"];
+  const allowed = allowedHosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  if (url.protocol !== "https:" || !allowed) throw new Error("VOA 返回了不受信任的 URL");
+  return url.toString();
+};
+
+export const normalizePythonArticle = (raw: unknown, fallbackSourceKey = "voa_science"): NormalizedEnglishArticle => {
+  if (!raw || typeof raw !== "object") throw new Error("文章数据格式无效");
+  const value = raw as Record<string, unknown>;
+  const sourceUrl = validateVoaUrl(value.source_url);
+  const title = stringValue(value.title);
+  const content = stringValue(value.content);
+  if (!title || !content) throw new Error("文章缺少标题或正文");
+  return {
+    source_key: stringValue(value.source_key) || fallbackSourceKey,
+    external_id: stringValue(value.external_id) || undefined,
+    source_url: sourceUrl,
+    title,
+    summary: stringValue(value.summary) || undefined,
+    content,
+    author: stringValue(value.author) || undefined,
+    category: stringValue(value.category) || "Life",
+    published_at: stringValue(value.published_at) || undefined,
+    source_updated_at: stringValue(value.source_updated_at) || undefined,
+    audio_url: value.audio_url ? validateVoaUrl(value.audio_url) : undefined,
+    image_url: value.image_url ? validateVoaUrl(value.image_url) : undefined,
+    license_type: stringValue(value.license_type) || "VOA terms apply",
+    attribution: stringValue(value.attribution) || "VOA Learning English",
+    metadata: typeof value.metadata === "object" && value.metadata ? value.metadata as Record<string, unknown> : {},
+  };
+};
+
+async function requestPython(path: string, body: Record<string, unknown>): Promise<PythonFetchResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${SERVICE_URL}${path}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timeout = error instanceof Error && error.name === "TimeoutError";
+    throw new Error(timeout ? "Python VOA 抓取超时" : "无法连接本机 Python 抓取服务");
+  }
+  const payload = await response.json().catch(() => ({})) as PythonFetchResponse;
+  if (!response.ok) {
+    const message = stringValue(payload.detail) || stringValue(payload.error) || `VOA 抓取失败（HTTP ${response.status}）`;
+    const wrapped = new Error(message) as Error & { rateLimited?: boolean };
+    wrapped.rateLimited = response.status === 429;
+    throw wrapped;
+  }
+  return payload;
+}
+
+export class VoaPythonSource implements EnglishContentSource {
+  constructor(
+    public readonly sourceKey: string,
+    private readonly feedKey: string,
+  ) {}
+
+  private async fetch(mode: SourceMode, options: SourceFetchOptions): Promise<SourceFetchResult> {
+    const payload = await requestPython("/api/voa/articles", {
+      sourceKey: this.sourceKey,
+      category: this.feedKey,
+      mode,
+      limit: options.limit,
+      overlapDays: options.overlapDays,
+      cursor: options.cursor,
+      requestIntervalMs: options.requestIntervalMs,
+    });
+    if (payload.engine !== "python" || !Array.isArray(payload.articles)) {
+      throw new Error("Python VOA 抓取结果格式无效");
+    }
+    const failed = Array.isArray(payload.errors)
+      ? payload.errors.map((error) => typeof error === "string" ? { error } : error as { error: string })
+      : [];
+    const articles: NormalizedEnglishArticle[] = [];
+    for (const raw of payload.articles) {
+      try {
+        articles.push(this.normalizeArticle(raw));
+      } catch (error) {
+        failed.push({ error: error instanceof Error ? error.message : "文章标准化失败" });
+      }
+    }
+    return {
+      articles,
+      failed,
+      discoveredCount: Number(payload.discovered_count) || payload.articles.length,
+      nextCursor: stringValue(payload.next_cursor) || undefined,
+      requestCount: Number(payload.request_count) || undefined,
+    };
+  }
+
+  fetchLatest(options: SourceFetchOptions) {
+    return this.fetch("latest", options);
+  }
+
+  fetchHistory(options: SourceFetchOptions) {
+    return this.fetch("history", options);
+  }
+
+  async fetchArticleDetail(url: string) {
+    const payload = await requestPython("/api/voa/articles", {
+      sourceKey: this.sourceKey,
+      category: this.feedKey,
+      mode: "detail",
+      articleUrl: url,
+      limit: 1,
+    });
+    if (!Array.isArray(payload.articles) || !payload.articles[0]) throw new Error("文章详情抓取失败");
+    return this.normalizeArticle(payload.articles[0]);
+  }
+
+  normalizeArticle(raw: unknown) {
+    return normalizePythonArticle(raw, this.sourceKey);
+  }
+
+  async healthCheck(): Promise<SourceHealth> {
+    const payload = await requestPython("/api/voa/health", { category: this.feedKey });
+    return {
+      ok: Boolean(payload.ok),
+      rateLimited: Boolean(payload.rate_limited),
+      detail: stringValue(payload.detail) || undefined,
+    };
+  }
+}
+
 const CATEGORY_MAP: Record<string, EnglishCategory> = {
   science: "Science",
   health: "Life",
   words: "Culture",
+  grammar: "Culture",
+  education: "Life",
+  Science: "Science",
+  Technology: "Technology",
+  Life: "Life",
+  Health: "Life",
+  Culture: "Culture",
+  Grammar: "Culture",
+  Education: "Life",
 };
 
-const stringValue = (value: unknown) => typeof value === "string" ? value.trim() : "";
-
-const safeSourceUrl = (value: unknown) => {
-  try {
-    const url = new URL(stringValue(value));
-    return url.protocol === "https:" && url.hostname === VOA_HOST ? url.toString() : "";
-  } catch {
-    return "";
-  }
-};
-
-const safeAssetUrl = (value: unknown) => {
-  try {
-    const url = new URL(stringValue(value));
-    const voaHost = url.hostname === "voanews.com" || url.hostname.endsWith(".voanews.com");
-    return url.protocol === "https:" && voaHost ? url.toString() : undefined;
-  } catch {
-    return undefined;
-  }
-};
-
-const readingMinutes = (wordCount: number) =>
-  Math.max(5, Math.min(25, Math.ceil(wordCount / 130)));
-
-const questions = (title: string) => [
-  `What is the main idea of "${title}"?`,
-  "Which detail in the article best supports its main idea?",
-  "What is one new thing you learned from this article?",
-];
-
-const toEnglishArticle = (raw: PythonArticle): EnglishArticle | null => {
-  const sourceUrl = safeSourceUrl(raw.source_url);
-  const externalId = sourceUrl.match(/\/(\d+)\.html(?:$|\?)/)?.[1] ?? "";
-  const title = stringValue(raw.title);
-  const content = stringValue(raw.content);
-  const measuredWords = content.match(/\b[\w'-]+\b/g)?.length ?? 0;
-  const reportedWords = Number(raw.word_count);
-  const wordCount = Number.isFinite(reportedWords) && reportedWords > 0 ? Math.round(reportedWords) : measuredWords;
-  if (!sourceUrl || !externalId || !title || wordCount < 50) return null;
-
+export const toLegacyEnglishArticle = (
+  raw: NormalizedEnglishArticle,
+  id: string,
+  contentHash: string,
+  qualityScore: number,
+  status: EnglishArticle["processingStatus"],
+  level: EnglishArticle["level"] = "B1",
+): EnglishArticle => {
+  const wordCount = raw.content.match(/\b[A-Za-z]+(?:['’-][A-Za-z]+)*\b/g)?.length ?? 0;
   const now = new Date().toISOString();
-  const published = new Date(stringValue(raw.published_at));
-  const publishedAt = Number.isNaN(published.getTime()) ? now : published.toISOString();
-  const category = CATEGORY_MAP[stringValue(raw.category).toLowerCase()] ?? "Life";
+  const publishedAt = raw.published_at && Number.isFinite(new Date(raw.published_at).getTime())
+    ? new Date(raw.published_at).toISOString()
+    : now;
   return {
-    id: `voa-${externalId}`,
-    title,
-    level: "B1",
-    category,
+    id,
+    title: raw.title,
+    level,
+    category: CATEGORY_MAP[raw.category] ?? "Life",
     difficulty: 3,
-    estimatedMinutes: readingMinutes(wordCount),
-    content,
+    estimatedMinutes: Math.max(5, Math.min(25, Math.ceil(wordCount / 130))),
+    content: raw.content,
     vocabulary: [],
-    questions: questions(title),
+    questions: [
+      `What is the main idea of "${raw.title}"?`,
+      "Which detail best supports the main idea?",
+      "What is one new thing you learned?",
+    ],
     source: "voa",
+    sourceKey: raw.source_key,
     sourceName: "VOA Learning English",
-    sourceUrl,
-    externalId,
+    sourceCategory: raw.category,
+    sourceUrl: raw.source_url,
+    externalId: raw.external_id,
     publishedAt,
-    imageUrl: safeAssetUrl(raw.image_url),
-    audioUrl: safeAssetUrl(raw.audio_url),
-    author: stringValue(raw.author) || undefined,
-    summary: stringValue(raw.summary) || undefined,
+    sourceUpdatedAt: raw.source_updated_at,
+    imageUrl: raw.image_url,
+    audioUrl: raw.audio_url,
+    author: raw.author,
+    summary: raw.summary,
     wordCount,
-    fetchedAt: stringValue(raw.fetched_at) || now,
-    rightsNote: stringValue(raw.rights_note) || undefined,
+    fetchedAt: now,
+    rightsNote: raw.attribution,
+    contentHash,
+    language: "en",
+    qualityScore,
+    hasAudio: Boolean(raw.audio_url),
+    licenseType: raw.license_type,
+    attribution: raw.attribution,
+    processingStatus: status,
+    fetchStatus: "SUCCESS",
+    retryCount: 0,
     createdTime: publishedAt,
     updatedAt: now,
   };
 };
 
-export async function fetchVoaArticlesFromPython(limitPerFeed = 2) {
-  let response: Response;
-  try {
-    response = await fetch(`${SERVICE_URL}/api/voa/articles`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ limitPerFeed }),
-      signal: AbortSignal.timeout(SERVICE_TIMEOUT_MS),
-    });
-  } catch (error) {
-    const timeout = error instanceof Error && error.name === "TimeoutError";
-    throw new Error(timeout
-      ? "Python VOA 抓取超过 50 秒，已停止本次同步"
-      : "无法连接本机 Python 抓取服务，请重启 Life trace 后再试");
-  }
-
-  const payload = await response.json().catch(() => ({})) as PythonFetchResponse;
-  if (!response.ok) {
-    if (response.status === 404) {
-      throw new Error("Python 服务版本过旧，请重启 Life trace 后再同步");
-    }
-    const message = stringValue(payload.detail) || stringValue(payload.error) || "Python VOA 抓取失败";
-    throw new Error(message);
-  }
-  if (payload.engine !== "python" || !Array.isArray(payload.articles)) {
-    throw new Error("Python VOA 抓取结果格式无效");
-  }
-  const articles = payload.articles
-    .map((article) => toEnglishArticle(article as PythonArticle))
-    .filter((article): article is EnglishArticle => Boolean(article));
+// Compatibility entry point retained for older callers and tests.
+export async function fetchVoaArticlesFromPython(limitPerFeed = 30) {
+  const sources = [
+    new VoaPythonSource("voa_science", "science"),
+    new VoaPythonSource("voa_health", "health"),
+    new VoaPythonSource("voa_words", "words"),
+  ];
+  const results = await Promise.allSettled(sources.map((source) =>
+    source.fetchLatest({ limit: limitPerFeed, overlapDays: 14 }),
+  ));
   return {
-    articles,
-    skipped: Math.max(0, Number(payload.skipped) || 0) + (payload.articles.length - articles.length),
-    failed: Math.max(0, Number(payload.failed) || 0),
+    articles: results.flatMap((result) => result.status === "fulfilled" ? result.value.articles : []),
+    skipped: 0,
+    failed: results.reduce((count, result) => count + (result.status === "rejected" ? 1 : result.value.failed.length), 0),
   };
 }
 

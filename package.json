@@ -14,7 +14,8 @@
     "desktop": "electron desktop/main.cjs",
     "build": "vinext build",
     "start": "vinext start",
-    "test": "npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run test:sync && npm run build && node --test tests/rendered-html.test.mjs",
+    "test:sync": "tsx --test tests/*.test.ts",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"
   },

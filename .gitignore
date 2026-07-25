@@ -47,9 +47,12 @@ ios/**/*.xcuserstate
 ios/**/xcuserdata/
 /.venv-xunji/
 /xunji_service/debug/
+/xunji_service/data/dictionary.db
+/xunji_service/data/dictionary-import.log
 /.xunji-*.log
 /.codex-server*.log
 /.desktop-runtime.log
+/.codex-tmp/
 /.https-proxy*.log
 /.ui-redesign-dev*.log
 /backups/

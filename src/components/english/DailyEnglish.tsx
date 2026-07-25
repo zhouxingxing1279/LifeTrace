@@ -4,18 +4,21 @@ import { useEffect, useState } from "react";
 import {
   ArrowLeft, BarChart3, BookOpen, Bot, Check, ChevronRight, Clock3, Flame,
   ExternalLink, Headphones, Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
-  Plus, RefreshCw, Sparkles, Sun, Type, Volume2,
+  Plus, Sparkles, Sun, Type,
 } from "lucide-react";
 import type {
-  ArticleVocabularyItem,
   CEFRLevel,
+  DictionaryLookup,
   EnglishAIAnalysis,
   EnglishArticle,
   EnglishHistoryResponse,
-  EnglishSourceSyncResult,
   EnglishTodayResponse,
-  EnglishVocabulary,
+  UserVocabulary,
+  VocabularySettings,
 } from "@/src/types/english";
+import EnglishSourceManager from "./EnglishSourceManager";
+import { DictionaryPopover } from "./vocabulary/DictionaryPopover";
+import { VocabularyWorkspace } from "./vocabulary/VocabularyWorkspace";
 
 type EnglishView = "overview" | "reader" | "summary" | "feedback" | "vocabulary" | "history" | "articles" | "assistant";
 
@@ -66,7 +69,9 @@ export default function DailyEnglish() {
   const [today, setToday] = useState<EnglishTodayResponse | null>(null);
   const [history, setHistory] = useState<EnglishHistoryResponse | null>(null);
   const [articles, setArticles] = useState<EnglishArticle[]>([]);
-  const [vocabulary, setVocabulary] = useState<EnglishVocabulary[]>([]);
+  const [vocabularyVersion, setVocabularyVersion] = useState(0);
+  const [vocabularyMode, setVocabularyMode] = useState<"list" | "review">("list");
+  const [vocabularyStats, setVocabularyStats] = useState({ dueToday: 0, addedWeek: 0, mastered: 0 });
   const [assistant, setAssistant] = useState<{ sampleSize: number; weakPoints: string[]; message: string; nextStage: string } | null>(null);
   const [currentArticle, setCurrentArticle] = useState<EnglishArticle | null>(null);
   const [summary, setSummary] = useState("");
@@ -75,57 +80,34 @@ export default function DailyEnglish() {
   const [readingStartedAt, setReadingStartedAt] = useState(() => Date.now());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
-  const [syncingSource, setSyncingSource] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [todayData, historyData, articleData, vocabularyData, assistantData] = await Promise.all([
+      const [todayData, historyData, articleData, vocabularyStatsData, assistantData] = await Promise.all([
         request<EnglishTodayResponse>("/api/english/today"),
         request<EnglishHistoryResponse>("/api/english/history"),
         request<{ articles: EnglishArticle[] }>("/api/english/articles"),
-        request<{ items: EnglishVocabulary[] }>("/api/english/vocabulary"),
+        request<{ dueToday: number; addedWeek: number; mastered: number }>("/api/english/vocabulary/stats"),
         request<{ sampleSize: number; weakPoints: string[]; message: string; nextStage: string }>("/api/english/assistant"),
       ]);
       setToday(todayData);
       setHistory(historyData);
       setArticles(articleData.articles);
-      setVocabulary(vocabularyData.items);
+      setVocabularyStats(vocabularyStatsData);
       setAssistant(assistantData);
       setCurrentArticle((value) => value ?? todayData.article);
       if (todayData.record) {
         setRecordId(todayData.record.id);
         setSummary(todayData.record.summary);
       }
-      // 第三方来源在后台刷新；失败不会阻塞内置文章和已缓存文章。
-      void post<EnglishSourceSyncResult>("/api/english/sync", { force: false })
-        .then(async (result) => {
-          if (!result.imported) return;
-          const refreshed = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
-          setArticles(refreshed.articles);
-        })
+      // 第三方来源只在后台做增量刷新；一次性历史建库不属于应用启动流程。
+      void post<{ taskId?: string }>("/api/english/sync", { startupCheck: true })
         .catch(() => undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "每日英语加载失败");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const syncVoa = async () => {
-    setSyncingSource(true);
-    setMessage("正在调用本机 Python 抓取 VOA 文章…");
-    try {
-      const result = await post<EnglishSourceSyncResult>("/api/english/sync", { force: true });
-      const articleData = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
-      setArticles(articleData.articles);
-      setMessage(result.imported
-        ? `Python 已同步 ${result.imported} 篇 VOA 文章`
-        : result.cached ? "VOA 文章已经是最新状态" : "本次没有发现可导入的新文章");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "VOA 文章同步失败");
-    } finally {
-      setSyncingSource(false);
     }
   };
 
@@ -150,16 +132,12 @@ export default function DailyEnglish() {
   return <div className="en-module">
     <EnglishNav view={view} setView={setView} />
     {message && <div className="en-message" role="status">{message}</div>}
-    {view === "overview" && <Overview today={today} history={history} start={() => startReading(today.article)} setView={setView} />}
+    {view === "overview" && <Overview today={today} history={history} vocabularyStats={vocabularyStats} start={() => startReading(today.article)} setView={setView} openVocabulary={(mode) => { setVocabularyMode(mode); setView("vocabulary"); }} />}
     {view === "reader" && <Reader
       article={currentArticle}
       back={() => setView("overview")}
       finish={() => setView("summary")}
-      addWord={async (item) => {
-        const saved = await post<EnglishVocabulary>("/api/english/vocabulary", { ...item, sourceArticleId: currentArticle.id });
-        setVocabulary((items) => items.some((word) => word.id === saved.id) ? items : [saved, ...items]);
-        setMessage(`“${saved.word}”已加入生词本`);
-      }}
+      onWordAdded={() => setVocabularyVersion((value) => value + 1)}
       setMessage={setMessage}
     />}
     {view === "summary" && <SummaryTrainer
@@ -191,12 +169,17 @@ export default function DailyEnglish() {
       }}
     />}
     {view === "feedback" && analysis && <Feedback analysis={analysis} article={currentArticle} done={() => setView("overview")} />}
-    {view === "vocabulary" && <VocabularyBook items={vocabulary} review={async (id, mastered) => {
-      const updated = await post<EnglishVocabulary>("/api/english/vocabulary", { id, mastered }, "PATCH");
-      setVocabulary((items) => items.map((item) => item.id === id ? updated : item));
-    }} />}
+    {view === "vocabulary" && <VocabularyWorkspace refreshKey={vocabularyVersion} initialMode={vocabularyMode} />}
     {view === "history" && <History history={history} />}
-    {view === "articles" && <ArticleLibrary articles={articles} currentLevel={today.currentLevel} start={startReading} syncing={syncingSource} syncVoa={() => void syncVoa()} />}
+    {view === "articles" && <ArticleLibrary
+      articles={articles}
+      currentLevel={today.currentLevel}
+      start={startReading}
+      refreshArticles={async () => {
+        const data = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
+        setArticles(data.articles);
+      }}
+    />}
     {view === "assistant" && <Assistant insight={assistant} history={history} />}
   </div>;
 }
@@ -214,11 +197,13 @@ function EnglishNav({ view, setView }: { view: EnglishView; setView: (view: Engl
   </nav>;
 }
 
-function Overview({ today, history, start, setView }: {
+function Overview({ today, history, vocabularyStats, start, setView, openVocabulary }: {
   today: EnglishTodayResponse;
   history: EnglishHistoryResponse | null;
   start: () => void;
   setView: (view: EnglishView) => void;
+  vocabularyStats: { dueToday: number; addedWeek: number; mastered: number };
+  openVocabulary: (mode: "list" | "review") => void;
 }) {
   const week = currentWeek();
   return <div className="en-overview">
@@ -244,6 +229,11 @@ function Overview({ today, history, start, setView }: {
       <article><span>平均评分</span><strong>{history?.stats.averageScore30 || "—"}<small>/ 100</small></strong></article>
       <article><span>词汇增长</span><strong>{history?.stats.vocabularyGrowth30 ?? 0}<small>个生词</small></strong></article>
     </section>
+    <section className="en-vocab-home-card">
+      <div><span className="en-eyebrow">WORD REVIEW</span><h3>今天也把几个词，真正记下来。</h3></div>
+      <dl><div><dt>今日待复习</dt><dd>{vocabularyStats.dueToday}</dd></div><div><dt>本周新增</dt><dd>{vocabularyStats.addedWeek}</dd></div><div><dt>已掌握</dt><dd>{vocabularyStats.mastered}</dd></div></dl>
+      <footer><button onClick={() => openVocabulary("review")}>开始今日复习</button><button onClick={() => openVocabulary("list")}>查看生词本</button></footer>
+    </section>
     <section className="en-recent">
       <header><div><span className="en-eyebrow">HISTORY</span><h3>最近学习记录</h3></div><button onClick={() => setView("history")}>查看全部 <ChevronRight /></button></header>
       {today.recentRecords.length ? today.recentRecords.map((record) => <article key={record.id}><time>{record.date.slice(5)}</time><div><strong>{record.article?.title ?? "英文阅读"}</strong><small>{record.article?.level} · {record.completionStatus === "completed" ? "已完成闭环" : "继续完成"}</small></div><b>{record.score ?? "—"}</b></article>) : <p className="en-empty">完成第一篇文章后，学习轨迹会从这里开始。</p>}
@@ -251,18 +241,22 @@ function Overview({ today, history, start, setView }: {
   </div>;
 }
 
-function Reader({ article, back, finish, addWord, setMessage }: {
+function Reader({ article, back, finish, onWordAdded, setMessage }: {
   article: EnglishArticle;
   back: () => void;
   finish: () => void;
-  addWord: (item: ArticleVocabularyItem) => Promise<void>;
+  onWordAdded: (item: UserVocabulary) => void;
   setMessage: (value: string) => void;
 }) {
   const [fontSize, setFontSize] = useState(19);
   const [lineHeight, setLineHeight] = useState(1.9);
   const [dark, setDark] = useState(false);
-  const [lookup, setLookup] = useState<ArticleVocabularyItem | null>(null);
-  const [addingWord, setAddingWord] = useState(false);
+  const [lookup, setLookup] = useState<DictionaryLookup | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [vocabularySettings, setVocabularySettings] = useState<VocabularySettings>({
+    preferredAccent: "en-US", wordSpeechRate: .8, sentenceSpeechRate: .85, autoPronounce: false,
+    defaultFirstMeaning: true, dailyReviewLimit: 20, showSourceSentence: true, includeMasteredInRecommendations: false,
+  });
   const [selectedText, setSelectedText] = useState("");
   const [note, setNote] = useState("");
   const [counts, setCounts] = useState({ highlights: 0, notes: 0 });
@@ -271,37 +265,31 @@ function Reader({ article, back, finish, addWord, setMessage }: {
     void request<{ highlights: unknown[]; notes: unknown[] }>(`/api/english/highlights?articleId=${encodeURIComponent(article.id)}`)
       .then((data) => setCounts({ highlights: data.highlights.length, notes: data.notes.length }))
       .catch(() => undefined);
+    void request<VocabularySettings>("/api/english/vocabulary/settings").then(setVocabularySettings).catch(() => undefined);
   }, [article.id]);
 
-  const openWord = (word: string) => {
-    const known = article.vocabulary.find((item) => item.word.toLowerCase() === word.toLowerCase());
-    setLookup(known ?? { word, phonetic: "", meaning: "", example: "" });
-  };
-
-  const pronounceWord = () => {
-    if (!lookup || !("speechSynthesis" in window)) {
-      setMessage("当前系统没有可用的英文朗读功能");
-      return;
+  const openWord = async (word: string, sentence: string) => {
+    setLookupLoading(true);
+    try {
+      const params = new URLSearchParams({ word, articleId: article.id, sentence });
+      setLookup(await request<DictionaryLookup>(`/api/english/dictionary/lookup?${params}`));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "离线词典查询失败");
+    } finally {
+      setLookupLoading(false);
     }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(lookup.word);
-    const voices = window.speechSynthesis.getVoices();
-    utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === "en-us")
-      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("en"))
-      ?? null;
-    utterance.lang = utterance.voice?.lang ?? "en-US";
-    utterance.rate = 0.88;
-    utterance.onerror = () => setMessage("单词朗读失败，请检查系统语音设置");
-    window.speechSynthesis.speak(utterance);
   };
 
   const renderParagraph = (paragraph: string) => paragraph.split(/(\b[A-Za-z][A-Za-z'-]*\b)/g).map((part, index) => {
     if (!/^[A-Za-z][A-Za-z'-]*$/.test(part)) return part;
-    const known = article.vocabulary.find((item) => item.word.toLowerCase() === part.toLowerCase());
-    return <button className={known ? "key-word" : ""} key={`${part}-${index}`} onClick={() => openWord(part)}>{part}</button>;
+    const known = article.vocabulary.some((item) => item.word.toLowerCase() === part.toLowerCase());
+    return <button className={known ? "key-word" : ""} key={`${part}-${index}`} onClick={() => void openWord(part, paragraph)}>{part}</button>;
   });
 
-  return <div className={`en-reader ${dark ? "dark" : ""}`}>
+  return <div className={`en-reader ${dark ? "dark" : ""}`} onMouseDown={(event) => {
+    const target = event.target as HTMLElement;
+    if (!target.closest(".en-dictionary-popover") && !target.closest(".en-reading-content button")) setLookup(null);
+  }}>
     <header className="en-reader-bar">
       <button onClick={back}><ArrowLeft />返回</button>
       <div>
@@ -332,7 +320,10 @@ function Reader({ article, back, finish, addWord, setMessage }: {
           const text = window.getSelection()?.toString().trim() ?? "";
           if (!text) return;
           setSelectedText(text);
-          if (/^[A-Za-z][A-Za-z'-]*$/.test(text)) openWord(text);
+          if (/^[A-Za-z][A-Za-z'-]*$/.test(text)) {
+            const paragraph = window.getSelection()?.anchorNode?.parentElement?.closest("p")?.textContent ?? text;
+            void openWord(text, paragraph);
+          }
         }}>{article.content.split("\n\n").map((paragraph, index) => <p key={index}>{renderParagraph(paragraph)}</p>)}</div>
         <button className="en-finish-reading" onClick={finish}>完成阅读，开始英文总结 <ChevronRight /></button>
       </article>
@@ -361,38 +352,8 @@ function Reader({ article, back, finish, addWord, setMessage }: {
         <section><header><ListChecks /><strong>理解问题</strong></header><ol>{article.questions.map((question) => <li key={question}>{question}</li>)}</ol></section>
       </aside>
     </main>
-    {lookup && <div className="en-word-popover" role="dialog" aria-label={`${lookup.word} 生词卡片`}>
-      <button aria-label="关闭生词卡片" onClick={() => setLookup(null)}>×</button><span>WORD</span><h3>{lookup.word}</h3>
-      <div className="en-word-pronunciation">
-        <span>{lookup.phonetic || "音标可选填"}</span>
-        <button type="button" onClick={pronounceWord}><Volume2 />朗读</button>
-      </div>
-      <label>音标（选填）
-        <input value={lookup.phonetic} onChange={(event) => setLookup({ ...lookup, phonetic: event.target.value })} placeholder="/ˈwɜːrd/" />
-      </label>
-      <label>中文释义
-        <input value={lookup.meaning} onChange={(event) => setLookup({ ...lookup, meaning: event.target.value })} placeholder="输入这个单词在文中的含义" autoFocus />
-      </label>
-      <label>例句（选填）
-        <textarea value={lookup.example} onChange={(event) => setLookup({ ...lookup, example: event.target.value })} placeholder="记录文章中的例句或自己的例句" />
-      </label>
-      <button className="primary" disabled={!lookup.meaning.trim() || addingWord} onClick={async () => {
-        setAddingWord(true);
-        try {
-          await addWord({
-            word: lookup.word.trim(),
-            phonetic: lookup.phonetic.trim(),
-            meaning: lookup.meaning.trim(),
-            example: lookup.example.trim(),
-          });
-          setLookup(null);
-        } catch (error) {
-          setMessage(error instanceof Error ? error.message : "加入生词本失败");
-        } finally {
-          setAddingWord(false);
-        }
-      }}>{addingWord ? "正在加入…" : "加入生词本"}</button>
-    </div>}
+    {lookupLoading && <div className="en-dictionary-loading" role="status">正在查询本地词典…</div>}
+    {lookup && <DictionaryPopover lookup={lookup} article={article} settings={vocabularySettings} onClose={() => setLookup(null)} onAdded={onWordAdded} onMessage={setMessage} />}
   </div>;
 }
 
@@ -438,19 +399,6 @@ function Feedback({ analysis, article, done }: { analysis: EnglishAIAnalysis; ar
   </div>;
 }
 
-function VocabularyBook({ items, review }: { items: EnglishVocabulary[]; review: (id: string, mastered: boolean) => Promise<void> }) {
-  const [referenceTime] = useState(() => Date.now());
-  const due = items.filter((item) => new Date(item.nextReviewTime).getTime() <= referenceTime);
-  const [reviewItem, setReviewItem] = useState<EnglishVocabulary | null>(due[0] ?? items[0] ?? null);
-  const nextRandom = () => setReviewItem((due.length ? due : items)[Math.floor(Math.random() * Math.max(1, (due.length ? due : items).length))] ?? null);
-  return <div>
-    <div className="en-section-head"><div><span className="en-eyebrow">VOCABULARY</span><h2>生词不是收藏，<br />而是要再次遇见。</h2><p>{items.length} 个生词 · {due.length} 个待复习</p></div></div>
-    {reviewItem && <section className="en-vocab-review"><div><span>今日复习</span><h3>{reviewItem.word}</h3><p>{reviewItem.phonetic} · {reviewItem.meaning}</p></div><div><button onClick={async () => { await review(reviewItem.id, false); nextRandom(); }}>还不熟</button><button onClick={async () => { await review(reviewItem.id, true); nextRandom(); }}>已掌握</button><button onClick={nextRandom}><RefreshCw /></button></div></section>}
-    <div className="en-vocab-grid">{items.map((item) => <article key={item.id}><h3>{item.word}</h3><span>{item.phonetic}</span><p>{item.meaning}</p><blockquote>{item.example}</blockquote><footer><i><b style={{ width: `${item.masterLevel * 20}%` }} /></i><small>熟练度 {item.masterLevel}/5</small></footer></article>)}</div>
-    {!items.length && <p className="en-empty">阅读时点击重点词汇，即可加入生词本。</p>}
-  </div>;
-}
-
 function History({ history }: { history: EnglishHistoryResponse | null }) {
   const records = history?.records ?? [];
   const chart = Array.from({ length: 30 }, (_, index) => {
@@ -467,18 +415,18 @@ function History({ history }: { history: EnglishHistoryResponse | null }) {
   </div>;
 }
 
-function ArticleLibrary({ articles, currentLevel, start, syncing, syncVoa }: {
+function ArticleLibrary({ articles, currentLevel, start, refreshArticles }: {
   articles: EnglishArticle[];
   currentLevel: CEFRLevel;
   start: (article: EnglishArticle) => void;
-  syncing: boolean;
-  syncVoa: () => void;
+  refreshArticles: () => Promise<void>;
 }) {
   const [level, setLevel] = useState<CEFRLevel | "all">("all");
   const [query, setQuery] = useState("");
   const shown = articles.filter((article) => (level === "all" || article.level === level) && article.title.toLowerCase().includes(query.toLowerCase()));
   return <div>
-    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p>当前推荐等级：{currentLevel} · {levelName[currentLevel]}</p></div><div><button className="en-source-sync" type="button" disabled={syncing} onClick={syncVoa}><RefreshCw className={syncing ? "syncing" : ""} />{syncing ? "同步中" : "同步 VOA"}</button><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
+    <EnglishSourceManager onArticlesChanged={() => void refreshArticles()} />
+    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p>当前推荐等级：{currentLevel} · {levelName[currentLevel]}</p></div><div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
     <div className="en-article-grid">{shown.map((article) => <article key={article.id}><span>{article.level} · {categoryName[article.category]}</span>{article.source === "voa" && <small className="en-source-badge">VOA Learning English</small>}<h3>{article.title}</h3><p>{article.content}</p><footer><small>{article.estimatedMinutes} 分钟 · 难度 {article.difficulty}/5</small><button onClick={() => start(article)}>阅读 <ChevronRight /></button></footer></article>)}</div>
   </div>;
 }

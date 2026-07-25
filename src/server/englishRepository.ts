@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { englishAnalysisService } from "@/src/services/englishAnalysis";
-import { fetchVoaArticlesFromPython, voaSyncResult } from "@/src/server/englishSources/voaPython";
+import { runEnglishSyncTask, scheduleEnglishSync } from "@/src/server/englishSync/service";
 import type { Activity, ActivityLog } from "@/src/types";
 import type {
   ArticleVocabularyItem,
@@ -30,7 +30,6 @@ const tableNames: Record<EnglishTable, string> = {
 
 const USER_ID = "local-user";
 const LEVELS: CEFRLevel[] = ["A1", "A2", "B1", "B2", "C1"];
-const VOA_SYNC_TTL = 12 * 60 * 60 * 1000;
 
 const vocabulary = (word: string, phonetic: string, meaning: string, example: string): ArticleVocabularyItem => ({ word, phonetic, meaning, example });
 
@@ -197,20 +196,26 @@ export const readEnglishTable = async <T>(table: EnglishTable): Promise<T[]> => 
 export const getArticle = async (id: string) => (await readEnglishTable<EnglishArticle>("articles")).find((article) => article.id === id);
 
 export async function syncVoaArticles(force = false): Promise<EnglishSourceSyncResult> {
-  const stored = await readEnglishTable<EnglishArticle>("articles");
-  const latestVoaSync = stored
-    .filter((article) => article.source === "voa")
-    .map((article) => new Date(article.updatedAt).getTime())
-    .filter(Number.isFinite)
-    .sort((a, b) => b - a)[0];
-  if (!force && latestVoaSync && Date.now() - latestVoaSync < VOA_SYNC_TTL) {
-    return voaSyncResult(0, 0, 0, true);
+  const scheduled = await scheduleEnglishSync("incremental", undefined, force);
+  if (!scheduled.task) {
+    return { source: "voa", engine: "python", imported: 0, skipped: 0, failed: 0, syncedAt: new Date().toISOString(), cached: true };
   }
-
-  const result = await fetchVoaArticlesFromPython();
-  if (!result.articles.length && result.failed) throw new Error("Python 没有成功获取 VOA 文章，已保留本地文章");
-  if (result.articles.length) await env.DB.batch(result.articles.map((article) => putStatement("articles", article)));
-  return voaSyncResult(result.articles.length, result.skipped, result.failed, false);
+  const task = scheduled.created
+    ? await runEnglishSyncTask(scheduled.task.taskId)
+    : scheduled.task;
+  return {
+    source: "voa",
+    engine: "python",
+    imported: task?.insertedCount ?? 0,
+    inserted: task?.insertedCount ?? 0,
+    updated: task?.updatedCount ?? 0,
+    skipped: task?.skippedCount ?? 0,
+    failed: task?.failedCount ?? 0,
+    syncedAt: task?.finishedAt ?? new Date().toISOString(),
+    cached: !scheduled.created,
+    taskId: task?.taskId,
+    status: task?.status,
+  };
 }
 
 const calculateStreak = (records: EnglishLearningRecord[]) => {
@@ -237,12 +242,15 @@ export async function getTodayEnglish(requestedLevel?: CEFRLevel, articleId?: st
     readEnglishTable<EnglishArticle>("articles"),
     readEnglishTable<EnglishLearningRecord>("records"),
   ]);
+  const readableArticles = articles.filter((article) =>
+    !article.processingStatus || article.processingStatus === "READY",
+  );
   const currentLevel = requestedLevel ?? calculateLevel(records);
-  const sameLevel = articles.filter((article) => article.level === currentLevel);
+  const sameLevel = readableArticles.filter((article) => article.level === currentLevel);
   const dayNumber = Math.floor(new Date(`${dateKey()}T12:00:00+08:00`).getTime() / 86400000);
-  const article = articles.find((item) => item.id === articleId)
+  const article = readableArticles.find((item) => item.id === articleId)
     ?? sameLevel[dayNumber % Math.max(1, sameLevel.length)]
-    ?? articles[dayNumber % articles.length];
+    ?? readableArticles[dayNumber % readableArticles.length];
   if (!article) throw new Error("英语文章库为空");
   const weekStart = addDays(dateKey(), -((new Date().getDay() + 6) % 7));
   const recentRecords = records.slice(0, 5).map((record) => ({ ...record, article: articles.find((item) => item.id === record.articleId) }));
@@ -258,7 +266,11 @@ export async function getTodayEnglish(requestedLevel?: CEFRLevel, articleId?: st
 
 export async function listArticles(level?: CEFRLevel, category?: string) {
   const articles = await readEnglishTable<EnglishArticle>("articles");
-  return articles.filter((article) => (!level || article.level === level) && (!category || article.category === category));
+  return articles.filter((article) =>
+    (!article.processingStatus || article.processingStatus === "READY")
+    && (!level || article.level === level)
+    && (!category || article.category === category),
+  );
 }
 
 export async function saveSummary(input: { articleId: string; summary: string; readingTimeSeconds?: number; recordId?: string }) {

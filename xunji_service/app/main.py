@@ -10,6 +10,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from .errors import XunjiError
+from .dictionary.repository import DictionaryUnavailable
+from .dictionary.service import lookup_word
 from .fetcher import fetch_share_page
 from .models import ParseResponse
 from .parser import (
@@ -19,7 +21,7 @@ from .parser import (
     save_debug,
 )
 from .qr_decoder import MAX_IMAGE_BYTES, decode_xunji_qr
-from .voa_bridge import VoaFetchError, fetch_voa_articles
+from .voa_bridge import VoaFetchError, fetch_voa_articles, health_check
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("xunji-import")
@@ -30,7 +32,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3103", "http://127.0.0.1:3103"],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
     allow_headers=["content-type"],
 )
 
@@ -46,16 +48,56 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/api/dictionary/lookup")
+async def dictionary_lookup(word: str, articleId: str | None = None, sentence: str | None = None) -> dict[str, object]:
+    try:
+        return await asyncio.to_thread(lookup_word, word, articleId, sentence)
+    except DictionaryUnavailable as error:
+        logger.warning("Dictionary unavailable: %s", error)
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
 class VoaFetchRequest(BaseModel):
-    limitPerFeed: int = Field(default=2, ge=1, le=5)
+    sourceKey: str = Field(default="voa_science", min_length=3, max_length=80)
+    category: str = Field(default="science", pattern=r"^(science|health|words|grammar|education)$")
+    mode: str = Field(default="latest", pattern=r"^(latest|history|repair|detail)$")
+    limit: int = Field(default=30, ge=1, le=500)
+    overlapDays: int = Field(default=14, ge=1, le=90)
+    cursor: str | None = Field(default=None, max_length=40)
+    requestIntervalMs: int = Field(default=1000, ge=200, le=10000)
+    articleUrl: str | None = Field(default=None, max_length=2000)
 
 
 @app.post("/api/voa/articles")
 async def fetch_voa(request: VoaFetchRequest) -> dict[str, object]:
     try:
-        return await asyncio.to_thread(fetch_voa_articles, request.limitPerFeed)
+        return await asyncio.to_thread(
+            fetch_voa_articles,
+            category=request.category,
+            source_key=request.sourceKey,
+            mode=request.mode,
+            limit=request.limit,
+            overlap_days=request.overlapDays,
+            cursor=request.cursor,
+            request_interval_ms=request.requestIntervalMs,
+            article_url=request.articleUrl,
+        )
     except VoaFetchError as error:
         logger.warning("VOA fetch failed: %s", error)
+        status_code = 429 if "429" in str(error) or "too many requests" in str(error).lower() else 502
+        raise HTTPException(status_code=status_code, detail=str(error)) from error
+
+
+class VoaHealthRequest(BaseModel):
+    category: str = Field(default="science", pattern=r"^(science|health|words|grammar|education)$")
+
+
+@app.post("/api/voa/health")
+async def voa_health(request: VoaHealthRequest) -> dict[str, object]:
+    try:
+        return await asyncio.to_thread(health_check, request.category)
+    except VoaFetchError as error:
+        logger.warning("VOA health check failed: %s", error)
         raise HTTPException(status_code=502, detail=str(error)) from error
 
 

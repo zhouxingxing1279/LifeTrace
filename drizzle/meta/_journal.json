@@ -57,6 +57,20 @@
       "when": 1784918400000,
       "tag": "0007_notes_module",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784995200000,
+      "tag": "0008_english_library_sync",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1785081600000,
+      "tag": "0009_offline_vocabulary",
+      "breakpoints": true
     }
   ]
 }

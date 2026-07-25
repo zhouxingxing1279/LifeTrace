@@ -117,13 +117,17 @@ test("keeps the phone app upload-only and removes its cache service", async () =
 });
 
 test("provides the complete persistent daily English learning loop", async () => {
-  const [shell, page, schema, repository, analysisService, migration, source, syncRoute, englishTypes, voaBridge, pythonMain] = await Promise.all([
+  const [shell, page, sourceManager, dictionaryPopover, pronunciation, schema, repository, analysisService, migration, syncMigration, source, syncRoute, englishTypes, voaBridge, pythonMain] = await Promise.all([
     readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/english/DailyEnglish.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/english/EnglishSourceManager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/english/vocabulary/DictionaryPopover.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/services/pronunciation.ts", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/server/englishRepository.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/services/englishAnalysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0004_calm_kulan_gath.sql", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0008_english_library_sync.sql", import.meta.url), "utf8"),
     readFile(new URL("../src/server/englishSources/voaPython.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/english/sync/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/types/english.ts", import.meta.url), "utf8"),
@@ -145,12 +149,16 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(repository, /ensureEnglishHabitLog/);
   assert.match(repository, /nextReviewTime/);
   assert.match(repository, /syncVoaArticles/);
-  assert.match(page, /同步 VOA/);
+  assert.match(sourceManager, /立即同步/);
+  assert.match(sourceManager, /历史回填/);
+  assert.match(sourceManager, /重试失败/);
+  assert.match(syncMigration, /english_content_sources/);
+  assert.match(syncMigration, /english_sync_tasks_single_running/);
   assert.match(page, /VOA Learning English/);
   assert.match(page, /window\.getSelection\(\)/);
-  assert.match(page, /SpeechSynthesisUtterance/);
-  assert.match(page, /speechSynthesis\.speak/);
-  assert.match(page, /中文释义/);
+  assert.match(pronunciation, /SpeechSynthesisUtterance/);
+  assert.match(pronunciation, /speechSynthesis\.speak/);
+  assert.match(dictionaryPopover, /中文释义/);
   assert.match(source, /SERVICE_URL.*VOA_SERVICE_URL/s);
   assert.match(source, /\/api\/voa\/articles/);
   assert.match(source, /engine:\s*"python"/);
@@ -159,10 +167,11 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(voaBridge, /parents\[2\]\s*\/\s*"scripts"/);
   assert.doesNotMatch(voaBridge, /D:\/Download|Path\.home\(\)\s*\/\s*"Downloads"/);
   assert.match(voaBridge, /subprocess\.run/);
-  assert.match(voaBridge, /ThreadPoolExecutor/);
+  assert.match(voaBridge, /mode.*history/);
   assert.match(pythonMain, /@app\.post\("\/api\/voa\/articles"\)/);
-  assert.match(pythonMain, /asyncio\.to_thread\(fetch_voa_articles/);
-  assert.match(syncRoute, /syncVoaArticles/);
+  assert.match(pythonMain, /asyncio\.to_thread\(\s*fetch_voa_articles/);
+  assert.match(syncRoute, /scheduleEnglishSync/);
+  assert.match(syncRoute, /runEnglishSyncTask/);
   for (const field of ["sourceUrl", "externalId", "publishedAt", "sourceName", "audioUrl", "author", "summary", "wordCount", "fetchedAt", "rightsNote"]) {
     assert.match(englishTypes, new RegExp(`${field}\\?`));
   }

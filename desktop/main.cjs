@@ -12,6 +12,7 @@ const loadingPage = path.join(__dirname, "loading.html");
 const logPath = path.join(projectRoot, ".desktop-runtime.log");
 const ownedProcesses = new Map();
 const ownedPorts = new Set();
+const schedulerTimers = new Set();
 
 let mainWindow = null;
 let isQuitting = false;
@@ -157,6 +158,43 @@ function requestOk(url, timeout = 1500) {
     });
     request.once("error", () => resolve(false));
   });
+}
+
+function postJson(url, payload, timeout = 5000) {
+  return new Promise((resolve) => {
+    const target = new URL(url);
+    const body = Buffer.from(JSON.stringify(payload));
+    const request = http.request({
+      hostname: target.hostname,
+      port: target.port,
+      path: target.pathname + target.search,
+      method: "POST",
+      headers: { "content-type": "application/json", "content-length": body.length },
+    }, (response) => {
+      response.resume();
+      resolve(Boolean(response.statusCode && response.statusCode < 500));
+    });
+    request.setTimeout(timeout, () => { request.destroy(); resolve(false); });
+    request.once("error", () => resolve(false));
+    request.end(body);
+  });
+}
+
+function installEnglishScheduler() {
+  const trigger = async (pathName, payload, label) => {
+    const ok = await postJson(new URL(pathName, appUrl).toString(), payload);
+    writeLog(`英语文章${label}${ok ? "已触发" : "触发失败，将在下一周期重试"}`);
+  };
+  void trigger("/api/english/sync", { startupCheck: true }, "启动检查");
+  schedulerTimers.add(setInterval(() => {
+    void trigger("/api/english/sync", { startupCheck: true }, "增量同步");
+  }, 24 * 60 * 60 * 1000));
+  schedulerTimers.add(setInterval(() => {
+    void trigger("/api/english/sync/repair", { deep: false }, "周度补漏");
+  }, 7 * 24 * 60 * 60 * 1000));
+  schedulerTimers.add(setInterval(() => {
+    void trigger("/api/english/sync/repair", { deep: true }, "月度健康检查");
+  }, 30 * 24 * 60 * 60 * 1000));
 }
 
 async function waitFor(check, timeoutMs, intervalMs = 500) {
@@ -347,6 +385,7 @@ async function startApplication() {
     await ensureOptionalServices();
     await mainWindow?.loadURL(appUrl);
     mainWindow?.webContents.setVisualZoomLevelLimits(1, 1);
+    installEnglishScheduler();
     writeLog("Life trace 桌面 App 已就绪。");
   } catch (error) {
     writeLog(`桌面 App 启动失败: ${error.stack || error.message}`);
@@ -383,6 +422,8 @@ if (!gotSingleInstanceLock) {
 app.on("before-quit", () => {
   if (isQuitting) return;
   isQuitting = true;
+  for (const timer of schedulerTimers) clearInterval(timer);
+  schedulerTimers.clear();
   stopOwnedProcesses();
 });
 

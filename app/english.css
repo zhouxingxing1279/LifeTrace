@@ -267,6 +267,123 @@
 .en-word-popover .primary { width: 100%; padding: 11px; border: 0; border-radius: 11px; color: white; background: var(--en-green); cursor: pointer; }
 .en-word-popover .primary:disabled { opacity: .4; }
 
+/* Offline dictionary and vocabulary workspace */
+.en-dictionary-loading { position: fixed; z-index: 55; right: 32px; bottom: 28px; padding: 10px 14px; border: 1px solid var(--en-line); border-radius: 8px; color: var(--en-muted); background: white; box-shadow: 0 8px 24px rgba(22,35,31,.12); }
+.en-dictionary-popover { position: fixed; z-index: 60; right: 28px; top: 116px; width: min(390px, calc(100vw - 56px)); max-height: calc(100vh - 150px); overflow: auto; padding: 22px; border: 1px solid var(--en-line); border-radius: 14px; color: var(--en-text); background: #fff; box-shadow: 0 18px 50px rgba(22,35,31,.18); }
+.en-icon-button { display: inline-grid; width: 38px; height: 38px; place-items: center; border: 1px solid var(--en-line); border-radius: 8px; background: transparent; cursor: pointer; }
+.en-icon-button svg { width: 18px; }
+.en-dictionary-close { position: absolute; right: 14px; top: 14px; }
+.en-dictionary-popover header > span, .en-vocab-detail-overlay header > span { color: var(--en-green); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
+.en-dictionary-popover h3 { margin: 5px 0; font: 600 34px/1.15 Georgia, serif; }
+.en-dictionary-popover header small { color: var(--en-muted); }
+.en-dictionary-popover header div { display: flex; align-items: center; justify-content: space-between; margin-top: 13px; }
+.en-dictionary-popover header button, .en-vocab-detail-overlay header button { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border: 1px solid var(--en-line); border-radius: 8px; color: var(--en-green); background: white; cursor: pointer; }
+.en-dictionary-popover header button svg { width: 16px; }
+.en-dictionary-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0; }
+.en-dictionary-tags span, .en-dictionary-tags b { padding: 4px 7px; border-radius: 5px; color: #25624f; background: #e6f3ee; font-size: 11px; }
+.en-dictionary-popover fieldset { display: grid; gap: 7px; margin: 15px 0; padding: 12px; border: 1px solid var(--en-line); border-radius: 9px; }
+.en-dictionary-popover legend { padding: 0 5px; color: var(--en-muted); font-size: 12px; }
+.en-dictionary-popover fieldset label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
+.en-dictionary-definition { color: var(--en-muted); font: italic 14px/1.5 Georgia, serif; }
+.en-dictionary-popover blockquote { margin: 14px 0; padding: 12px; border-left: 3px solid var(--en-green); background: #f5f8f6; }
+.en-dictionary-popover blockquote span { display: block; margin-bottom: 5px; color: var(--en-muted); font-size: 11px; }
+.en-dictionary-popover blockquote button { display: flex; gap: 5px; margin-top: 9px; border: 0; color: var(--en-green); background: transparent; cursor: pointer; }
+.en-dictionary-popover .primary { display: flex; width: 100%; align-items: center; justify-content: center; gap: 7px; padding: 11px; border: 0; border-radius: 9px; color: white; background: var(--en-green); cursor: pointer; }
+.en-dictionary-popover .primary:disabled { opacity: .45; cursor: not-allowed; }
+.en-dictionary-empty { margin-top: 18px; padding: 14px; color: var(--en-muted); background: #f5f8f6; }
+
+.en-vocabulary-workspace { padding: 34px 36px 60px; }
+.en-vocab-header { display: flex; align-items: end; justify-content: space-between; gap: 24px; }
+.en-vocab-header h2 { margin: 7px 0 0; font: 600 34px/1.15 Georgia, serif; }
+.en-vocab-header nav { display: flex; gap: 4px; padding: 4px; border-bottom: 1px solid var(--en-line); }
+.en-vocab-header nav button { display: flex; align-items: center; gap: 6px; padding: 9px 12px; border: 0; border-bottom: 2px solid transparent; color: var(--en-muted); background: transparent; cursor: pointer; }
+.en-vocab-header nav button.active { border-color: var(--en-green); color: var(--en-green); }
+.en-vocab-header nav svg { width: 16px; }
+.en-vocab-stats { display: grid; grid-template-columns: repeat(5,1fr); margin: 30px 0 22px; border-block: 1px solid var(--en-line); }
+.en-vocab-stats article { padding: 16px 18px; border-right: 1px solid var(--en-line); }
+.en-vocab-stats article:last-child { border: 0; }
+.en-vocab-stats span { display: block; color: var(--en-muted); font-size: 12px; }
+.en-vocab-stats strong { display: block; margin-top: 4px; font: 600 25px Georgia, serif; }
+.en-vocab-tools { display: grid; grid-template-columns: minmax(220px,1fr) repeat(5,minmax(112px,145px)); gap: 8px; margin-bottom: 14px; }
+.en-vocab-tools label { display: flex; align-items: center; gap: 8px; padding: 0 11px; border: 1px solid var(--en-line); background: white; }
+.en-vocab-tools svg { width: 17px; color: var(--en-muted); }
+.en-vocab-tools input, .en-vocab-tools select, .en-vocab-tools + select, .en-vocab-tools ~ select, .en-vocab-tools select { min-height: 42px; border: 1px solid var(--en-line); background: white; }
+.en-vocab-tools input { width: 100%; border: 0; outline: 0; }
+.en-vocab-list { border-top: 1px solid var(--en-line); }
+.en-vocab-list > button { display: grid; width: 100%; grid-template-columns: 180px minmax(180px,1fr) 240px 110px 24px; gap: 14px; align-items: center; padding: 15px 8px; border: 0; border-bottom: 1px solid var(--en-line); text-align: left; color: inherit; background: transparent; cursor: pointer; transition: background 180ms ease; }
+.en-vocab-list > button:hover { background: #f1f6f3; }
+.en-vocab-list strong { font: 600 20px Georgia, serif; }
+.en-vocab-list span, .en-vocab-list small { display: block; color: var(--en-muted); font-size: 11px; }
+.en-vocab-list p { margin: 0; }
+.en-vocab-list b { color: var(--en-green); font-size: 12px; }
+
+.en-review-session { max-width: 720px; margin: 28px auto; }
+.en-review-session > header { display: flex; align-items: center; gap: 15px; color: var(--en-muted); }
+.en-review-session progress { width: 100%; accent-color: var(--en-green); }
+.en-review-session > article { position: relative; min-height: 330px; display: grid; place-content: center; justify-items: center; margin: 18px 0; padding: 35px; border: 1px solid var(--en-line); background: white; box-shadow: 0 12px 32px rgba(22,35,31,.07); }
+.en-review-session h3 { margin: 15px; font: 600 48px Georgia, serif; }
+.en-review-session blockquote { max-width: 540px; color: var(--en-muted); text-align: center; }
+.en-review-speak { position: absolute; right: 18px; top: 18px; }
+.en-review-session .primary { padding: 11px 18px; border: 0; border-radius: 8px; color: white; background: var(--en-green); cursor: pointer; }
+.en-review-session .primary small { margin-left: 8px; opacity: .7; }
+.en-review-answer { text-align: center; }
+.en-review-answer p { font-size: 19px; }
+.en-review-session footer { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+.en-review-session footer button { padding: 11px; border: 1px solid var(--en-line); background: white; cursor: pointer; }
+.en-review-session footer small { display: block; color: var(--en-muted); }
+.en-review-done { padding: 70px 20px; text-align: center; }
+.en-review-done svg { width: 44px; height: 44px; color: var(--en-green); }
+
+.en-vocab-detail-overlay { position: fixed; z-index: 80; inset: 0; display: flex; justify-content: flex-end; background: rgba(15,28,24,.42); }
+.en-vocab-detail-overlay aside { width: min(520px,90vw); height: 100%; overflow: auto; padding: 26px; color: var(--en-text); background: #fff; box-shadow: -16px 0 40px rgba(15,28,24,.16); }
+.en-vocab-detail-overlay aside > .en-icon-button { float: right; }
+.en-vocab-detail-overlay h3 { margin: 7px 0; font: 600 38px Georgia, serif; }
+.en-vocab-detail-overlay label { display: grid; gap: 7px; margin: 18px 0; color: var(--en-muted); font-size: 12px; font-weight: 700; }
+.en-vocab-detail-overlay textarea { min-height: 84px; padding: 10px; border: 1px solid var(--en-line); resize: vertical; }
+.en-vocab-detail-overlay blockquote { padding: 10px; border-left: 2px solid var(--en-green); background: #f5f8f6; }
+.en-vocab-detail-overlay blockquote small { display: block; margin-top: 5px; color: var(--en-muted); }
+.en-vocab-detail-overlay footer { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 25px; }
+.en-vocab-detail-overlay footer button { display: flex; align-items: center; gap: 5px; padding: 9px 11px; border: 1px solid var(--en-line); background: white; cursor: pointer; }
+.en-vocab-detail-overlay footer .danger { color: #a43b36; }
+.en-vocab-detail-overlay footer .primary { margin-left: auto; border-color: var(--en-green); color: white; background: var(--en-green); }
+.en-vocab-settings { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; }
+.en-vocab-settings > div { padding: 20px; border-top: 2px solid var(--en-green); background: white; }
+.en-vocab-settings label { display: grid; gap: 7px; margin: 15px 0; color: var(--en-muted); font-size: 13px; }
+.en-vocab-settings label:has(input[type=checkbox]) { display: flex; align-items: center; }
+.en-vocab-settings select, .en-vocab-settings input[type=number] { min-height: 40px; border: 1px solid var(--en-line); }
+.en-vocab-insights { display: grid; grid-template-columns: 1.2fr 1fr 1fr; gap: 14px; margin-top: 28px; }
+.en-vocab-insights article { min-height: 150px; padding: 16px; border-top: 1px solid var(--en-line); background: white; }
+.en-vocab-insights h3 { margin: 0 0 14px; font-size: 14px; }
+.en-vocab-mini-chart { height: 100px; display: flex; align-items: end; gap: 3px; }
+.en-vocab-mini-chart i { min-width: 4px; flex: 1; background: #87c8b1; }
+.en-vocab-mini-chart.review i { background: #6e9fc7; }
+.en-vocab-insights article > p { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--en-muted); font-size: 11px; }
+.en-vocab-insights article > p span { min-width: 70px; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-vocab-insights article > p b { height: 6px; border-radius: 3px; background: var(--en-green); }
+.en-vocab-insights article > p strong { margin-left: auto; color: var(--en-text); }
+.en-vocab-home-card { display: grid; grid-template-columns: 1.4fr 1fr auto; gap: 24px; align-items: center; margin: 24px 0; padding: 20px 0; border-block: 1px solid var(--en-line); }
+.en-vocab-home-card h3 { margin: 5px 0 0; font: 600 21px Georgia, serif; }
+.en-vocab-home-card dl { display: grid; grid-template-columns: repeat(3,1fr); gap: 18px; margin: 0; }
+.en-vocab-home-card dt { color: var(--en-muted); font-size: 11px; }
+.en-vocab-home-card dd { margin: 3px 0 0; font: 600 23px Georgia, serif; }
+.en-vocab-home-card footer { display: grid; gap: 7px; }
+.en-vocab-home-card button { padding: 9px 12px; border: 1px solid var(--en-green); color: var(--en-green); background: transparent; cursor: pointer; }
+.en-vocab-home-card button:first-child { color: white; background: var(--en-green); }
+
+@media (max-width: 1050px) {
+  .en-vocab-stats { grid-template-columns: repeat(3,1fr); }
+  .en-vocab-tools { grid-template-columns: repeat(3,1fr); }
+  .en-vocab-tools label { grid-column: 1 / -1; }
+  .en-vocab-list > button { grid-template-columns: 150px 1fr 120px 24px; }
+  .en-vocab-list > button small { display: none; }
+  .en-vocab-settings { grid-template-columns: 1fr; }
+  .en-vocab-insights { grid-template-columns: 1fr; }
+  .en-vocab-home-card { grid-template-columns: 1fr; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .en-vocab-list > button, .en-dictionary-popover { transition: none; }
+}
+
 .en-back { display: inline-flex; align-items: center; gap: 7px; margin-bottom: 22px; border: 0; color: var(--en-muted); background: none; cursor: pointer; }
 .en-back svg { width: 17px; }
 .en-summary-grid { display: grid; grid-template-columns: minmax(260px, .62fr) minmax(0, 1.38fr); gap: clamp(30px, 5vw, 70px); padding: clamp(24px, 4vw, 50px); border-radius: 28px; background: linear-gradient(135deg, #eef6f1, #fbfaf5); }
@@ -334,6 +451,54 @@
 .en-source-sync:disabled { cursor: wait; opacity: .62; }
 .en-source-sync svg { width: 15px; height: 15px; }
 .en-source-sync svg.syncing { animation: en-spin .8s linear infinite; }
+.en-source-manager { margin-bottom: 34px; padding: 22px; border: 1px solid #dce7e1; border-radius: 22px; background: #f8fbf9; box-shadow: 0 10px 28px rgba(29,70,54,.05); }
+.en-source-manager > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.en-source-manager > header h3 { margin: 4px 0 5px; font-family: Georgia, serif; font-size: 27px; }
+.en-source-manager > header p { margin: 0; color: var(--en-muted); }
+.en-source-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.en-source-actions button { display: inline-flex; min-height: 42px; align-items: center; gap: 6px; padding: 0 11px; border: 1px solid #bfd4c9; border-radius: 10px; color: var(--en-green); background: white; font-weight: 750; cursor: pointer; transition: border-color .2s, background .2s, opacity .2s; }
+.en-source-actions button:hover:not(:disabled) { border-color: var(--en-green); background: var(--en-green-soft); }
+.en-source-actions button:focus-visible, .en-source-table button:focus-visible { outline: 2px solid var(--en-green); outline-offset: 2px; }
+.en-source-actions button:disabled { cursor: wait; opacity: .5; }
+.en-source-actions svg { width: 15px; height: 15px; }
+.en-source-message { margin: 14px 0 0; padding: 10px 12px; border-radius: 10px; color: #285844; background: #eaf5ef; }
+.en-library-metrics { display: grid; grid-template-columns: repeat(5,minmax(0,1fr)); gap: 9px; margin: 18px 0; }
+.en-library-metrics article { display: grid; grid-template-columns: 22px 1fr; gap: 2px 8px; align-items: center; padding: 13px; border: 1px solid #e1e9e5; border-radius: 13px; background: white; }
+.en-library-metrics svg { grid-row: 1 / 3; width: 20px; color: var(--en-green); }
+.en-library-metrics span { color: var(--en-muted); font-size: 11px; font-weight: 700; }
+.en-library-metrics strong { font-size: 22px; line-height: 1.1; }
+.en-sync-progress { margin: 16px 0; padding: 15px; border: 1px solid #bcd8ca; border-radius: 14px; background: #edf7f2; }
+.en-sync-progress > div { display: flex; justify-content: space-between; }
+.en-sync-progress progress { width: 100%; height: 9px; margin: 10px 0; accent-color: var(--en-green); }
+.en-sync-progress p, .en-sync-progress small { margin: 0; color: #4e675d; }
+.en-sync-progress small { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.en-source-table-wrap { overflow-x: auto; border: 1px solid #e0e8e4; border-radius: 14px; background: white; }
+.en-source-table { width: 100%; min-width: 880px; border-collapse: collapse; font-size: 12px; }
+.en-source-table th, .en-source-table td { padding: 11px 12px; border-bottom: 1px solid #edf1ef; text-align: left; vertical-align: middle; }
+.en-source-table th { color: #597067; background: #f4f8f6; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
+.en-source-table td:first-child strong, .en-source-table td:first-child small { display: block; }
+.en-source-table td:first-child small { margin-top: 2px; color: var(--en-muted); }
+.en-source-table td:last-child > div { display: flex; gap: 5px; }
+.en-source-table button { min-height: 34px; padding: 0 9px; border: 1px solid #d4e0da; border-radius: 8px; color: #315d4b; background: white; cursor: pointer; }
+.en-source-table button:disabled { cursor: not-allowed; opacity: .45; }
+.en-source-status { display: inline-flex; align-items: center; gap: 4px; font-weight: 750; }
+.en-source-status svg { width: 13px; }
+.en-source-status.active { color: #16704c; }
+.en-source-status.stale { color: #8a5a08; }
+.en-source-status.error, .en-source-status.rate_limited { color: #a83c3c; }
+.en-source-status.disabled { color: #68736e; }
+.en-library-breakdown { display: grid; gap: 5px; margin-top: 13px; color: var(--en-muted); font-size: 12px; }
+.en-library-breakdown p { margin: 0; }
+.en-library-breakdown span { display: inline-block; margin: 2px 5px; padding: 3px 7px; border-radius: 6px; background: #eaf1ed; }
+.en-sync-logs { max-height: 330px; margin-top: 15px; overflow: auto; border-top: 1px solid #dfe8e3; }
+.en-sync-logs h4 { margin-bottom: 8px; }
+.en-sync-logs article { display: grid; grid-template-columns: 145px 110px 1fr auto; gap: 10px; padding: 8px 5px; border-bottom: 1px solid #e8eeeb; font-size: 11px; }
+.en-sync-logs article.error { color: #913d3d; }
+.en-sync-logs article.warning { color: #79550b; }
+.en-sync-logs article p { margin: 0; }
+.en-last-task { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0 0; color: var(--en-muted); font-size: 12px; }
+.en-last-task span { display: inline-flex; align-items: center; gap: 4px; color: #9b3e3e; }
+.en-last-task svg { width: 13px; }
 .en-article-grid, .en-vocab-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
 .en-article-grid article, .en-vocab-grid article { padding: 23px; border: 1px solid #e3ebe7; border-radius: 20px; background: white; transition: transform .2s, box-shadow .2s; }
 .en-article-grid article:hover, .en-vocab-grid article:hover { transform: translateY(-3px); box-shadow: 0 14px 30px rgba(29,70,54,.08); }
@@ -399,6 +564,9 @@
   .en-streak small { grid-column: 1 / -1; margin: 0; text-align: left; }
   .en-reader-side { grid-template-columns: 1fr 1fr; }
   .en-article-grid, .en-vocab-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .en-source-manager > header { flex-direction: column; }
+  .en-source-actions { justify-content: flex-start; }
+  .en-library-metrics { grid-template-columns: repeat(3,minmax(0,1fr)); }
 }
 
 @media (max-width: 720px) {
@@ -430,6 +598,12 @@
   .en-section-head { align-items: stretch; flex-direction: column; }
   .en-section-head > div:last-child { flex-wrap: wrap; }
   .en-section-head input { min-width: 0; flex: 1; }
+  .en-source-manager { padding: 16px; }
+  .en-library-metrics { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .en-library-metrics article:last-child { grid-column: 1 / -1; }
+  .en-source-actions button { min-height: 44px; }
+  .en-sync-logs article { grid-template-columns: 1fr auto; }
+  .en-sync-logs article p { grid-column: 1 / -1; }
   .en-vocab-review { align-items: flex-start; flex-direction: column; }
   .en-history-list article { grid-template-columns: 64px 1fr 40px; }
   .en-history-list article > small { display: none; }
