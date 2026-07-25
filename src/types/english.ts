@@ -21,6 +21,21 @@ export interface EnglishArticle {
   estimatedMinutes: number;
   createdTime: string;
   updatedAt: string;
+  source?: "local" | "voa";
+  sourceName?: string;
+  sourceUrl?: string;
+  externalId?: string;
+  publishedAt?: string;
+  imageUrl?: string;
+}
+
+export interface EnglishSourceSyncResult {
+  source: "voa";
+  imported: number;
+  skipped: number;
+  failed: number;
+  syncedAt: string;
+  cached: boolean;
 }
 
 export type EnglishCompletionStatus = "reading" | "summarized" | "analyzed" | "completed";

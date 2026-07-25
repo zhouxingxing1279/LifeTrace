@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { englishAnalysisService } from "@/src/services/englishAnalysis";
+import { fetchVoaArticles, voaSyncResult } from "@/src/server/englishSources/voa";
 import type { Activity, ActivityLog } from "@/src/types";
 import type {
   ArticleVocabularyItem,
@@ -12,6 +13,7 @@ import type {
   EnglishNote,
   EnglishTodayResponse,
   EnglishVocabulary,
+  EnglishSourceSyncResult,
 } from "@/src/types/english";
 
 type EnglishTable = "articles" | "records" | "vocabulary" | "highlights" | "notes" | "analysis";
@@ -28,6 +30,7 @@ const tableNames: Record<EnglishTable, string> = {
 
 const USER_ID = "local-user";
 const LEVELS: CEFRLevel[] = ["A1", "A2", "B1", "B2", "C1"];
+const VOA_SYNC_TTL = 12 * 60 * 60 * 1000;
 
 const vocabulary = (word: string, phonetic: string, meaning: string, example: string): ArticleVocabularyItem => ({ word, phonetic, meaning, example });
 
@@ -192,6 +195,23 @@ export const readEnglishTable = async <T>(table: EnglishTable): Promise<T[]> => 
 };
 
 export const getArticle = async (id: string) => (await readEnglishTable<EnglishArticle>("articles")).find((article) => article.id === id);
+
+export async function syncVoaArticles(force = false): Promise<EnglishSourceSyncResult> {
+  const stored = await readEnglishTable<EnglishArticle>("articles");
+  const latestVoaSync = stored
+    .filter((article) => article.source === "voa")
+    .map((article) => new Date(article.updatedAt).getTime())
+    .filter(Number.isFinite)
+    .sort((a, b) => b - a)[0];
+  if (!force && latestVoaSync && Date.now() - latestVoaSync < VOA_SYNC_TTL) {
+    return voaSyncResult(0, 0, 0, true);
+  }
+
+  const result = await fetchVoaArticles();
+  if (!result.articles.length && result.failed) throw new Error("暂时无法连接 VOA Learning English，已保留本地文章");
+  if (result.articles.length) await env.DB.batch(result.articles.map((article) => putStatement("articles", article)));
+  return voaSyncResult(result.articles.length, result.skipped, result.failed, false);
+}
 
 const calculateStreak = (records: EnglishLearningRecord[]) => {
   const completed = new Set(records.filter((record) => record.completionStatus === "completed").map((record) => record.date));

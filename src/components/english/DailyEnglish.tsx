@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft, BarChart3, BookOpen, Bot, Check, ChevronRight, Clock3, Flame,
-  Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
+  ExternalLink, Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
   Plus, RefreshCw, Sparkles, Sun, Type, Volume2,
 } from "lucide-react";
 import type {
@@ -12,6 +12,7 @@ import type {
   EnglishAIAnalysis,
   EnglishArticle,
   EnglishHistoryResponse,
+  EnglishSourceSyncResult,
   EnglishTodayResponse,
   EnglishVocabulary,
 } from "@/src/types/english";
@@ -74,6 +75,7 @@ export default function DailyEnglish() {
   const [readingStartedAt, setReadingStartedAt] = useState(() => Date.now());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  const [syncingSource, setSyncingSource] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -95,10 +97,35 @@ export default function DailyEnglish() {
         setRecordId(todayData.record.id);
         setSummary(todayData.record.summary);
       }
+      // 第三方来源在后台刷新；失败不会阻塞内置文章和已缓存文章。
+      void post<EnglishSourceSyncResult>("/api/english/sync", { force: false })
+        .then(async (result) => {
+          if (!result.imported) return;
+          const refreshed = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
+          setArticles(refreshed.articles);
+        })
+        .catch(() => undefined);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "每日英语加载失败");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const syncVoa = async () => {
+    setSyncingSource(true);
+    setMessage("正在从 VOA Learning English 获取文章…");
+    try {
+      const result = await post<EnglishSourceSyncResult>("/api/english/sync", { force: true });
+      const articleData = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
+      setArticles(articleData.articles);
+      setMessage(result.imported
+        ? `已同步 ${result.imported} 篇 VOA 文章`
+        : result.cached ? "VOA 文章已经是最新状态" : "本次没有发现可导入的新文章");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "VOA 文章同步失败");
+    } finally {
+      setSyncingSource(false);
     }
   };
 
@@ -169,7 +196,7 @@ export default function DailyEnglish() {
       setVocabulary((items) => items.map((item) => item.id === id ? updated : item));
     }} />}
     {view === "history" && <History history={history} />}
-    {view === "articles" && <ArticleLibrary articles={articles} currentLevel={today.currentLevel} start={startReading} />}
+    {view === "articles" && <ArticleLibrary articles={articles} currentLevel={today.currentLevel} start={startReading} syncing={syncingSource} syncVoa={() => void syncVoa()} />}
     {view === "assistant" && <Assistant insight={assistant} history={history} />}
   </div>;
 }
@@ -271,6 +298,9 @@ function Reader({ article, back, finish, addWord, setMessage }: {
       <article className="en-reading-paper">
         <span>{article.level} · {categoryName[article.category]} · {article.estimatedMinutes} MIN</span>
         <h1>{article.title}</h1>
+        {article.sourceUrl && <a className="en-article-source" href={article.sourceUrl} target="_blank" rel="noreferrer">
+          {article.sourceName ?? "查看文章来源"} <ExternalLink aria-hidden />
+        </a>}
         <div className="en-reading-content" style={{ fontSize, lineHeight }} onMouseUp={() => {
           const text = window.getSelection()?.toString().trim() ?? "";
           if (text.length > 2) setSelectedText(text);
@@ -382,13 +412,19 @@ function History({ history }: { history: EnglishHistoryResponse | null }) {
   </div>;
 }
 
-function ArticleLibrary({ articles, currentLevel, start }: { articles: EnglishArticle[]; currentLevel: CEFRLevel; start: (article: EnglishArticle) => void }) {
+function ArticleLibrary({ articles, currentLevel, start, syncing, syncVoa }: {
+  articles: EnglishArticle[];
+  currentLevel: CEFRLevel;
+  start: (article: EnglishArticle) => void;
+  syncing: boolean;
+  syncVoa: () => void;
+}) {
   const [level, setLevel] = useState<CEFRLevel | "all">("all");
   const [query, setQuery] = useState("");
   const shown = articles.filter((article) => (level === "all" || article.level === level) && article.title.toLowerCase().includes(query.toLowerCase()));
   return <div>
-    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p>当前推荐等级：{currentLevel} · {levelName[currentLevel]}</p></div><div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
-    <div className="en-article-grid">{shown.map((article) => <article key={article.id}><span>{article.level} · {categoryName[article.category]}</span><h3>{article.title}</h3><p>{article.content}</p><footer><small>{article.estimatedMinutes} 分钟 · 难度 {article.difficulty}/5</small><button onClick={() => start(article)}>阅读 <ChevronRight /></button></footer></article>)}</div>
+    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p>当前推荐等级：{currentLevel} · {levelName[currentLevel]}</p></div><div><button className="en-source-sync" type="button" disabled={syncing} onClick={syncVoa}><RefreshCw className={syncing ? "syncing" : ""} />{syncing ? "同步中" : "同步 VOA"}</button><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
+    <div className="en-article-grid">{shown.map((article) => <article key={article.id}><span>{article.level} · {categoryName[article.category]}</span>{article.source === "voa" && <small className="en-source-badge">VOA Learning English</small>}<h3>{article.title}</h3><p>{article.content}</p><footer><small>{article.estimatedMinutes} 分钟 · 难度 {article.difficulty}/5</small><button onClick={() => start(article)}>阅读 <ChevronRight /></button></footer></article>)}</div>
   </div>;
 }
 

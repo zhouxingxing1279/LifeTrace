@@ -111,13 +111,16 @@ test("keeps the phone app upload-only and removes its cache service", async () =
 });
 
 test("provides the complete persistent daily English learning loop", async () => {
-  const [shell, page, schema, repository, analysisService, migration] = await Promise.all([
+  const [shell, page, schema, repository, analysisService, migration, source, syncRoute, englishTypes] = await Promise.all([
     readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/english/DailyEnglish.tsx", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/server/englishRepository.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/services/englishAnalysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0004_calm_kulan_gath.sql", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/englishSources/voa.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/english/sync/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/types/english.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(shell, /id:\s*"english",\s*label:\s*"每日英语"/);
@@ -133,6 +136,17 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(analysisService, /class MockEnglishAnalysisService/);
   assert.match(repository, /ensureEnglishHabitLog/);
   assert.match(repository, /nextReviewTime/);
+  assert.match(repository, /syncVoaArticles/);
+  assert.match(page, /同步 VOA/);
+  assert.match(page, /VOA Learning English/);
+  assert.match(source, /learningenglish\.voanews\.com\/api\//);
+  assert.match(source, /isVoaOwnedArticle/);
+  assert.match(source, /Associated Press\|Agence France-Presse\|Reuters\|AFP/);
+  assert.match(source, /safeVoaUrl/);
+  assert.match(syncRoute, /syncVoaArticles/);
+  for (const field of ["sourceUrl", "externalId", "publishedAt", "sourceName"]) {
+    assert.match(englishTypes, new RegExp(`${field}\\?`));
+  }
 });
 
 test("adds a confirmation-first Xunji workout import pipeline without OCR", async () => {
