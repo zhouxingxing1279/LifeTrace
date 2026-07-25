@@ -1,91 +1,211 @@
 import assert from "node:assert/strict";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readFile } from "node:fs/promises";
 import test from "node:test";
 
-const developmentPreviewMeta =
-  /<meta(?=[^>]*\bname=["']codex-preview["'])(?=[^>]*\bcontent=["']development["'])[^>]*>/i;
-const templateRoot = new URL("../", import.meta.url);
-const previewRoot = new URL("../app/_sites-preview/", import.meta.url);
-
-async function render() {
-  const workerUrl = new URL("../dist/server/index.js", import.meta.url);
-  workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
-  const { default: worker } = await import(workerUrl.href);
-
-  return worker.fetch(
-    new Request("http://localhost/", {
-      headers: { accept: "text/html" },
-    }),
-    {
-      ASSETS: {
-        fetch: async () => new Response("Not found", { status: 404 }),
-      },
-    },
-    {
-      waitUntil() {},
-      passThroughOnException() {},
-    },
-  );
-}
-
-test("server-renders the starter loading skeleton", async () => {
-  const response = await render();
-  assert.equal(response.status, 200);
-  assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
-
-  const html = await response.text();
-  assert.match(html, developmentPreviewMeta);
-  assert.match(html, /<title>Your site is taking shape<\/title>/i);
-  assert.match(html, /Building your site/);
-  assert.match(html, /Your site is taking shape/);
-  assert.match(
-    html,
-    /Your first version will appear here automatically when it’s ready\./,
-  );
-  assert.doesNotMatch(html, /Codex/);
-  assert.match(html, /react-loading-skeleton/);
-  assert.match(html, /role="status"/);
+test("defines finished HengXu metadata instead of the starter preview", async () => {
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  assert.match(layout, /<html lang="zh-CN">/);
+  assert.match(layout, /Life trace — 个人管理平台/);
+  assert.match(layout, /坚持、训练、财务与复盘/);
+  assert.doesNotMatch(layout, /manifest:\s*"\/manifest\.webmanifest"/);
+  assert.doesNotMatch(layout, /maximumScale:\s*1/);
+  assert.doesNotMatch(layout, /userScalable:\s*false/);
+  assert.doesNotMatch(layout, /codex-preview|Your site is taking shape|Building your site/i);
 });
 
-test("keeps the loading skeleton scoped and disposable", async () => {
-  const [preview, css, page, layout, packageJson, files] = await Promise.all([
-    readFile(new URL("SkeletonPreview.tsx", previewRoot), "utf8"),
-    readFile(new URL("preview.css", previewRoot), "utf8"),
+test("ships the completed application shell and local-first capabilities", async () => {
+  const [page, layout, appShell, store, database, apiRoute, hosting] = await Promise.all([
     readFile(new URL("../app/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../package.json", import.meta.url), "utf8"),
-    readdir(previewRoot),
+    readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/stores/useLifeStore.ts", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/state/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
   ]);
 
-  assert.deepEqual(files.sort(), ["SkeletonPreview.tsx", "preview.css"]);
-  assert.match(preview, /from "react-loading-skeleton"/);
-  assert.match(preview, /baseColor="#eceae7"/);
-  assert.match(preview, /highlightColor="#f9f8f6"/);
-  assert.match(preview, /duration=\{2\.8\}/);
-  assert.match(preview, /sites-skeleton-search-placeholder/);
-  assert.match(packageJson, /"react-loading-skeleton": "3\.5\.0"/);
+  assert.match(page, /<HengXuShell\s*\/>/);
+  assert.match(layout, /title:\s*["']Life trace/);
+  assert.match(database, /sqliteTable/);
+  assert.match(database, /activity_logs/);
+  assert.match(apiRoute, /CREATE TABLE IF NOT EXISTS/);
+  assert.match(apiRoute, /ON CONFLICT\(id\) DO UPDATE/);
+  assert.match(hosting, /"d1":\s*"DB"/);
+  assert.match(store, /restoreBackup/);
+  assert.match(store, /mutateSQLite/);
+  assert.doesNotMatch(store, /Dexie|IndexedDB|db\.activities/);
+  assert.doesNotMatch(appShell, /训练模板|新建模板|TemplateForm/);
+  assert.doesNotMatch(store, /workoutTemplates|WorkoutTemplate/);
+  assert.doesNotMatch(apiRoute, /workout_templates|workoutTemplates/);
 
-  const shellIndex = preview.indexOf('className="sites-skeleton-shell"');
-  const statusIndex = preview.indexOf('className="sites-skeleton-status"');
-  assert.ok(shellIndex >= 0 && statusIndex > shellIndex);
-  assert.match(css, /position:\s*fixed/);
-  assert.match(css, /inset:\s*0/);
-  assert.match(css, /opacity:\s*0\.52/);
-  assert.match(css, /prefers-reduced-motion:\s*reduce/);
-  assert.doesNotMatch(css, /#020617|canvas|pets|progress/i);
+  for (const feature of [
+    "坚持项目",
+    "健身训练",
+    "账单管理",
+    "账户管理",
+    "账单导入",
+    "每日复盘",
+    "SQLite",
+    "导出备份",
+  ]) {
+    assert.match(appShell, new RegExp(feature));
+  }
+
+  await assert.rejects(access(new URL("../app/_sites-preview", import.meta.url)));
+});
+
+test("provides an installable Chinese web-app manifest", async () => {
+  const [manifest, fitnessManifest, rootLayout, fitnessLayout, fitnessPage, fitnessApp] = await Promise.all([
+    readFile(new URL("../app/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/fitness/manifest.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/fitness/layout.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/fitness/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/FitnessPwaApp.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.match(manifest, /name:\s*"Life trace 导入"/);
+  assert.match(manifest, /display:\s*"standalone"/);
+  assert.match(manifest, /start_url:\s*"\/fitness"/);
+  assert.match(manifest, /scope:\s*"\/fitness"/);
+  assert.match(manifest, /src:\s*"\/favicon\.svg"/);
+  assert.match(fitnessManifest, /name:\s*"Life trace 导入"/);
+  assert.match(fitnessManifest, /id:\s*"\/fitness"/);
+  assert.match(fitnessManifest, /start_url:\s*"\/fitness"/);
+  assert.match(fitnessManifest, /scope:\s*"\/fitness"/);
+  assert.doesNotMatch(rootLayout, /manifest:\s*"\/manifest\.webmanifest"/);
+  assert.match(fitnessLayout, /manifest:\s*"\/manifest\.webmanifest"/);
+  assert.match(fitnessPage, /redirect\("\/"\)/);
+  assert.match(fitnessPage, /<FitnessPwaApp\s*\/>/);
+  for (const feature of ["手机数据入口", "导入训练数据", "导入账单数据", "电脑端解析", "发送记录"]) {
+    assert.match(fitnessApp, new RegExp(feature));
+  }
+});
+
+test("moves phone uploads to computer-backed D1 and R2 processing", async () => {
+  const [route, desktop, hosting] = await Promise.all([
+    readFile(new URL("../app/api/imports/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(hosting, /"r2":\s*"UPLOADS"/);
+  assert.match(route, /env\.UPLOADS\.put/);
+  assert.match(route, /import_uploads/);
+  assert.match(desktop, /待处理导入文件/);
+  assert.match(desktop, /电脑解析/);
+});
+
+test("keeps the phone app upload-only and removes its cache service", async () => {
+  const [serviceWorker, fitnessApp, manager] = await Promise.all([
+    readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/FitnessPwaApp.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/PwaManager.tsx", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(fitnessApp, /\/api\/xunji\/parse/);
+  assert.match(fitnessApp, /\/api\/imports/);
+  assert.doesNotMatch(fitnessApp, /useLifeStore|deviceFitnessStorage|indexedDB|localStorage|训练模板|动作库|训练历史/);
+  assert.doesNotMatch(manager, /serviceWorker\.register|PREPARE_OFFLINE|navigator\.storage\.persist/);
+  assert.match(manager, /registration\.unregister/);
+  assert.match(serviceWorker, /registration\.unregister/);
+  assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"|cache\.put|cache\.match/);
+});
+
+test("provides the complete persistent daily English learning loop", async () => {
+  const [shell, page, schema, repository, analysisService, migration] = await Promise.all([
+    readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/english/DailyEnglish.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/englishRepository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/services/englishAnalysis.ts", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0004_calm_kulan_gath.sql", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(shell, /id:\s*"english",\s*label:\s*"每日英语"/);
+  assert.match(shell, /<DailyEnglish\s*\/>/);
+  for (const feature of ["今日任务", "文章库", "生词本", "学习记录", "AI 助手", "开始英文总结", "参考版本"]) {
+    assert.match(page, new RegExp(feature));
+  }
+  for (const table of ["english_articles", "english_learning_records", "english_vocabulary", "english_highlights", "english_notes", "english_ai_analysis"]) {
+    assert.match(schema, new RegExp(table));
+    assert.match(migration, new RegExp(table));
+  }
+  assert.match(analysisService, /interface EnglishAnalysisService/);
+  assert.match(analysisService, /class MockEnglishAnalysisService/);
+  assert.match(repository, /ensureEnglishHabitLog/);
+  assert.match(repository, /nextReviewTime/);
+});
+
+test("adds a confirmation-first Xunji workout import pipeline without OCR", async () => {
+  const [panel, repository, proxy, pythonApi, decoder, parser, migration] = await Promise.all([
+    readFile(new URL("../src/components/XunjiImportPanel.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/xunjiImportRepository.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/xunji/parse/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../xunji_service/app/main.py", import.meta.url), "utf8"),
+    readFile(new URL("../xunji_service/app/qr_decoder.py", import.meta.url), "utf8"),
+    readFile(new URL("../xunji_service/app/parser.py", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0005_fearless_sister_grimm.sql", import.meta.url), "utf8"),
+  ]);
+
+  for (const text of ["训记训练数据同步", "解析成功", "确认导入", "编辑训练数据", "图片仅用于读取二维码"]) {
+    assert.match(panel, new RegExp(text));
+  }
+  assert.match(proxy, /XUNJI_SERVICE_URL/);
+  assert.match(proxy, /api\.xunjiapp\.cn/);
+  assert.match(pythonApi, /parse_embedded_json/);
+  assert.match(pythonApi, /parse_with_playwright/);
+  assert.match(pythonApi, /parse_dom/);
+  assert.match(decoder, /QRCodeDetector/);
+  assert.match(decoder, /pyzbar/);
+  assert.doesNotMatch(decoder, /OCR|tesseract|easyocr/i);
+  assert.match(parser, /page\.html/);
+  assert.match(parser, /network\.json/);
+  assert.match(parser, /response\.json/);
+  assert.match(repository, /status:\s*"pending"/);
+  assert.match(repository, /source:\s*"xunji"/);
+  assert.match(repository, /activity_logs/);
+  assert.match(repository, /training_notes/);
+  assert.match(migration, /workout_import_records/);
+  assert.match(migration, /training_notes/);
   assert.doesNotMatch(
-    preview,
-    /loading-spinner|status-mark|status-progress|canvas|cookie|random/i,
+    await readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    /id:\s*"exercises",\s*label:\s*"动作资料库"/,
   );
+});
 
-  assert.match(page, /export const metadata:\s*Metadata/);
-  assert.match(page, /"codex-preview": "development"/);
-  assert.match(page, /<SkeletonPreview \/>/);
-  assert.match(layout, /title:\s*"Starter Project"/);
-  assert.doesNotMatch(layout, /codex-preview|_sites-preview|themeColor|\bViewport\b/);
-  assert.doesNotMatch(css, /(^|\s)(html|body)\s*\{/m);
+test("ships a persistent, secure Electron notes workspace", async () => {
+  const [shell, module, route, validation, preload, main, migration, styles] = await Promise.all([
+    readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/NotesModule.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/notes/route.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/noteSchemas.ts", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/preload.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../desktop/main.cjs", import.meta.url), "utf8"),
+    readFile(new URL("../drizzle/0007_notes_module.sql", import.meta.url), "utf8"),
+    readFile(new URL("../app/notes.css", import.meta.url), "utf8"),
+  ]);
 
-  await assert.rejects(
-    access(new URL("public/_sites-preview", templateRoot)),
-  );
+  assert.match(shell, /id:\s*"notes",\s*label:\s*"笔记"/);
+  assert.match(shell, /<NotesModule\s*\/>/);
+  assert.match(shell, /<DashboardNotes/);
+  for (const feature of ["@tiptap/react", "DOMPurify", "setTimeout\\(\\(\\)=>void save\\(false\\),800\\)", "快速记录", "回收站", "版本历史", "关联数据", "附件"]) {
+    assert.match(module, new RegExp(feature));
+  }
+  for (const table of ["notes", "note_folders", "note_tags", "note_tag_relations", "note_relations", "note_attachments", "note_revisions", "notes_fts"]) {
+    assert.match(migration, new RegExp(table));
+    assert.match(route, new RegExp(table));
+  }
+  assert.match(route, /LIKE \? ESCAPE/);
+  assert.match(route, /LIMIT \?/);
+  assert.match(route, /notePayloadSchema\.parse/);
+  assert.match(validation, /z\.enum/);
+  assert.match(validation, /idSchema/);
+  assert.match(preload, /contextBridge\.exposeInMainWorld\("noteApi"/);
+  assert.doesNotMatch(preload, /require\("node:fs"\)|require\("node:path"\)/);
+  assert.match(main, /contextIsolation:\s*true/);
+  assert.match(main, /nodeIntegration:\s*false/);
+  assert.match(main, /attachmentLimit\s*=\s*20\s*\*\s*1024\s*\*\s*1024/);
+  assert.match(main, /path\.dirname\(target\)\s*!==\s*path\.resolve\(directory\)/);
+  assert.match(main, /allowedNoteFiles/);
+  assert.match(styles, /grid-template-columns/);
+  assert.match(styles, /cursor:col-resize/);
 });

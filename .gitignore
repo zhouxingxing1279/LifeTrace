@@ -36,7 +36,24 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
+/.local-certs/
 /outputs/
 /work/
+ios/**/DerivedData/
+ios/**/*.xcuserstate
+ios/**/xcuserdata/
+/.venv-xunji/
+/xunji_service/debug/
+/.xunji-*.log
+/.codex-server*.log
+/.desktop-runtime.log
+/.https-proxy*.log
+/.ui-redesign-dev*.log
+/backups/
+**/__pycache__/
+*.py[cod]
+/public/hengxu-local-ca.cer
+/恒序个人管理平台整合Demo/

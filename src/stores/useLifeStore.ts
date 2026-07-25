@@ -1,75 +1,79 @@
 "use client";
 
 import { create } from "zustand";
-import { db, dayKey, now, seedActivities, uid } from "@/src/db/local";
-import type { Activity, ActivityLog, DailyReview, Transaction, ViewId } from "@/src/types";
+import { dayKey, loadSQLiteState, mutateSQLite, now, uid } from "@/src/db/sqliteClient";
+import type { Activity, ActivityLog, DailyReview, FinanceAccount, Transaction, ViewId, WorkoutHistory } from "@/src/types";
 
 interface LifeState {
   ready: boolean;
+  storageError: string | null;
   view: ViewId;
   dark: boolean;
   activities: Activity[];
   logs: ActivityLog[];
   transactions: Transaction[];
   reviews: DailyReview[];
+  accounts: FinanceAccount[];
+  workoutHistory: WorkoutHistory[];
   syncState: "synced" | "syncing" | "offline";
   timer: { activityId: string; startedAt: number | null; accumulatedSeconds: number } | null;
   setView: (view: ViewId) => void;
   toggleDark: () => void;
   initialize: () => Promise<void>;
-  addLog: (activityId: string, value?: number, status?: ActivityLog["status"], metadata?: ActivityLog["metadata"]) => Promise<void>;
-  addTransaction: (data: Pick<Transaction, "type" | "amount" | "category" | "account" | "note">) => Promise<void>;
+  addLog: (activityId: string, value?: number, status?: ActivityLog["status"], metadata?: ActivityLog["metadata"], note?: string) => Promise<void>;
+  addTransaction: (data: Pick<Transaction, "type" | "amount" | "category" | "account"> & Partial<Pick<Transaction, "note" | "occurredAt" | "accountId" | "counterparty" | "item">>) => Promise<void>;
   saveReview: (data: Pick<DailyReview, "energy" | "mood" | "bestThing" | "problem" | "tomorrowPriority" | "note">) => Promise<void>;
-  addActivity: (data: Pick<Activity, "name" | "type" | "unit" | "normalTarget" | "targetPeriod">) => Promise<void>;
-  updateActivity: (id: string, data: Partial<Pick<Activity, "name" | "type" | "unit" | "minimumTarget" | "normalTarget" | "targetPeriod">>) => Promise<void>;
+  addActivity: (data: Pick<Activity, "name" | "type" | "unit" | "normalTarget" | "targetPeriod"> & Partial<Pick<Activity, "minimumTarget" | "targetDays" | "icon" | "description">>) => Promise<void>;
+  updateActivity: (id: string, data: Partial<Pick<Activity, "name" | "type" | "unit" | "minimumTarget" | "normalTarget" | "targetPeriod" | "targetDays" | "icon" | "description">>) => Promise<void>;
   archiveActivity: (id: string) => Promise<void>;
+  saveAccount: (data: Partial<FinanceAccount> & Pick<FinanceAccount, "name" | "type" | "color" | "icon">) => Promise<void>;
+  deleteAccount: (id: string) => Promise<void>;
+  deleteWorkoutHistory: (id: string) => Promise<void>;
+  updateTransaction: (id: string, data: Partial<Transaction>) => Promise<void>;
+  deleteTransaction: (id: string) => Promise<void>;
   startTimer: (activityId: string) => void;
   pauseTimer: () => void;
   finishTimer: () => Promise<void>;
+  restoreBackup: (payload: unknown) => Promise<void>;
 }
-
-const TIMER_KEY = "lifetrace-timer";
-const THEME_KEY = "lifetrace-theme";
 
 export const useLifeStore = create<LifeState>((set, get) => ({
   ready: false,
+  storageError: null,
   view: "today",
   dark: false,
   activities: [],
   logs: [],
   transactions: [],
   reviews: [],
+  accounts: [],
+  workoutHistory: [],
   syncState: "synced",
   timer: null,
   setView: (view) => set({ view }),
   toggleDark: () => set((s) => {
     const dark = !s.dark;
-    localStorage.setItem(THEME_KEY, dark ? "dark" : "light");
+    void mutateSQLite({ operation: "put", table: "settings", value: { id: "preferences", dark, timer: s.timer, updatedAt: now() } }).catch((error) => set({ storageError: error instanceof Error ? error.message : "SQLite 写入失败" }));
     return { dark };
   }),
   initialize: async () => {
-    if ((await db.activities.count()) === 0) await db.activities.bulkAdd(seedActivities);
-    const [activities, logs, transactions, reviews] = await Promise.all([
-      db.activities.toArray().then((items) => items.filter((item) => !item.isArchived)),
-      db.activityLogs.toArray(),
-      db.transactions.toArray(),
-      db.dailyReviews.toArray(),
-    ]);
-    const savedTimer = localStorage.getItem(TIMER_KEY);
-    set({ activities, logs, transactions, reviews, ready: true, dark: localStorage.getItem(THEME_KEY) === "dark", timer: savedTimer ? JSON.parse(savedTimer) : null, syncState: navigator.onLine ? "synced" : "offline" });
-    window.addEventListener("online", () => set({ syncState: "syncing" }) || setTimeout(() => set({ syncState: "synced" }), 900));
-    window.addEventListener("offline", () => set({ syncState: "offline" }));
+    try {
+      const { activities, logs, transactions, reviews, settings, accounts, workoutHistory } = await loadSQLiteState();
+      set({ activities: activities.filter((item) => !item.isArchived), logs, transactions, reviews, accounts: accounts.filter(item=>!item.isArchived), workoutHistory, ready: true, storageError: null, dark: settings.dark, timer: settings.timer, syncState: "synced" });
+    } catch (error) {
+      set({ ready: true, storageError: error instanceof Error ? error.message : "无法连接 SQLite 数据库", syncState: "offline" });
+    }
   },
-  addLog: async (activityId, value, status = "completed", metadata) => {
+  addLog: async (activityId, value, status = "completed", metadata, note) => {
     const stamp = now();
-    const log: ActivityLog = { id: uid(), userId: "local-user", activityId, value, status, metadata, createdAt: stamp, updatedAt: stamp };
-    await db.activityLogs.add(log);
+    const log: ActivityLog = { id: uid(), userId: "local-user", activityId, value, status, metadata, note: note?.trim() || undefined, createdAt: stamp, updatedAt: stamp };
+    await mutateSQLite({ operation: "put", table: "logs", value: log });
     set({ logs: [...get().logs, log] });
   },
   addTransaction: async (data) => {
     const stamp = now();
-    const transaction: Transaction = { id: uid(), userId: "local-user", occurredAt: stamp, createdAt: stamp, updatedAt: stamp, ...data };
-    await db.transactions.add(transaction);
+    const transaction: Transaction = { id: uid(), userId: "local-user", occurredAt: data.occurredAt ?? stamp, createdAt: stamp, updatedAt: stamp, ...data };
+    await mutateSQLite({ operation: "put", table: "transactions", value: transaction });
     set({ transactions: [transaction, ...get().transactions] });
   },
   saveReview: async (data) => {
@@ -77,38 +81,48 @@ export const useLifeStore = create<LifeState>((set, get) => ({
     const old = get().reviews.find((item) => item.reviewDate === date);
     const stamp = now();
     const review: DailyReview = { id: old?.id ?? uid(), userId: "local-user", reviewDate: date, createdAt: old?.createdAt ?? stamp, updatedAt: stamp, ...data };
-    await db.dailyReviews.put(review);
+    await mutateSQLite({ operation: "put", table: "reviews", value: review });
     set({ reviews: [...get().reviews.filter((item) => item.reviewDate !== date), review] });
   },
   addActivity: async (data) => {
     const stamp = now();
     const activity: Activity = { id: uid(), userId: "local-user", isArchived: false, createdAt: stamp, updatedAt: stamp, ...data };
-    await db.activities.add(activity);
+    await mutateSQLite({ operation: "put", table: "activities", value: activity });
     set({ activities: [...get().activities, activity] });
   },
   updateActivity: async (id, data) => {
     const updatedAt = now();
-    await db.activities.update(id, { ...data, updatedAt });
+    await mutateSQLite({ operation: "patch", table: "activities", id, patch: { ...data, updatedAt } });
     set({ activities: get().activities.map((item) => item.id === id ? { ...item, ...data, updatedAt } : item) });
   },
   archiveActivity: async (id) => {
     const updatedAt = now();
-    await db.activities.update(id, { isArchived: true, updatedAt });
+    await mutateSQLite({ operation: "patch", table: "activities", id, patch: { isArchived: true, updatedAt } });
     set({ activities: get().activities.filter((item) => item.id !== id) });
   },
+  saveAccount: async (data) => {
+    const stamp=now(); const existing=data.id?get().accounts.find(item=>item.id===data.id):undefined;
+    const account:FinanceAccount={id:existing?.id??uid(),userId:"local-user",name:data.name,type:data.type,balance:data.balance??existing?.balance??0,last4:data.last4??existing?.last4,color:data.color,icon:data.icon,isArchived:false,createdAt:existing?.createdAt??stamp,updatedAt:stamp};
+    await mutateSQLite({operation:"put",table:"accounts",value:account});
+    set({accounts:existing?get().accounts.map(item=>item.id===account.id?account:item):[...get().accounts,account]});
+  },
+  deleteAccount: async (id) => { await mutateSQLite({operation:"delete",table:"accounts",id}); set({accounts:get().accounts.filter(item=>item.id!==id)}); },
+  deleteWorkoutHistory: async (id) => { await mutateSQLite({operation:"delete",table:"workoutHistory",id}); set({workoutHistory:get().workoutHistory.filter(item=>item.id!==id)}); },
+  updateTransaction: async (id,data) => { const old=get().transactions.find(item=>item.id===id); if(!old)return; const value={...old,...data,id,updatedAt:now()}; await mutateSQLite({operation:"put",table:"transactions",value}); set({transactions:get().transactions.map(item=>item.id===id?value:item)}); },
+  deleteTransaction: async (id) => { await mutateSQLite({operation:"delete",table:"transactions",id}); set({transactions:get().transactions.filter(item=>item.id!==id)}); },
   startTimer: (activityId) => {
     const current = get().timer;
     const timer = current?.activityId === activityId
       ? { ...current, startedAt: current.startedAt ?? Date.now() }
       : { activityId, startedAt: Date.now(), accumulatedSeconds: 0 };
-    localStorage.setItem(TIMER_KEY, JSON.stringify(timer));
+    void mutateSQLite({ operation: "put", table: "settings", value: { id: "preferences", dark: get().dark, timer, updatedAt: now() } }).catch((error) => set({ storageError: error instanceof Error ? error.message : "SQLite 写入失败" }));
     set({ timer });
   },
   pauseTimer: () => {
     const current = get().timer;
     if (!current?.startedAt) return;
     const timer = { ...current, accumulatedSeconds: current.accumulatedSeconds + Math.floor((Date.now() - current.startedAt) / 1000), startedAt: null };
-    localStorage.setItem(TIMER_KEY, JSON.stringify(timer));
+    void mutateSQLite({ operation: "put", table: "settings", value: { id: "preferences", dark: get().dark, timer, updatedAt: now() } }).catch((error) => set({ storageError: error instanceof Error ? error.message : "SQLite 写入失败" }));
     set({ timer });
   },
   finishTimer: async () => {
@@ -117,7 +131,15 @@ export const useLifeStore = create<LifeState>((set, get) => ({
     const seconds = current.accumulatedSeconds + (current.startedAt ? Math.floor((Date.now() - current.startedAt) / 1000) : 0);
     const minutes = Math.max(1, Math.round(seconds / 60));
     await get().addLog(current.activityId, minutes);
-    localStorage.removeItem(TIMER_KEY);
+    await mutateSQLite({ operation: "put", table: "settings", value: { id: "preferences", dark: get().dark, timer: null, updatedAt: now() } });
     set({ timer: null });
+  },
+  restoreBackup: async (payload) => {
+    if (!payload || typeof payload !== "object") throw new Error("备份文件格式无效");
+    const data = payload as Partial<{ activities: Activity[]; logs: ActivityLog[]; transactions: Transaction[]; reviews: DailyReview[]; accounts: FinanceAccount[]; workoutHistory: WorkoutHistory[] }>;
+    if (![data.activities, data.logs, data.transactions, data.reviews].every(Array.isArray)) throw new Error("备份文件缺少必要数据");
+    const accounts=data.accounts??get().accounts; const workoutHistory=data.workoutHistory??get().workoutHistory;
+    await mutateSQLite({ operation: "restore", data: { activities: data.activities!, logs: data.logs!, transactions: data.transactions!, reviews: data.reviews!, accounts, workoutHistory } });
+    set({ activities: data.activities!.filter((item) => !item.isArchived), logs: data.logs!, transactions: data.transactions!, reviews: data.reviews!, accounts, workoutHistory });
   },
 }));

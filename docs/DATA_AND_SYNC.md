@@ -1,8 +1,9 @@
-# 本地数据与同步设计
+# SQLite 数据与同步设计
 
-LifeTrace 使用 Dexie 封装 IndexedDB。`activities`、`activityLogs`、`transactions`、`dailyReviews` 分表存储，页面只通过 Zustand action 访问数据，不直接操作数据库。
+Life trace 使用 Cloudflare D1 的本地模式保存数据，底层数据库为 SQLite。坚持项目、记录、交易、复盘、财务账户、训练模板、训练历史和设置分别存储在独立表中。数据库文件位于项目忽略提交的 `.wrangler` 本地状态目录。页面只通过 `/api/state` 和 Zustand action 访问数据，不直接操作 SQLite，也不把业务数据写入 IndexedDB。
 
-写入采用本地优先流程：先生成 UUID 并写入 IndexedDB，界面立即更新；启用 Supabase 后，同一条变化进入待同步队列。普通记录按 `updated_at` 最后写入优先；财务数据以新增为主，不覆盖不同 UUID 的交易；删除通过 `deleted_at` 软删除并同步。`sync_events` 的组合唯一约束用于避免重复上传。
+写入时先生成 UUID，再通过本地接口写入 SQLite；确认写入成功后界面更新。恢复 JSON 备份会替换全部业务表，但保留当前设备设置。普通记录保留 `updatedAt`，为后续按最后修改时间处理冲突预留依据；财务记录使用独立 UUID，避免不同交易互相覆盖。
 
-当前交付可完整离线使用。填入 Supabase 环境变量并执行迁移后即可接入云端客户端；云端队列调度仍作为下一阶段扩展点。
-
+电脑管理界面依赖本地 LifeTrace 服务，并使用同一份 SQLite 数据。手机健身 PWA
+首次安装和同步时需要访问电脑局域网；完成离线资源准备后，训练、参数修改和历史
+查看不要求电脑服务运行，也不要求手机保持 Wi‑Fi。重新同步时再连接电脑局域网。

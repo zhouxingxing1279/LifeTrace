@@ -1,5 +1,5 @@
-import AppShell from "@/src/components/AppShell";
+import HengXuShell from "@/src/components/HengXuShell";
 
 export default function Home() {
-  return <AppShell />;
+  return <HengXuShell />;
 }

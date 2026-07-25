@@ -6,7 +6,12 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev",
+    "dev": "vinext dev --hostname 0.0.0.0",
+    "https:local": "node scripts/local-https.mjs",
+    "pwa:build": "vinext build",
+    "pwa:start": "wrangler dev --config dist/server/wrangler.json --port 3103 --ip 0.0.0.0 --persist-to .wrangler/state",
+    "xunji:start": "python xunji_service/run.py",
+    "desktop": "electron desktop/main.cjs",
     "build": "vinext build",
     "start": "vinext start",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",
@@ -15,13 +20,27 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.110.8",
-    "dexie": "^4.4.4",
+    "@tiptap/extension-code-block-lowlight": "^3.29.0",
+    "@tiptap/extension-image": "^3.29.0",
+    "@tiptap/extension-link": "^3.29.0",
+    "@tiptap/extension-placeholder": "^3.29.0",
+    "@tiptap/extension-task-item": "^3.29.0",
+    "@tiptap/extension-task-list": "^3.29.0",
+    "@tiptap/react": "^3.29.0",
+    "@tiptap/starter-kit": "^3.29.0",
+    "@types/dompurify": "^3.0.5",
+    "@types/turndown": "^5.0.6",
+    "dompurify": "^3.4.12",
     "drizzle-orm": "0.45.2",
     "echarts": "^6.1.0",
+    "lowlight": "^3.3.0",
     "lucide-react": "^1.25.0",
     "next": "16.2.6",
     "react": "19.2.6",
     "react-dom": "19.2.6",
+    "read-excel-file": "^9.3.4",
+    "turndown": "^7.2.4",
+    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
@@ -33,6 +52,7 @@
     "@vitejs/plugin-react": "6.0.2",
     "@vitejs/plugin-rsc": "0.5.26",
     "drizzle-kit": "0.31.10",
+    "electron": "^43.2.0",
     "eslint": "9.39.4",
     "eslint-config-next": "16.2.6",
     "react-server-dom-webpack": "19.2.6",
@@ -42,5 +62,8 @@
     "vite": "8.0.13",
     "wrangler": "4.92.0"
   },
-  "type": "module"
+  "type": "module",
+  "allowScripts": {
+    "electron@43.2.0": true
+  }
 }
