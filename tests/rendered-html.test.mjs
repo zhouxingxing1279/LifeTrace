@@ -152,6 +152,8 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(source, /engine:\s*"python"/);
   assert.doesNotMatch(source, /VOA_FEEDS|fetch\(\s*["'`]https:\/\/learningenglish/);
   assert.match(voaBridge, /fetch_voa_articles\.py/);
+  assert.match(voaBridge, /parents\[2\]\s*\/\s*"scripts"/);
+  assert.doesNotMatch(voaBridge, /D:\/Download|Path\.home\(\)\s*\/\s*"Downloads"/);
   assert.match(voaBridge, /subprocess\.run/);
   assert.match(voaBridge, /ThreadPoolExecutor/);
   assert.match(pythonMain, /@app\.post\("\/api\/voa\/articles"\)/);

@@ -1,7 +1,15 @@
 import json
 from pathlib import Path
 
-from xunji_service.app.voa_bridge import fetch_voa_articles
+from xunji_service.app.voa_bridge import fetch_voa_articles, resolve_fetch_script
+
+
+def test_uses_fetcher_stored_inside_project() -> None:
+    script = resolve_fetch_script()
+
+    assert script.name == "fetch_voa_articles.py"
+    assert script.parent.name == "scripts"
+    assert script.is_file()
 
 
 def test_runs_user_fetcher_for_three_categories(tmp_path: Path) -> None:

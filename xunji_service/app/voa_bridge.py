@@ -30,16 +30,13 @@ def resolve_fetch_script() -> Path:
     configured = os.environ.get("VOA_FETCH_SCRIPT")
     candidates = [
         Path(configured).expanduser() if configured else None,
-        Path("D:/Download/fetch_voa_articles.py"),
-        Path.home() / "Downloads" / "fetch_voa_articles.py",
         Path(__file__).resolve().parents[2] / "scripts" / "fetch_voa_articles.py",
     ]
     for candidate in candidates:
         if candidate and candidate.is_file():
             return candidate.resolve()
     raise VoaFetchError(
-        "未找到 fetch_voa_articles.py，请保留 D:/Download/fetch_voa_articles.py "
-        "或通过 VOA_FETCH_SCRIPT 指定位置。"
+        "项目内缺少 scripts/fetch_voa_articles.py，无法抓取 VOA 文章。"
     )
 
 
