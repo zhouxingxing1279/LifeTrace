@@ -19,6 +19,84 @@ const parseJson = <T>(value: unknown, fallback: T): T => {
   try { return value ? JSON.parse(String(value)) as T : fallback; } catch { return fallback; }
 };
 
+let vocabularySchemaReady: Promise<void> | undefined;
+
+async function ensureVocabularySchema() {
+  if (!vocabularySchemaReady) {
+    vocabularySchemaReady = (async () => {
+      await env.DB.batch([
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS english_user_vocabulary (
+          id TEXT PRIMARY KEY NOT NULL, word TEXT NOT NULL, normalized_word TEXT NOT NULL,
+          lemma TEXT NOT NULL, dictionary_word_id INTEGER, phonetic TEXT,
+          selected_meanings_json TEXT NOT NULL, part_of_speech TEXT,
+          source_article_id TEXT, source_article_title TEXT, source_sentence TEXT, notes TEXT,
+          mastery_level INTEGER DEFAULT 0 NOT NULL, review_stage INTEGER DEFAULT 0 NOT NULL,
+          review_count INTEGER DEFAULT 0 NOT NULL, correct_count INTEGER DEFAULT 0 NOT NULL,
+          incorrect_count INTEGER DEFAULT 0 NOT NULL, encounter_count INTEGER DEFAULT 1 NOT NULL,
+          last_reviewed_at TEXT, next_review_at TEXT, status TEXT DEFAULT 'LEARNING' NOT NULL,
+          frequency_rank INTEGER, tags_json TEXT DEFAULT '[]' NOT NULL,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )`),
+        env.DB.prepare("CREATE UNIQUE INDEX IF NOT EXISTS english_user_vocabulary_lemma_unique ON english_user_vocabulary (lemma)"),
+        env.DB.prepare("CREATE INDEX IF NOT EXISTS english_user_vocabulary_review_idx ON english_user_vocabulary (status, next_review_at)"),
+        env.DB.prepare("CREATE INDEX IF NOT EXISTS english_user_vocabulary_created_idx ON english_user_vocabulary (created_at)"),
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS english_vocabulary_occurrences (
+          id TEXT PRIMARY KEY NOT NULL, vocabulary_id TEXT NOT NULL, article_id TEXT,
+          article_title TEXT, source_sentence TEXT NOT NULL, created_at TEXT NOT NULL,
+          FOREIGN KEY (vocabulary_id) REFERENCES english_user_vocabulary(id) ON DELETE CASCADE
+        )`),
+        env.DB.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS english_vocabulary_occurrence_unique
+          ON english_vocabulary_occurrences (vocabulary_id, article_id, source_sentence)`),
+        env.DB.prepare(`CREATE INDEX IF NOT EXISTS english_vocabulary_occurrence_word_idx
+          ON english_vocabulary_occurrences (vocabulary_id, created_at)`),
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS english_vocabulary_review_logs (
+          id TEXT PRIMARY KEY NOT NULL, vocabulary_id TEXT NOT NULL, result TEXT NOT NULL,
+          stage_before INTEGER NOT NULL, stage_after INTEGER NOT NULL, reviewed_at TEXT NOT NULL,
+          next_review_at TEXT, response_time_ms INTEGER,
+          FOREIGN KEY (vocabulary_id) REFERENCES english_user_vocabulary(id) ON DELETE CASCADE
+        )`),
+        env.DB.prepare(`CREATE INDEX IF NOT EXISTS english_vocabulary_review_log_idx
+          ON english_vocabulary_review_logs (vocabulary_id, reviewed_at)`),
+        env.DB.prepare(`CREATE TABLE IF NOT EXISTS english_vocabulary_settings (
+          id TEXT PRIMARY KEY NOT NULL, data_json TEXT NOT NULL, updated_at TEXT NOT NULL
+        )`),
+      ]);
+
+      const legacyTable = await env.DB.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='english_vocabulary'",
+      ).first<{ name: string }>();
+      if (legacyTable) {
+        await env.DB.prepare(`INSERT OR IGNORE INTO english_user_vocabulary
+          (id,word,normalized_word,lemma,phonetic,selected_meanings_json,part_of_speech,
+           source_article_id,source_sentence,mastery_level,review_stage,review_count,
+           next_review_at,status,created_at,updated_at)
+          SELECT id,
+           json_extract(data_json,'$.word'),
+           lower(json_extract(data_json,'$.word')),
+           lower(json_extract(data_json,'$.word')),
+           json_extract(data_json,'$.phonetic'),
+           json_array(json_extract(data_json,'$.meaning')),
+           '',
+           json_extract(data_json,'$.sourceArticleId'),
+           json_extract(data_json,'$.example'),
+           coalesce(json_extract(data_json,'$.masterLevel'),0),
+           coalesce(json_extract(data_json,'$.masterLevel'),0),
+           coalesce(json_extract(data_json,'$.reviewCount'),0),
+           json_extract(data_json,'$.nextReviewTime'),
+           CASE WHEN coalesce(json_extract(data_json,'$.masterLevel'),0) >= 5 THEN 'MASTERED' ELSE 'LEARNING' END,
+           coalesce(json_extract(data_json,'$.createdAt'),datetime('now')),
+           coalesce(json_extract(data_json,'$.updatedAt'),datetime('now'))
+          FROM english_vocabulary
+          WHERE json_extract(data_json,'$.word') IS NOT NULL`).run();
+      }
+    })().catch((error) => {
+      vocabularySchemaReady = undefined;
+      throw error;
+    });
+  }
+  return vocabularySchemaReady;
+}
+
 const mapWord = (row: Row): UserVocabulary => ({
   id: text(row, "id"), word: text(row, "word"), normalizedWord: text(row, "normalized_word"),
   lemma: text(row, "lemma"), dictionaryWordId: row.dictionary_word_id == null ? undefined : number(row, "dictionary_word_id"),
@@ -38,6 +116,7 @@ export async function addUserVocabulary(input: {
   selectedMeanings: string[]; partOfSpeech?: string; sourceArticleId?: string; sourceArticleTitle?: string;
   sourceSentence?: string; frequencyRank?: number; tags?: string[];
 }) {
+  await ensureVocabularySchema();
   const stamp = new Date().toISOString();
   const id = createId();
   await env.DB.prepare(`INSERT INTO english_user_vocabulary
@@ -58,6 +137,7 @@ export async function addUserVocabulary(input: {
 }
 
 export async function addOccurrence(vocabularyId: string, input: { articleId?: string; articleTitle?: string; sourceSentence: string }) {
+  await ensureVocabularySchema();
   const item = { id: createId(), vocabularyId, ...input, createdAt: new Date().toISOString() };
   await env.DB.prepare(`INSERT OR IGNORE INTO english_vocabulary_occurrences
     (id,vocabulary_id,article_id,article_title,source_sentence,created_at) VALUES (?,?,?,?,?,?)`)
@@ -68,6 +148,7 @@ export async function addOccurrence(vocabularyId: string, input: { articleId?: s
 export async function listUserVocabulary(options: {
   query?: string; status?: string; sort?: string; articleId?: string; pos?: string; tag?: string; due?: boolean; page?: number; pageSize?: number;
 } = {}) {
+  await ensureVocabularySchema();
   const conditions: string[] = []; const values: unknown[] = [];
   if (options.query) { conditions.push("(word LIKE ? OR lemma LIKE ?)"); values.push(`%${options.query}%`, `%${options.query}%`); }
   if (options.status && options.status !== "ALL") { conditions.push("status=?"); values.push(options.status); }
@@ -86,6 +167,7 @@ export async function listUserVocabulary(options: {
 }
 
 export async function getUserVocabulary(id: string) {
+  await ensureVocabularySchema();
   const row = await env.DB.prepare("SELECT * FROM english_user_vocabulary WHERE id=?").bind(id).first<Row>();
   if (!row) return null;
   const [occurrences, logs] = await Promise.all([
@@ -107,6 +189,7 @@ export async function getUserVocabulary(id: string) {
 }
 
 export async function updateUserVocabulary(id: string, patch: { selectedMeanings?: string[]; notes?: string; status?: VocabularyStatus; reset?: boolean }) {
+  await ensureVocabularySchema();
   const existing = await getUserVocabulary(id);
   if (!existing) throw new Error("生词不存在");
   const status = patch.reset ? "LEARNING" : patch.status ?? existing.status;
@@ -121,6 +204,7 @@ export async function updateUserVocabulary(id: string, patch: { selectedMeanings
 }
 
 export async function deleteUserVocabulary(id: string) {
+  await ensureVocabularySchema();
   await env.DB.batch([
     env.DB.prepare("DELETE FROM english_vocabulary_review_logs WHERE vocabulary_id=?").bind(id),
     env.DB.prepare("DELETE FROM english_vocabulary_occurrences WHERE vocabulary_id=?").bind(id),
@@ -129,6 +213,7 @@ export async function deleteUserVocabulary(id: string) {
 }
 
 export async function reviewUserVocabulary(id: string, result: VocabularyReviewResult, responseTimeMs?: number) {
+  await ensureVocabularySchema();
   const existing = await getUserVocabulary(id);
   if (!existing) throw new Error("生词不存在");
   if (existing.status === "ARCHIVED") throw new Error("已归档生词不能参与复习");
@@ -148,6 +233,7 @@ export async function reviewUserVocabulary(id: string, result: VocabularyReviewR
 }
 
 export async function vocabularyStats() {
+  await ensureVocabularySchema();
   const now = new Date().toISOString();
   const week = new Date(Date.now() - 7 * 86400000).toISOString();
   const rows = await env.DB.prepare(`SELECT
@@ -182,11 +268,13 @@ export async function vocabularyStats() {
 }
 
 export async function getVocabularySettings(): Promise<VocabularySettings> {
+  await ensureVocabularySchema();
   const row = await env.DB.prepare("SELECT data_json FROM english_vocabulary_settings WHERE id='preferences'").first<{data_json:string}>();
   return { ...DEFAULT_SETTINGS, ...parseJson(row?.data_json, {}) };
 }
 
 export async function saveVocabularySettings(patch: Partial<VocabularySettings>) {
+  await ensureVocabularySchema();
   const settings = { ...await getVocabularySettings(), ...patch };
   await env.DB.prepare(`INSERT INTO english_vocabulary_settings(id,data_json,updated_at) VALUES ('preferences',?,?)
     ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at`)
