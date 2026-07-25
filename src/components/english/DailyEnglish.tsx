@@ -262,6 +262,7 @@ function Reader({ article, back, finish, addWord, setMessage }: {
   const [lineHeight, setLineHeight] = useState(1.9);
   const [dark, setDark] = useState(false);
   const [lookup, setLookup] = useState<ArticleVocabularyItem | null>(null);
+  const [addingWord, setAddingWord] = useState(false);
   const [selectedText, setSelectedText] = useState("");
   const [note, setNote] = useState("");
   const [counts, setCounts] = useState({ highlights: 0, notes: 0 });
@@ -272,15 +273,32 @@ function Reader({ article, back, finish, addWord, setMessage }: {
       .catch(() => undefined);
   }, [article.id]);
 
+  const openWord = (word: string) => {
+    const known = article.vocabulary.find((item) => item.word.toLowerCase() === word.toLowerCase());
+    setLookup(known ?? { word, phonetic: "", meaning: "", example: "" });
+  };
+
+  const pronounceWord = () => {
+    if (!lookup || !("speechSynthesis" in window)) {
+      setMessage("当前系统没有可用的英文朗读功能");
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(lookup.word);
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice = voices.find((voice) => voice.lang.toLowerCase() === "en-us")
+      ?? voices.find((voice) => voice.lang.toLowerCase().startsWith("en"))
+      ?? null;
+    utterance.lang = utterance.voice?.lang ?? "en-US";
+    utterance.rate = 0.88;
+    utterance.onerror = () => setMessage("单词朗读失败，请检查系统语音设置");
+    window.speechSynthesis.speak(utterance);
+  };
+
   const renderParagraph = (paragraph: string) => paragraph.split(/(\b[A-Za-z][A-Za-z'-]*\b)/g).map((part, index) => {
     if (!/^[A-Za-z][A-Za-z'-]*$/.test(part)) return part;
     const known = article.vocabulary.find((item) => item.word.toLowerCase() === part.toLowerCase());
-    return <button className={known ? "key-word" : ""} key={`${part}-${index}`} onClick={() => setLookup(known ?? {
-      word: part,
-      phonetic: "",
-      meaning: "该词未列入今日重点词汇",
-      example: "",
-    })}>{part}</button>;
+    return <button className={known ? "key-word" : ""} key={`${part}-${index}`} onClick={() => openWord(part)}>{part}</button>;
   });
 
   return <div className={`en-reader ${dark ? "dark" : ""}`}>
@@ -312,7 +330,9 @@ function Reader({ article, back, finish, addWord, setMessage }: {
         </section>}
         <div className="en-reading-content" style={{ fontSize, lineHeight }} onMouseUp={() => {
           const text = window.getSelection()?.toString().trim() ?? "";
-          if (text.length > 2) setSelectedText(text);
+          if (!text) return;
+          setSelectedText(text);
+          if (/^[A-Za-z][A-Za-z'-]*$/.test(text)) openWord(text);
         }}>{article.content.split("\n\n").map((paragraph, index) => <p key={index}>{renderParagraph(paragraph)}</p>)}</div>
         <button className="en-finish-reading" onClick={finish}>完成阅读，开始英文总结 <ChevronRight /></button>
       </article>
@@ -341,11 +361,37 @@ function Reader({ article, back, finish, addWord, setMessage }: {
         <section><header><ListChecks /><strong>理解问题</strong></header><ol>{article.questions.map((question) => <li key={question}>{question}</li>)}</ol></section>
       </aside>
     </main>
-    {lookup && <div className="en-word-popover" role="dialog">
-      <button onClick={() => setLookup(null)}>×</button><span>WORD</span><h3>{lookup.word}</h3>
-      <p>{lookup.phonetic} <Volume2 /></p><strong>{lookup.meaning}</strong>
-      {lookup.example && <blockquote>{lookup.example}</blockquote>}
-      <button className="primary" disabled={!lookup.phonetic} onClick={() => void addWord(lookup)}>加入生词本</button>
+    {lookup && <div className="en-word-popover" role="dialog" aria-label={`${lookup.word} 生词卡片`}>
+      <button aria-label="关闭生词卡片" onClick={() => setLookup(null)}>×</button><span>WORD</span><h3>{lookup.word}</h3>
+      <div className="en-word-pronunciation">
+        <span>{lookup.phonetic || "音标可选填"}</span>
+        <button type="button" onClick={pronounceWord}><Volume2 />朗读</button>
+      </div>
+      <label>音标（选填）
+        <input value={lookup.phonetic} onChange={(event) => setLookup({ ...lookup, phonetic: event.target.value })} placeholder="/ˈwɜːrd/" />
+      </label>
+      <label>中文释义
+        <input value={lookup.meaning} onChange={(event) => setLookup({ ...lookup, meaning: event.target.value })} placeholder="输入这个单词在文中的含义" autoFocus />
+      </label>
+      <label>例句（选填）
+        <textarea value={lookup.example} onChange={(event) => setLookup({ ...lookup, example: event.target.value })} placeholder="记录文章中的例句或自己的例句" />
+      </label>
+      <button className="primary" disabled={!lookup.meaning.trim() || addingWord} onClick={async () => {
+        setAddingWord(true);
+        try {
+          await addWord({
+            word: lookup.word.trim(),
+            phonetic: lookup.phonetic.trim(),
+            meaning: lookup.meaning.trim(),
+            example: lookup.example.trim(),
+          });
+          setLookup(null);
+        } catch (error) {
+          setMessage(error instanceof Error ? error.message : "加入生词本失败");
+        } finally {
+          setAddingWord(false);
+        }
+      }}>{addingWord ? "正在加入…" : "加入生词本"}</button>
     </div>}
   </div>;
 }

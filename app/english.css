@@ -255,8 +255,14 @@
 .en-word-popover > button:first-child { position: absolute; right: 14px; top: 14px; border: 0; background: none; cursor: pointer; }
 .en-word-popover > span { color: var(--en-green); font-size: 10px; font-weight: 800; letter-spacing: .14em; }
 .en-word-popover h3 { margin: 7px 0 0; font-family: Georgia, serif; font-size: 34px; }
-.en-word-popover p { display: flex; gap: 6px; align-items: center; color: var(--en-muted); }
-.en-word-popover p svg { width: 16px; }
+.en-word-pronunciation { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0 16px; color: var(--en-muted); }
+.en-word-pronunciation button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--en-line); border-radius: 8px; color: var(--en-green); background: white; cursor: pointer; }
+.en-word-pronunciation button:hover { background: #f2f8f5; }
+.en-word-pronunciation button:focus-visible, .en-word-popover input:focus-visible, .en-word-popover textarea:focus-visible { outline: 2px solid var(--en-green); outline-offset: 2px; }
+.en-word-pronunciation svg { width: 16px; }
+.en-word-popover label { display: grid; gap: 6px; margin: 12px 0; color: var(--en-muted); font-size: 12px; font-weight: 700; }
+.en-word-popover input, .en-word-popover textarea { width: 100%; box-sizing: border-box; padding: 9px 10px; border: 1px solid var(--en-line); border-radius: 8px; color: var(--en-text); background: white; font: inherit; font-weight: 400; }
+.en-word-popover textarea { min-height: 68px; resize: vertical; }
 .en-word-popover blockquote { margin: 18px 0; padding: 12px; border-left: 3px solid var(--en-green); color: var(--en-muted); background: #f5f8f6; }
 .en-word-popover .primary { width: 100%; padding: 11px; border: 0; border-radius: 11px; color: white; background: var(--en-green); cursor: pointer; }
 .en-word-popover .primary:disabled { opacity: .4; }

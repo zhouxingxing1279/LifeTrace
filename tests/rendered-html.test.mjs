@@ -147,6 +147,10 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(repository, /syncVoaArticles/);
   assert.match(page, /同步 VOA/);
   assert.match(page, /VOA Learning English/);
+  assert.match(page, /window\.getSelection\(\)/);
+  assert.match(page, /SpeechSynthesisUtterance/);
+  assert.match(page, /speechSynthesis\.speak/);
+  assert.match(page, /中文释义/);
   assert.match(source, /SERVICE_URL.*VOA_SERVICE_URL/s);
   assert.match(source, /\/api\/voa\/articles/);
   assert.match(source, /engine:\s*"python"/);
