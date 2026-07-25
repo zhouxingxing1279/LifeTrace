@@ -95,10 +95,11 @@ test("moves phone uploads to computer-backed D1 and R2 processing", async () => 
 });
 
 test("keeps the phone app upload-only and removes its cache service", async () => {
-  const [serviceWorker, fitnessApp, manager] = await Promise.all([
+  const [serviceWorker, fitnessApp, manager, healthRoute] = await Promise.all([
     readFile(new URL("../public/sw.js", import.meta.url), "utf8"),
     readFile(new URL("../src/components/FitnessPwaApp.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/PwaManager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/api/health/route.ts", import.meta.url), "utf8"),
   ]);
 
   assert.match(fitnessApp, /\/api\/xunji\/parse/);
@@ -106,6 +107,11 @@ test("keeps the phone app upload-only and removes its cache service", async () =
   assert.doesNotMatch(fitnessApp, /useLifeStore|deviceFitnessStorage|indexedDB|localStorage|训练模板|动作库|训练历史/);
   assert.doesNotMatch(manager, /serviceWorker\.register|PREPARE_OFFLINE|navigator\.storage\.persist/);
   assert.match(manager, /registration\.unregister/);
+  assert.match(manager, /fetch\("\/api\/health"/);
+  assert.match(manager, /fitnessMode && connection === "disconnected"/);
+  assert.doesNotMatch(manager, /navigator\.onLine/);
+  assert.match(healthRoute, /service:\s*"lifetrace-upload"/);
+  assert.match(healthRoute, /cache-control.*no-store/);
   assert.match(serviceWorker, /registration\.unregister/);
   assert.doesNotMatch(serviceWorker, /addEventListener\("fetch"|cache\.put|cache\.match/);
 });

@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Check, Download, Share, WifiOff, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Check, Download, LoaderCircle, RefreshCw, Share, WifiOff, X } from "lucide-react";
 
 interface InstallPromptEvent extends Event {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
 }
+
+type ConnectionState = "checking" | "connected" | "disconnected";
 
 const isStandalone = () =>
   window.matchMedia("(display-mode: standalone)").matches ||
@@ -17,8 +19,34 @@ export default function PwaManager() {
   const [installed, setInstalled] = useState(() => typeof window !== "undefined" && isStandalone());
   const [isIos] = useState(() => typeof navigator !== "undefined" && /iphone|ipad|ipod/i.test(navigator.userAgent));
   const [showIosGuide, setShowIosGuide] = useState(false);
-  const [online, setOnline] = useState(() => typeof navigator === "undefined" || navigator.onLine);
   const [fitnessMode] = useState(() => typeof window !== "undefined" && window.location.pathname.startsWith("/fitness"));
+  const [connection, setConnection] = useState<ConnectionState>("checking");
+  const connectionRequest = useRef<AbortController | null>(null);
+
+  const checkConnection = useCallback(async (showProgress = true) => {
+    if (!fitnessMode) return;
+    connectionRequest.current?.abort();
+    const controller = new AbortController();
+    connectionRequest.current = controller;
+    if (showProgress) setConnection("checking");
+    const timeout = window.setTimeout(() => controller.abort(), 5_000);
+    try {
+      const response = await fetch("/api/health", {
+        cache: "no-store",
+        headers: { accept: "application/json" },
+        signal: controller.signal,
+      });
+      const payload = response.ok ? await response.json() as { ok?: boolean; service?: string } : null;
+      if (connectionRequest.current === controller) {
+        setConnection(payload?.ok && payload.service === "lifetrace-upload" ? "connected" : "disconnected");
+      }
+    } catch {
+      if (connectionRequest.current === controller) setConnection("disconnected");
+    } finally {
+      window.clearTimeout(timeout);
+      if (connectionRequest.current === controller) connectionRequest.current = null;
+    }
+  }, [fitnessMode]);
 
   useEffect(() => {
     // 新手机端只传输文件：清理旧版本的 Service Worker 与离线缓存。
@@ -41,20 +69,35 @@ export default function PwaManager() {
       setInstalled(true);
       setInstallPrompt(null);
     };
-    const onOnline = () => setOnline(true);
-    const onOffline = () => setOnline(false);
+    const recheckConnection = () => void checkConnection(false);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") recheckConnection();
+    };
 
     window.addEventListener("beforeinstallprompt", onInstallPrompt);
     window.addEventListener("appinstalled", onInstalled);
-    window.addEventListener("online", onOnline);
-    window.addEventListener("offline", onOffline);
+    const initialCheck = fitnessMode
+      ? window.setTimeout(() => void checkConnection(), 0)
+      : null;
+    if (fitnessMode) {
+      window.addEventListener("online", recheckConnection);
+      window.addEventListener("offline", recheckConnection);
+      document.addEventListener("visibilitychange", onVisibilityChange);
+    }
+    const connectionTimer = fitnessMode
+      ? window.setInterval(() => void checkConnection(false), 15_000)
+      : null;
     return () => {
       window.removeEventListener("beforeinstallprompt", onInstallPrompt);
       window.removeEventListener("appinstalled", onInstalled);
-      window.removeEventListener("online", onOnline);
-      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", recheckConnection);
+      window.removeEventListener("offline", recheckConnection);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      if (initialCheck !== null) window.clearTimeout(initialCheck);
+      if (connectionTimer !== null) window.clearInterval(connectionTimer);
+      connectionRequest.current?.abort();
     };
-  }, []);
+  }, [checkConnection, fitnessMode]);
 
   const install = async () => {
     if (installPrompt) {
@@ -69,7 +112,20 @@ export default function PwaManager() {
 
   const showInstall = fitnessMode && !installed && (Boolean(installPrompt) || isIos);
   return <>
-    {!online && <div className="pwa-status offline" role="status"><WifiOff /> 手机需要连接电脑所在网络才能上传文件。</div>}
+    {fitnessMode && connection === "checking" && (
+      <div className="pwa-status checking" role="status" aria-live="polite">
+        <LoaderCircle className="spinning" /> 正在连接电脑上传服务…
+      </div>
+    )}
+    {fitnessMode && connection === "disconnected" && (
+      <div className="pwa-status offline" role="alert">
+        <WifiOff />
+        <span>无法连接电脑上传服务，请确认手机和电脑连接同一 Wi-Fi。</span>
+        <button className="pwa-retry" type="button" onClick={() => void checkConnection()} aria-label="重新检测电脑上传服务">
+          <RefreshCw /> 重试
+        </button>
+      </div>
+    )}
     {showInstall && <button className="pwa-install" onClick={install} aria-label="安装 Life trace 导入"><Download /><span><strong>安装 Life trace 导入</strong><small>添加到桌面，快速发送数据</small></span></button>}
     {showIosGuide && <div className="pwa-guide-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowIosGuide(false); }}>
       <section className="pwa-guide" role="dialog" aria-modal="true" aria-labelledby="pwa-guide-title">
