@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { englishAnalysisService } from "@/src/services/englishAnalysis";
-import { fetchVoaArticles, voaSyncResult } from "@/src/server/englishSources/voa";
+import { fetchVoaArticlesFromPython, voaSyncResult } from "@/src/server/englishSources/voaPython";
 import type { Activity, ActivityLog } from "@/src/types";
 import type {
   ArticleVocabularyItem,
@@ -207,8 +207,8 @@ export async function syncVoaArticles(force = false): Promise<EnglishSourceSyncR
     return voaSyncResult(0, 0, 0, true);
   }
 
-  const result = await fetchVoaArticles();
-  if (!result.articles.length && result.failed) throw new Error("暂时无法连接 VOA Learning English，已保留本地文章");
+  const result = await fetchVoaArticlesFromPython();
+  if (!result.articles.length && result.failed) throw new Error("Python 没有成功获取 VOA 文章，已保留本地文章");
   if (result.articles.length) await env.DB.batch(result.articles.map((article) => putStatement("articles", article)));
   return voaSyncResult(result.articles.length, result.skipped, result.failed, false);
 }

@@ -117,16 +117,18 @@ test("keeps the phone app upload-only and removes its cache service", async () =
 });
 
 test("provides the complete persistent daily English learning loop", async () => {
-  const [shell, page, schema, repository, analysisService, migration, source, syncRoute, englishTypes] = await Promise.all([
+  const [shell, page, schema, repository, analysisService, migration, source, syncRoute, englishTypes, voaBridge, pythonMain] = await Promise.all([
     readFile(new URL("../src/components/HengXuShell.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/english/DailyEnglish.tsx", import.meta.url), "utf8"),
     readFile(new URL("../db/schema.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/server/englishRepository.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/services/englishAnalysis.ts", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0004_calm_kulan_gath.sql", import.meta.url), "utf8"),
-    readFile(new URL("../src/server/englishSources/voa.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/server/englishSources/voaPython.ts", import.meta.url), "utf8"),
     readFile(new URL("../app/api/english/sync/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/types/english.ts", import.meta.url), "utf8"),
+    readFile(new URL("../xunji_service/app/voa_bridge.py", import.meta.url), "utf8"),
+    readFile(new URL("../xunji_service/app/main.py", import.meta.url), "utf8"),
   ]);
 
   assert.match(shell, /id:\s*"english",\s*label:\s*"每日英语"/);
@@ -145,18 +147,19 @@ test("provides the complete persistent daily English learning loop", async () =>
   assert.match(repository, /syncVoaArticles/);
   assert.match(page, /同步 VOA/);
   assert.match(page, /VOA Learning English/);
-  assert.match(source, /learningenglish\.voanews\.com\/api\//);
-  assert.match(source, /isVoaOwnedArticle/);
-  assert.match(source, /Associated Press\|Agence France-Presse\|Reuters\|AFP/);
-  assert.match(source, /safeVoaUrl/);
+  assert.match(source, /SERVICE_URL.*VOA_SERVICE_URL/s);
+  assert.match(source, /\/api\/voa\/articles/);
+  assert.match(source, /engine:\s*"python"/);
+  assert.doesNotMatch(source, /VOA_FEEDS|fetch\(\s*["'`]https:\/\/learningenglish/);
+  assert.match(voaBridge, /fetch_voa_articles\.py/);
+  assert.match(voaBridge, /subprocess\.run/);
+  assert.match(voaBridge, /ThreadPoolExecutor/);
+  assert.match(pythonMain, /@app\.post\("\/api\/voa\/articles"\)/);
+  assert.match(pythonMain, /asyncio\.to_thread\(fetch_voa_articles/);
   assert.match(syncRoute, /syncVoaArticles/);
   for (const field of ["sourceUrl", "externalId", "publishedAt", "sourceName", "audioUrl", "author", "summary", "wordCount", "fetchedAt", "rightsNote"]) {
     assert.match(englishTypes, new RegExp(`${field}\\?`));
   }
-  assert.match(source, /parseArticleJsonLd/);
-  assert.match(source, /FETCH_ATTEMPTS\s*=\s*3/);
-  assert.match(source, /zmypyl-vomx-tpeyry_/);
-  assert.match(source, /audioFromHtml/);
   assert.match(page, /VOA 原文音频/);
   assert.match(page, /preload="none"/);
 });

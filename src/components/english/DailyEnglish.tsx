@@ -114,13 +114,13 @@ export default function DailyEnglish() {
 
   const syncVoa = async () => {
     setSyncingSource(true);
-    setMessage("正在从 VOA Learning English 获取文章…");
+    setMessage("正在调用本机 Python 抓取 VOA 文章…");
     try {
       const result = await post<EnglishSourceSyncResult>("/api/english/sync", { force: true });
       const articleData = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
       setArticles(articleData.articles);
       setMessage(result.imported
-        ? `已同步 ${result.imported} 篇 VOA 文章`
+        ? `Python 已同步 ${result.imported} 篇 VOA 文章`
         : result.cached ? "VOA 文章已经是最新状态" : "本次没有发现可导入的新文章");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "VOA 文章同步失败");

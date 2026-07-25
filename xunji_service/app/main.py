@@ -4,9 +4,10 @@ import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
 
 from .errors import XunjiError
 from .fetcher import fetch_share_page
@@ -18,12 +19,13 @@ from .parser import (
     save_debug,
 )
 from .qr_decoder import MAX_IMAGE_BYTES, decode_xunji_qr
+from .voa_bridge import VoaFetchError, fetch_voa_articles
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger("xunji-import")
 DEBUG_ROOT = Path(__file__).resolve().parents[1] / "debug"
 
-app = FastAPI(title="LifeTrace 训记同步服务", version="1.0.0")
+app = FastAPI(title="LifeTrace 本地解析与抓取服务", version="1.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3103", "http://127.0.0.1:3103"],
@@ -42,6 +44,19 @@ async def handle_xunji_error(_: Request, error: XunjiError) -> JSONResponse:
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+class VoaFetchRequest(BaseModel):
+    limitPerFeed: int = Field(default=2, ge=1, le=5)
+
+
+@app.post("/api/voa/articles")
+async def fetch_voa(request: VoaFetchRequest) -> dict[str, object]:
+    try:
+        return await asyncio.to_thread(fetch_voa_articles, request.limitPerFeed)
+    except VoaFetchError as error:
+        logger.warning("VOA fetch failed: %s", error)
+        raise HTTPException(status_code=502, detail=str(error)) from error
 
 
 @app.post("/api/xunji/parse", response_model=ParseResponse)

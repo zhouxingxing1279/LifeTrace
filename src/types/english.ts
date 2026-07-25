@@ -37,6 +37,7 @@ export interface EnglishArticle {
 
 export interface EnglishSourceSyncResult {
   source: "voa";
+  engine: "python";
   imported: number;
   skipped: number;
   failed: number;
