@@ -273,6 +273,54 @@ export async function listArticles(level?: CEFRLevel, category?: string) {
   );
 }
 
+export async function listArticlesPage(options: {
+  page?: number;
+  pageSize?: number;
+  level?: CEFRLevel;
+  category?: string;
+  query?: string;
+}) {
+  await ensureEnglishSchema();
+  const page = Math.max(1, Math.floor(options.page ?? 1));
+  const pageSize = Math.min(48, Math.max(6, Math.floor(options.pageSize ?? 18)));
+  const clauses = ["COALESCE(json_extract(data_json, '$.processingStatus'), 'READY') = 'READY'"];
+  const values: Array<string | number> = [];
+
+  if (options.level) {
+    clauses.push("json_extract(data_json, '$.level') = ?");
+    values.push(options.level);
+  }
+  if (options.category) {
+    clauses.push("json_extract(data_json, '$.category') = ?");
+    values.push(options.category);
+  }
+  if (options.query?.trim()) {
+    clauses.push("LOWER(json_extract(data_json, '$.title')) LIKE ?");
+    values.push(`%${options.query.trim().toLowerCase()}%`);
+  }
+
+  const where = clauses.join(" AND ");
+  const offset = (page - 1) * pageSize;
+  const count = await env.DB.prepare(
+    `SELECT COUNT(*) AS count FROM ${tableNames.articles} WHERE ${where}`,
+  ).bind(...values).first<{ count: number }>();
+  const rows = await env.DB.prepare(
+    `SELECT data_json FROM ${tableNames.articles}
+     WHERE ${where}
+     ORDER BY updated_at DESC
+     LIMIT ? OFFSET ?`,
+  ).bind(...values, pageSize, offset).all<{ data_json: string }>();
+  const total = Number(count?.count ?? 0);
+
+  return {
+    articles: rows.results.map((row) => JSON.parse(row.data_json) as EnglishArticle),
+    total,
+    page,
+    pageSize,
+    hasMore: offset + rows.results.length < total,
+  };
+}
+
 export async function saveSummary(input: { articleId: string; summary: string; readingTimeSeconds?: number; recordId?: string }) {
   const records = await readEnglishTable<EnglishLearningRecord>("records");
   const existing = input.recordId

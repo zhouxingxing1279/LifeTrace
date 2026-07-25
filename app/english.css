@@ -220,9 +220,9 @@
 .en-reader.dark .en-article-audio { border-color: rgba(158,225,197,.22); background: rgba(50,141,104,.12); }
 .en-reading-content { font-family: Georgia, "Times New Roman", serif; }
 .en-reading-content p { margin: 0 0 1.4em; }
-.en-reading-content button { display: inline; padding: 0; border: 0; color: inherit; background: transparent; font-family: inherit; font-size: inherit; line-height: inherit; cursor: pointer; }
-.en-reading-content button:hover, .en-reading-content button.key-word { color: #197155; background: linear-gradient(transparent 70%, #bee8d7 70%); }
-.en-reader.dark .en-reading-content button.key-word { color: #9ee1c5; background: linear-gradient(transparent 70%, rgba(50,141,104,.45) 70%); }
+.en-reading-word { color: inherit; cursor: pointer; }
+.en-reading-word:hover, .en-reading-word.key-word { color: #197155; background: linear-gradient(transparent 70%, #bee8d7 70%); }
+.en-reader.dark .en-reading-word.key-word { color: #9ee1c5; background: linear-gradient(transparent 70%, rgba(50,141,104,.45) 70%); }
 .en-finish-reading { margin-top: 26px; }
 .en-reader-side { display: grid; align-content: start; gap: 16px; }
 .en-reader-side section { padding: 20px; border-radius: 18px; background: rgba(255,255,255,.76); }
@@ -285,9 +285,6 @@
 .en-dictionary-popover legend { padding: 0 5px; color: var(--en-muted); font-size: 12px; }
 .en-dictionary-popover fieldset label { display: flex; gap: 8px; align-items: flex-start; cursor: pointer; }
 .en-dictionary-definition { color: var(--en-muted); font: italic 14px/1.5 Georgia, serif; }
-.en-dictionary-popover blockquote { margin: 14px 0; padding: 12px; border-left: 3px solid var(--en-green); background: #f5f8f6; }
-.en-dictionary-popover blockquote span { display: block; margin-bottom: 5px; color: var(--en-muted); font-size: 11px; }
-.en-dictionary-popover blockquote button { display: flex; gap: 5px; margin-top: 9px; border: 0; color: var(--en-green); background: transparent; cursor: pointer; }
 .en-dictionary-popover .primary { display: flex; width: 100%; align-items: center; justify-content: center; gap: 7px; padding: 11px; border: 0; border-radius: 9px; color: white; background: var(--en-green); cursor: pointer; }
 .en-dictionary-popover .primary:disabled { opacity: .45; cursor: not-allowed; }
 .en-dictionary-empty { margin-top: 18px; padding: 14px; color: var(--en-muted); background: #f5f8f6; }
@@ -510,6 +507,25 @@
 .en-article-grid footer small { color: var(--en-muted); }
 .en-article-grid button { display: flex; align-items: center; gap: 4px; padding: 8px 11px; border: 0; border-radius: 10px; color: white; background: var(--en-green); cursor: pointer; }
 .en-article-grid button svg { width: 14px; }
+.en-article-grid button:disabled { cursor: wait; opacity: .72; }
+.en-article-skeleton article { min-height: 250px; pointer-events: none; }
+.en-article-skeleton i, .en-article-skeleton h3, .en-article-skeleton p, .en-article-skeleton small, .en-article-skeleton b {
+  display: block; border-radius: 6px; background: linear-gradient(90deg,#edf2f0 25%,#f7f9f8 50%,#edf2f0 75%); background-size: 220% 100%; animation: en-library-skeleton 1.2s ease-in-out infinite;
+}
+.en-article-skeleton i { width: 72px; height: 12px; }
+.en-article-skeleton h3 { width: 78%; height: 52px; margin: 20px 0; }
+.en-article-skeleton p { width: 100%; height: 13px; margin: 9px 0; }
+.en-article-skeleton p + p { width: 68%; }
+.en-article-skeleton footer { margin-top: 30px; }
+.en-article-skeleton small { width: 110px; height: 12px; }
+.en-article-skeleton b { width: 62px; height: 34px; }
+.en-library-load-more { display: flex; min-height: 64px; align-items: center; justify-content: center; color: var(--en-muted); font-size: 13px; }
+.en-library-load-more button, .en-library-error button { padding: 9px 14px; border: 1px solid #cfdcd6; border-radius: 9px; color: var(--en-green); background: white; cursor: pointer; }
+.en-library-error { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; padding: 12px 14px; border-left: 3px solid #bd4b4b; color: #7a3030; background: #fff7f7; }
+@keyframes en-library-skeleton { to { background-position: -220% 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .en-article-skeleton i, .en-article-skeleton h3, .en-article-skeleton p, .en-article-skeleton small, .en-article-skeleton b { animation: none; }
+}
 
 .en-vocab-review { display: flex; justify-content: space-between; gap: 20px; margin-bottom: 20px; padding: 28px; border-radius: 23px; color: white; background: linear-gradient(120deg,#214a3b,#30785c); }
 .en-vocab-review h3 { margin: 5px 0; font-family: Georgia, serif; font-size: 34px; }

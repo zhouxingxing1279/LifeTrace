@@ -1,4 +1,4 @@
-import { getArticle, listArticles, LEVELS } from "@/src/server/englishRepository";
+import { getArticle, listArticles, listArticlesPage, LEVELS } from "@/src/server/englishRepository";
 import type { CEFRLevel } from "@/src/types/english";
 
 // GET /api/english/articles：支持按等级、分类筛选，也可通过 id 读取单篇文章。
@@ -12,6 +12,22 @@ export async function GET(request: Request) {
     }
     const levelValue = url.searchParams.get("level");
     const level = LEVELS.includes(levelValue as CEFRLevel) ? levelValue as CEFRLevel : undefined;
+    const pageValue = url.searchParams.get("page");
+    if (pageValue) {
+      const result = await listArticlesPage({
+        page: Number(pageValue),
+        pageSize: Number(url.searchParams.get("pageSize") ?? 18),
+        level,
+        category: url.searchParams.get("category") ?? undefined,
+        query: url.searchParams.get("q") ?? undefined,
+      });
+      return Response.json({
+        ...result,
+        articles: url.searchParams.get("summary") === "1"
+          ? result.articles.map((article) => ({ ...article, content: article.content.slice(0, 360) }))
+          : result.articles,
+      });
+    }
     return Response.json({ articles: await listArticles(level, url.searchParams.get("category") ?? undefined) });
   } catch (error) {
     return Response.json({ error: error instanceof Error ? error.message : "文章列表读取失败" }, { status: 500 });

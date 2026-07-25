@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ArrowLeft, BarChart3, BookOpen, Bot, Check, ChevronRight, Clock3, Flame,
   ExternalLink, Headphones, Highlighter, Languages, Library, ListChecks, Minus, Moon, NotebookPen,
@@ -16,7 +16,6 @@ import type {
   UserVocabulary,
   VocabularySettings,
 } from "@/src/types/english";
-import EnglishSourceManager from "./EnglishSourceManager";
 import { DictionaryPopover } from "./vocabulary/DictionaryPopover";
 import { VocabularyWorkspace } from "./vocabulary/VocabularyWorkspace";
 
@@ -68,7 +67,6 @@ export default function DailyEnglish() {
   const [view, setView] = useState<EnglishView>("overview");
   const [today, setToday] = useState<EnglishTodayResponse | null>(null);
   const [history, setHistory] = useState<EnglishHistoryResponse | null>(null);
-  const [articles, setArticles] = useState<EnglishArticle[]>([]);
   const [vocabularyVersion, setVocabularyVersion] = useState(0);
   const [vocabularyMode, setVocabularyMode] = useState<"list" | "review">("list");
   const [vocabularyStats, setVocabularyStats] = useState({ dueToday: 0, addedWeek: 0, mastered: 0 });
@@ -84,16 +82,14 @@ export default function DailyEnglish() {
   const load = async () => {
     setLoading(true);
     try {
-      const [todayData, historyData, articleData, vocabularyStatsData, assistantData] = await Promise.all([
+      const [todayData, historyData, vocabularyStatsData, assistantData] = await Promise.all([
         request<EnglishTodayResponse>("/api/english/today"),
         request<EnglishHistoryResponse>("/api/english/history"),
-        request<{ articles: EnglishArticle[] }>("/api/english/articles"),
         request<{ dueToday: number; addedWeek: number; mastered: number }>("/api/english/vocabulary/stats"),
         request<{ sampleSize: number; weakPoints: string[]; message: string; nextStage: string }>("/api/english/assistant"),
       ]);
       setToday(todayData);
       setHistory(historyData);
-      setArticles(articleData.articles);
       setVocabularyStats(vocabularyStatsData);
       setAssistant(assistantData);
       setCurrentArticle((value) => value ?? todayData.article);
@@ -172,13 +168,8 @@ export default function DailyEnglish() {
     {view === "vocabulary" && <VocabularyWorkspace refreshKey={vocabularyVersion} initialMode={vocabularyMode} />}
     {view === "history" && <History history={history} />}
     {view === "articles" && <ArticleLibrary
-      articles={articles}
       currentLevel={today.currentLevel}
       start={startReading}
-      refreshArticles={async () => {
-        const data = await request<{ articles: EnglishArticle[] }>("/api/english/articles");
-        setArticles(data.articles);
-      }}
     />}
     {view === "assistant" && <Assistant insight={assistant} history={history} />}
   </div>;
@@ -283,12 +274,12 @@ function Reader({ article, back, finish, onWordAdded, setMessage }: {
   const renderParagraph = (paragraph: string) => paragraph.split(/(\b[A-Za-z][A-Za-z'-]*\b)/g).map((part, index) => {
     if (!/^[A-Za-z][A-Za-z'-]*$/.test(part)) return part;
     const known = article.vocabulary.some((item) => item.word.toLowerCase() === part.toLowerCase());
-    return <button className={known ? "key-word" : ""} key={`${part}-${index}`} onClick={() => void openWord(part, paragraph)}>{part}</button>;
+    return <span className={`en-reading-word${known ? " key-word" : ""}`} data-reading-word={part} key={`${part}-${index}`}>{part}</span>;
   });
 
   return <div className={`en-reader ${dark ? "dark" : ""}`} onMouseDown={(event) => {
     const target = event.target as HTMLElement;
-    if (!target.closest(".en-dictionary-popover") && !target.closest(".en-reading-content button")) setLookup(null);
+    if (!target.closest(".en-dictionary-popover") && !target.closest(".en-reading-word")) setLookup(null);
   }}>
     <header className="en-reader-bar">
       <button onClick={back}><ArrowLeft />返回</button>
@@ -316,7 +307,12 @@ function Reader({ article, back, finish, onWordAdded, setMessage }: {
           <span><Headphones aria-hidden /> VOA 原文音频</span>
           <audio controls preload="none" src={article.audioUrl}>当前环境不支持音频播放。</audio>
         </section>}
-        <div className="en-reading-content" style={{ fontSize, lineHeight }} onMouseUp={() => {
+        <div className="en-reading-content" style={{ fontSize, lineHeight }} onClick={(event) => {
+          const word = (event.target as HTMLElement).closest<HTMLElement>("[data-reading-word]")?.dataset.readingWord;
+          if (!word || window.getSelection()?.toString().trim()) return;
+          const paragraph = (event.target as HTMLElement).closest("p")?.textContent ?? word;
+          void openWord(word, paragraph);
+        }} onMouseUp={() => {
           const text = window.getSelection()?.toString().trim() ?? "";
           if (!text) return;
           setSelectedText(text);
@@ -415,19 +411,151 @@ function History({ history }: { history: EnglishHistoryResponse | null }) {
   </div>;
 }
 
-function ArticleLibrary({ articles, currentLevel, start, refreshArticles }: {
+type ArticlePage = {
   articles: EnglishArticle[];
+  total: number;
+  page: number;
+  pageSize: number;
+  hasMore: boolean;
+};
+
+function ArticleLibrary({ currentLevel, start }: {
   currentLevel: CEFRLevel;
   start: (article: EnglishArticle) => void;
-  refreshArticles: () => Promise<void>;
 }) {
   const [level, setLevel] = useState<CEFRLevel | "all">("all");
   const [query, setQuery] = useState("");
-  const shown = articles.filter((article) => (level === "all" || article.level === level) && article.title.toLowerCase().includes(query.toLowerCase()));
+  const [articles, setArticles] = useState<EnglishArticle[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [status, setStatus] = useState<"loading" | "ready" | "loading-more" | "error">("loading");
+  const [error, setError] = useState("");
+  const [openingId, setOpeningId] = useState<string>();
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const loadingMoreRef = useRef(false);
+  const loadMoreActionRef = useRef<() => void>(() => undefined);
+  const libraryStatusRef = useRef(status);
+
+  const fetchPage = useCallback(async (pageNumber: number, replace: boolean, signal?: AbortSignal) => {
+    const params = new URLSearchParams({
+      page: String(pageNumber),
+      pageSize: "18",
+      summary: "1",
+    });
+    if (level !== "all") params.set("level", level);
+    if (query.trim()) params.set("q", query.trim());
+    const result = await request<ArticlePage>(`/api/english/articles?${params}`, { signal });
+    setArticles((current) => {
+      if (replace) return result.articles;
+      const known = new Set(current.map((article) => article.id));
+      return [...current, ...result.articles.filter((article) => !known.has(article.id))];
+    });
+    setTotal(result.total);
+    setPage(result.page);
+    setHasMore(result.hasMore);
+  }, [level, query]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      setStatus("loading");
+      setError("");
+      void fetchPage(1, true, controller.signal)
+        .then(() => setStatus("ready"))
+        .catch((loadError) => {
+          if (controller.signal.aborted) return;
+          setError(loadError instanceof Error ? loadError.message : "文章库加载失败");
+          setStatus("error");
+        });
+    }, query.trim() ? 180 : 0);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [fetchPage, query]);
+
+  const loadMore = useCallback(async () => {
+    if (!hasMore || status !== "ready" || loadingMoreRef.current) return;
+    loadingMoreRef.current = true;
+    setStatus("loading-more");
+    try {
+      await fetchPage(page + 1, false);
+      setStatus("ready");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "更多文章加载失败");
+      setStatus("error");
+    } finally {
+      loadingMoreRef.current = false;
+    }
+  }, [fetchPage, hasMore, page, status]);
+
+  useEffect(() => {
+    libraryStatusRef.current = status;
+    loadMoreActionRef.current = () => void loadMore();
+  }, [loadMore, status]);
+
+  useEffect(() => {
+    const target = loadMoreRef.current;
+    if (!target) return;
+    let armed = true;
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting) {
+        armed = true;
+        return;
+      }
+      if (armed && libraryStatusRef.current === "ready") {
+        armed = false;
+        loadMoreActionRef.current();
+      }
+    }, { rootMargin: "240px" });
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, []);
+
+  const openArticle = async (article: EnglishArticle) => {
+    setOpeningId(article.id);
+    setError("");
+    try {
+      const detail = await request<EnglishArticle>(`/api/english/articles?id=${encodeURIComponent(article.id)}`);
+      start(detail);
+    } catch (openError) {
+      setError(openError instanceof Error ? openError.message : "文章打开失败");
+    } finally {
+      setOpeningId(undefined);
+    }
+  };
+
+  const retry = async () => {
+    setStatus("loading");
+    setError("");
+    try {
+      await fetchPage(1, true);
+      setStatus("ready");
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : "文章库加载失败");
+      setStatus("error");
+    }
+  };
+
   return <div>
-    <EnglishSourceManager onArticlesChanged={() => void refreshArticles()} />
-    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p>当前推荐等级：{currentLevel} · {levelName[currentLevel]}</p></div><div><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
-    <div className="en-article-grid">{shown.map((article) => <article key={article.id}><span>{article.level} · {categoryName[article.category]}</span>{article.source === "voa" && <small className="en-source-badge">VOA Learning English</small>}<h3>{article.title}</h3><p>{article.content}</p><footer><small>{article.estimatedMinutes} 分钟 · 难度 {article.difficulty}/5</small><button onClick={() => start(article)}>阅读 <ChevronRight /></button></footer></article>)}</div>
+    <div className="en-section-head"><div><span className="en-eyebrow">ARTICLE LIBRARY</span><h2>按你的水平，<br />选择下一篇文章。</h2><p aria-live="polite">{status === "loading" ? "正在准备文章库…" : `共 ${total} 篇 · 已加载 ${articles.length} 篇 · 当前推荐等级：${currentLevel} · ${levelName[currentLevel]}`}</p></div><div><input aria-label="搜索文章" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索文章" /><select aria-label="按等级筛选" value={level} onChange={(event) => setLevel(event.target.value as CEFRLevel | "all")}><option value="all">全部等级</option>{(["A1", "A2", "B1", "B2", "C1"] as CEFRLevel[]).map((item) => <option value={item} key={item}>{item}</option>)}</select></div></div>
+    {error && <div className="en-library-error" role="status">{error}<button onClick={() => void retry()}>重新加载</button></div>}
+    {status === "loading" ? <ArticleLibrarySkeleton /> : <>
+      <div className="en-article-grid">{articles.map((article) => <article key={article.id}><span>{article.level} · {categoryName[article.category]}</span><h3>{article.title}</h3><p>{article.content}</p><footer><small>{article.estimatedMinutes} 分钟 · 难度 {article.difficulty}/5</small><button disabled={openingId === article.id} onClick={() => void openArticle(article)}>{openingId === article.id ? "正在打开…" : "阅读"} {!openingId && <ChevronRight />}</button></footer></article>)}</div>
+      {!articles.length && status !== "error" && <p className="en-empty">没有找到符合条件的文章。</p>}
+    </>}
+    <div className="en-library-load-more" ref={loadMoreRef}>
+      {status !== "loading" && hasMore && <button disabled={status === "loading-more"} onClick={() => void loadMore()}>{status === "loading-more" ? "正在加载更多文章…" : "加载更多文章"}</button>}
+      {status !== "loading" && !hasMore && articles.length > 0 && <span>已加载全部 {total} 篇文章</span>}
+    </div>
+  </div>;
+}
+
+function ArticleLibrarySkeleton() {
+  return <div className="en-article-grid en-article-skeleton" aria-label="正在加载文章">
+    {Array.from({ length: 6 }, (_, index) => <article key={index} aria-hidden="true"><i /><h3 /><p /><p /><footer><small /><b /></footer></article>)}
   </div>;
 }
 
