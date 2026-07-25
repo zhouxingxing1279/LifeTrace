@@ -71,6 +71,13 @@
       "when": 1785081600000,
       "tag": "0009_offline_vocabulary",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1785168000000,
+      "tag": "0010_remove_legacy_workout_catalog",
+      "breakpoints": true
     }
   ]
 }
