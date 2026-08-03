@@ -51,11 +51,14 @@ export interface EnglishArticle {
   fetchStatus?: EnglishFetchStatus;
   retryCount?: number;
   lastError?: string;
+  /** Per-user reading metadata returned by article list endpoints. */
+  readingStatus?: EnglishReadingStatus;
+  completedAt?: string;
 }
 
 export interface EnglishSourceSyncResult {
   source: "voa" | "all" | string;
-  engine: "python";
+  engine: "rust";
   imported: number;
   inserted?: number;
   updated?: number;
@@ -150,6 +153,7 @@ export interface EnglishLibraryStats {
 }
 
 export type EnglishCompletionStatus = "reading" | "summarized" | "analyzed" | "completed";
+export type EnglishReadingStatus = "unread" | "reading" | "completed";
 
 export interface EnglishLearningRecord {
   id: string;
@@ -162,6 +166,8 @@ export interface EnglishLearningRecord {
   analysisId?: string;
   newWords: string[];
   completionStatus: EnglishCompletionStatus;
+  /** Added separately from completionStatus so reading can finish before the summary workflow. */
+  readingStatus?: Exclude<EnglishReadingStatus, "unread">;
   startedAt: string;
   completedAt?: string;
   createdAt: string;
@@ -266,12 +272,27 @@ export interface VocabularySettings {
   includeMasteredInRecommendations: boolean;
 }
 
+export interface EnglishTextAnchor {
+  blockId?: string;
+  startOffset?: number;
+  endOffset?: number;
+  selectedText: string;
+  prefix?: string;
+  suffix?: string;
+}
+
 export interface EnglishHighlight {
   id: string;
   userId: string;
   articleId: string;
   text: string;
   color: "yellow" | "green" | "blue";
+  blockId?: string;
+  startOffset?: number;
+  endOffset?: number;
+  selectedText?: string;
+  prefix?: string;
+  suffix?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -282,6 +303,13 @@ export interface EnglishNote {
   articleId: string;
   quote?: string;
   content: string;
+  blockId?: string;
+  startOffset?: number;
+  endOffset?: number;
+  selectedText?: string;
+  prefix?: string;
+  suffix?: string;
+  highlightId?: string;
   createdAt: string;
   updatedAt: string;
 }

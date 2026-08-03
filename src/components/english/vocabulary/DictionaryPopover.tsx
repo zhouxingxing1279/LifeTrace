@@ -71,7 +71,6 @@ export function DictionaryPopover({ lookup, article, settings, onClose, onAdded,
         {!meanings.length && <p>暂无中文释义</p>}
       </fieldset>
       {lookup.partsOfSpeech?.flatMap((part) => part.definition).slice(0, 2).map((definition) => <p className="en-dictionary-definition" key={definition}>{definition}</p>)}
-      {lookup.sourceSentence && <blockquote><span>原句</span>{lookup.sourceSentence}<button onClick={() => void speak(lookup.sourceSentence!, "sentence")}><Volume2 />播放原句</button></blockquote>}
       <button className="primary" disabled={saving || !meanings.length} onClick={() => void save()}><BookPlus />{saving ? "正在加入…" : selected.length ? `加入生词本（${selected.length}）` : "以第一条释义加入"}</button>
     </>}
   </div>;

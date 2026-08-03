@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>LifeTrace 手机上传</title>
+  <style>
+    :root{color-scheme:light;--ink:#10231d;--muted:#6b7c75;--accent:#14775d;--soft:#e6f2ed;--line:#dbe4df;--paper:#fff;--bg:#f1f5f3}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+    main{width:min(100% - 32px,560px);margin:auto;padding:calc(22px + env(safe-area-inset-top)) 0 calc(36px + env(safe-area-inset-bottom))}
+    header{display:flex;align-items:center;gap:13px;margin-bottom:22px}.mark{width:48px;height:48px;border-radius:16px;background:var(--ink);color:#c8f0df;display:grid;place-items:center;font-weight:850}
+    header h1{font-size:22px;margin:2px 0 0}header small{color:var(--muted)}
+    .status{margin-left:auto;padding:8px 11px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:12px;font-weight:700}.status.offline{background:#f9e7e5;color:#a23e37}
+    .hero{padding:24px;border-radius:24px;background:linear-gradient(145deg,#10231d,#1c4c3d);color:#fff;box-shadow:0 18px 48px rgba(20,55,44,.18)}
+    .hero small{color:#9ec7b7}.hero h2{font-size:25px;line-height:1.28;margin:11px 0 8px}.hero p{font-size:14px;line-height:1.7;color:#b5ccc3;margin:0}
+    .actions{display:grid;gap:12px;margin-top:16px}.upload{width:100%;min-height:108px;border:1px solid var(--line);border-radius:20px;background:var(--paper);padding:18px;display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:14px;text-align:left;color:var(--ink);box-shadow:0 8px 28px rgba(22,53,42,.05)}
+    .upload:disabled{opacity:.55}.upload .icon{width:48px;height:48px;border-radius:15px;background:var(--soft);display:grid;place-items:center;color:var(--accent);font-size:23px}.upload b{display:block;font-size:17px}.upload small{display:block;color:var(--muted);line-height:1.55;margin-top:5px}.upload em{font-size:13px;color:var(--accent);font-style:normal;font-weight:700}
+    input{display:none}.message{display:none;margin:16px 0 0;padding:14px 16px;border-radius:14px;background:var(--soft);color:var(--accent);font-size:14px;line-height:1.55}.message.show{display:block}.message.error{background:#f9e7e5;color:#a23e37}
+    .history{margin-top:20px;background:var(--paper);border:1px solid var(--line);border-radius:20px;padding:18px}.history h3{font-size:15px;margin:0 0 12px}.history p{margin:0;color:var(--muted);font-size:13px}.history ul{list-style:none;padding:0;margin:0;display:grid;gap:9px}.history li{padding:11px 12px;border-radius:12px;background:#f5f8f6;font-size:13px;display:flex;justify-content:space-between;gap:12px}.history time{color:var(--muted);white-space:nowrap}
+    footer{text-align:center;color:var(--muted);font-size:12px;line-height:1.6;margin-top:22px}
+    @media(max-width:390px){main{width:min(100% - 22px,560px)}.upload{grid-template-columns:44px 1fr}.upload em{grid-column:2}.hero{padding:21px}}
+  </style>
+</head>
+<body>
+<main>
+  <header><span class="mark">LT</span><div><small>同一局域网临时入口</small><h1>发送到电脑</h1></div><span id="status" class="status">连接检查中</span></header>
+  <section class="hero"><small>文件只保存在你的电脑</small><h2>手机选择文件，<br>电脑负责解析和整理。</h2><p>上传完成后可在 LifeTrace 电脑端确认结果。使用结束后，请在电脑上关闭手机上传。</p></section>
+  <section class="actions">
+    <button id="trainingButton" class="upload" type="button"><span class="icon">图</span><span><b>导入训练截图</b><small>选择训记分享图，电脑读取二维码并生成待确认记录</small></span><em>选择图片</em></button>
+    <input id="trainingInput" type="file" accept="image/jpeg,image/png,image/webp,image/bmp">
+    <button id="billButton" class="upload" type="button"><span class="icon">表</span><span><b>导入账单文件</b><small>支持微信 Excel / CSV 和支付宝 CSV，稍后在电脑端解析确认</small></span><em>选择文件</em></button>
+    <input id="billInput" type="file" multiple accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+  </section>
+  <p id="message" class="message" role="status"></p>
+  <section class="history"><h3>本次发送记录</h3><p id="empty">还没有发送文件。</p><ul id="history"></ul></section>
+  <footer>此页面仅在电脑端开启“手机上传”期间可用<br>手机与电脑需要连接同一个 Wi-Fi</footer>
+</main>
+<script>
+  const statusElement=document.querySelector('#status');
+  const message=document.querySelector('#message');
+  const history=document.querySelector('#history');
+  const empty=document.querySelector('#empty');
+  const trainingButton=document.querySelector('#trainingButton');
+  const billButton=document.querySelector('#billButton');
+  const trainingInput=document.querySelector('#trainingInput');
+  const billInput=document.querySelector('#billInput');
+  let busy=false;
+
+  function showMessage(text,error=false){message.textContent=text;message.className=`message show${error?' error':''}`}
+  function setBusy(value){busy=value;trainingButton.disabled=value;billButton.disabled=value}
+  function addHistory(name){empty.style.display='none';const row=document.createElement('li');const label=document.createElement('span');const time=document.createElement('time');label.textContent=name;time.textContent=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});row.append(label,time);history.prepend(row)}
+  async function readError(response,fallback){try{const value=await response.json();return value.error||value.message||fallback}catch{return fallback}}
+  async function check(){try{const response=await fetch('/api/health',{cache:'no-store'});const value=await response.json();if(!response.ok||!value.ok)throw new Error();statusElement.textContent='已连接';statusElement.className='status'}catch{statusElement.textContent='连接失败';statusElement.className='status offline'}}
+
+  trainingButton.addEventListener('click',()=>{if(!busy)trainingInput.click()});
+  billButton.addEventListener('click',()=>{if(!busy)billInput.click()});
+  trainingInput.addEventListener('change',async()=>{const file=trainingInput.files&&trainingInput.files[0];if(!file)return;setBusy(true);showMessage('正在上传到电脑，图片解析将在电脑端运行…');try{const form=new FormData();form.set('image',file);const response=await fetch('/api/xunji/parse',{method:'POST',body:form});if(!response.ok)throw new Error(await readError(response,'电脑端训练截图解析失败'));addHistory(file.name);showMessage('电脑端解析已完成，请在 LifeTrace 中查看并确认结果。')}catch(error){showMessage(error.message||'上传失败，请确认电脑端仍保持开启。',true)}finally{trainingInput.value='';setBusy(false)}});
+  billInput.addEventListener('change',async()=>{const files=Array.from(billInput.files||[]);if(!files.length)return;setBusy(true);showMessage(`正在发送 ${files.length} 个账单文件…`);try{for(const file of files){const form=new FormData();form.set('kind','bill');form.set('file',file);const response=await fetch('/api/imports',{method:'POST',body:form});if(!response.ok)throw new Error(await readError(response,`${file.name} 上传失败`));addHistory(file.name)}showMessage(`${files.length} 个账单文件已发送到电脑。`)}catch(error){showMessage(error.message||'上传失败，请确认电脑端仍保持开启。',true)}finally{billInput.value='';setBusy(false)}});
+  check();setInterval(check,15000);
+</script>
+</body>
+</html>

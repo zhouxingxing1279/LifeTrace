@@ -41,11 +41,13 @@ export interface ActivityLog {
 export interface Transaction {
   id: string;
   userId: string;
-  type: "expense" | "income";
+  type: "expense" | "income" | "transfer";
   amount: number;
   category: string;
   account: string;
   accountId?: string;
+  toAccount?: string;
+  toAccountId?: string;
   counterparty?: string;
   item?: string;
   note?: string;
@@ -59,7 +61,9 @@ export interface FinanceAccount {
   userId: string;
   name: string;
   type: "cash" | "bank" | "wechat" | "alipay" | "investment" | "other";
+  /** Balance at balanceAt; transactions after this point determine the current balance. */
   balance: number | null;
+  balanceAt?: string;
   last4?: string;
   color: string;
   icon: string;
@@ -68,21 +72,6 @@ export interface FinanceAccount {
   updatedAt: string;
 }
 
-export interface ExerciseDefinition {
-  id: string;
-  name: string;
-  force: "static" | "pull" | "push" | null;
-  level: "beginner" | "intermediate" | "expert";
-  mechanic: "isolation" | "compound" | null;
-  equipment: string | null;
-  primaryMuscles: string[];
-  secondaryMuscles: string[];
-  instructions: string[];
-  category: string;
-  images: string[];
-  nameZh?: string;
-  instructionsZh?: string[];
-}
 export interface WorkoutHistorySet {
   weight: number;
   reps: number;

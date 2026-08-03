@@ -8,7 +8,7 @@ import type { WorkoutImportRecord, XunjiWorkout } from "@/src/types";
 type ParsedImport = {
   importId: string;
   shareUrl: string;
-  parser: "embedded_json" | "playwright" | "dom" | "desktop";
+  parser: "embedded_json" | "dom" | "desktop";
   workout: XunjiWorkout;
 };
 
@@ -132,7 +132,7 @@ export default function XunjiImportPanel() {
       </section>}
       {message && <div className="xj-error"><X /><span><b>无法完成解析</b>{message}</span><button onClick={() => setMessage("")}>关闭</button></div>}
       {parsed && draft && <div className="xj-preview">
-        <header><div><span className="xj-success"><Check />解析成功</span><h3>{editing ? "编辑训练数据" : draft.title}</h3><small>解析方式：{parsed.parser === "embedded_json" ? "网页内嵌数据" : parsed.parser === "playwright" ? "动态接口数据" : parsed.parser === "desktop" ? "手机上传 · 电脑解析" : "网页结构"}</small></div><button className="hx-btn secondary" onClick={() => setEditing((value) => !value)}><Pencil />{editing ? "完成编辑" : "编辑"}</button></header>
+        <header><div><span className="xj-success"><Check />解析成功</span><h3>{editing ? "编辑训练数据" : draft.title}</h3><small>解析方式：{parsed.parser === "embedded_json" ? "网页内嵌数据" : parsed.parser === "desktop" ? "手机上传 · 电脑解析" : "网页结构"}</small></div><button className="hx-btn secondary" onClick={() => setEditing((value) => !value)}><Pencil />{editing ? "完成编辑" : "编辑"}</button></header>
         <div className="xj-meta">
           <label>训练日期<input disabled={!editing} type="date" value={draft.date} onChange={(event) => updateWorkout({ date: event.target.value })} /></label>
           <label>训练名称<input disabled={!editing} value={draft.title} onChange={(event) => updateWorkout({ title: event.target.value })} /></label>

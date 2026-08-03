@@ -259,7 +259,6 @@ textarea:focus-visible,
 .hx-habit-card,
 .hx-account-card,
 .hx-calendar,
-.hx-review-card,
 .xj-panel,
 .nt-workspace {
   border-color: rgba(124, 142, 158, 0.22);
@@ -271,8 +270,7 @@ textarea:focus-visible,
 .hx-metric,
 .hx-habit-card,
 .hx-account-card,
-.hx-calendar,
-.hx-review-card {
+.hx-calendar {
   border-radius: var(--hx-radius-md);
 }
 
@@ -574,8 +572,6 @@ textarea:focus-visible,
 .hx-tx-tools input,
 .hx-tx-tools select,
 .hx-analytics select,
-.hx-library-tools input,
-.hx-library-tools select,
 .xj-meta input,
 .xj-exercises input {
   min-height: 44px;
@@ -591,7 +587,6 @@ textarea:focus-visible,
 }
 
 .hx-form small,
-.hx-library-count,
 .hx-day-log p,
 .hx-day-log time {
   font-size: 11px;
@@ -631,6 +626,81 @@ textarea:focus-visible,
   min-height: 40px;
 }
 
+.hx-habit-card footer > div {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hx-habit-card footer > div > button {
+  min-width: 64px;
+  height: 40px;
+  padding-inline: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.hx-habit-card footer > div > button svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+}
+
+.hx-balance-basis {
+  display: block;
+  min-height: 18px;
+  margin: -10px 0 16px;
+  color: var(--hx-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.hx-balance-baseline {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 15px;
+  border: 1px solid var(--hx-line);
+  border-radius: 14px;
+  background: var(--hx-soft);
+}
+
+.hx-balance-baseline legend {
+  padding: 0 6px;
+  color: var(--hx-ink);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hx-balance-baseline > p,
+.hx-balance-baseline > small {
+  margin: 0;
+  color: var(--hx-muted);
+  font-size: 10px;
+  line-height: 1.6;
+}
+
+.hx-balance-baseline > small b {
+  color: var(--hx-accent2);
+  font-size: 12px;
+}
+
+.hx-balance-baseline > div {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
+}
+
+.hx-row > b.transfer,
+.hx-table-wrap td.transfer {
+  color: var(--hx-muted);
+  font-weight: 700;
+}
+
 .hx-empty p {
   color: var(--hx-muted);
   font-size: 12px;
@@ -642,6 +712,7 @@ textarea:focus-visible,
   padding: 12px 17px;
   border-radius: 14px;
   background: #102237;
+  cursor: pointer;
   font-size: 13px;
 }
 
@@ -952,9 +1023,42 @@ textarea:focus-visible,
     grid-column: 2;
     justify-self: start;
   }
+
+  .hx-balance-baseline > div {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hx-drop {
+  cursor: pointer;
+  outline: none;
+  transition: border-color 180ms ease, background-color 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+}
+
+.hx-drop:hover,
+.hx-drop:focus-visible {
+  border-color: var(--hx-accent);
+  background: #f1faf7;
+  box-shadow: 0 0 0 4px rgba(15, 118, 110, 0.12);
+}
+
+.hx-drop.is-dragging {
+  border-color: var(--hx-accent);
+  background: var(--hx-accent-soft);
+  box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.16);
+  transform: translateY(-2px);
+}
+
+.hx-drop.is-dragging > svg {
+  color: var(--hx-accent);
+  transform: scale(1.08);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .hx-drop.is-dragging {
+    transform: none;
+  }
+
   .hx-view,
   .hx-shell *,
   .hx-shell *::before,

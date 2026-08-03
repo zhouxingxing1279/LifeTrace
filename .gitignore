@@ -31,6 +31,26 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# personal databases and local application data
+/LifeTraceData/
+/backups/
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+*.sqlite3-*
+*.wal
+*.shm
+/photo-sync-config.json
+
+# local credentials and certificates
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+
 # vercel
 .vercel
 
@@ -38,8 +58,18 @@ yarn-error.log*
 next-env.d.ts
 *.tsbuildinfo
 /dist/
+/dist-tauri/
+/src-tauri/target/
+/src-tauri/gen/
+/build/
+/release/
+/release-runtime/
+/wrangler-state/
+/*.spec
 /.wrangler/
 /.local-certs/
+/.local-certificates/
+/local-certificates/
 /outputs/
 /work/
 ios/**/DerivedData/
@@ -52,10 +82,11 @@ ios/**/xcuserdata/
 /.xunji-*.log
 /.codex-server*.log
 /.desktop-runtime.log
+/desktop-runtime.log
+/.article-library-qa*.log
 /.codex-tmp/
 /.https-proxy*.log
 /.ui-redesign-dev*.log
-/backups/
 **/__pycache__/
 *.py[cod]
 /public/hengxu-local-ca.cer

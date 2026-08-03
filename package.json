@@ -1,26 +1,25 @@
 {
   "name": "lifetrace",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "private": true,
   "engines": {
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "vinext dev --hostname 0.0.0.0",
-    "https:local": "node scripts/local-https.mjs",
-    "pwa:build": "vinext build",
-    "pwa:start": "wrangler dev --config dist/server/wrangler.json --port 3103 --ip 0.0.0.0 --persist-to .wrangler/state",
-    "xunji:start": "python xunji_service/run.py",
-    "desktop": "electron desktop/main.cjs",
-    "build": "vinext build",
-    "start": "vinext start",
-    "test": "npm run test:sync && npm run build && node --test tests/rendered-html.test.mjs",
-    "test:sync": "tsx --test tests/*.test.ts",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
-    "db:generate": "drizzle-kit generate"
+    "dev": "tauri dev",
+    "desktop": "tauri dev",
+    "build": "tauri build",
+    "package:win": "tauri build",
+    "web:dev": "vite --config vite.tauri.config.ts",
+    "web:build": "vite build --config vite.tauri.config.ts",
+    "lint": "tsc --noEmit",
+    "test": "npm run lint && npm run test:unit && npm run web:build",
+    "test:unit": "tsx --test tests/*.test.ts",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.110.8",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-dialog": "^2.7.2",
     "@tiptap/extension-code-block-lowlight": "^3.29.0",
     "@tiptap/extension-image": "^3.29.0",
     "@tiptap/extension-link": "^3.29.0",
@@ -29,42 +28,29 @@
     "@tiptap/extension-task-list": "^3.29.0",
     "@tiptap/react": "^3.29.0",
     "@tiptap/starter-kit": "^3.29.0",
-    "@types/dompurify": "^3.0.5",
     "@types/turndown": "^5.0.6",
     "dompurify": "^3.4.12",
-    "drizzle-orm": "0.45.2",
-    "echarts": "^6.1.0",
     "lowlight": "^3.3.0",
     "lucide-react": "^1.25.0",
-    "next": "16.2.6",
-    "react": "19.2.6",
-    "react-dom": "19.2.6",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "react-markdown": "^10.1.0",
     "read-excel-file": "^9.3.4",
+    "remark-gfm": "^4.0.1",
     "turndown": "^7.2.4",
-    "zod": "^4.4.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "1.37.1",
-    "@tailwindcss/postcss": "4.2.1",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "22.19.19",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
-    "@vitejs/plugin-rsc": "0.5.26",
-    "drizzle-kit": "0.31.10",
-    "electron": "^43.2.0",
-    "eslint": "9.39.4",
-    "eslint-config-next": "16.2.6",
-    "react-server-dom-webpack": "19.2.6",
-    "tailwindcss": "4.2.1",
+    "tsx": "^4.23.1",
     "typescript": "5.9.3",
-    "vinext": "0.0.50",
-    "vite": "8.0.13",
-    "wrangler": "4.92.0"
+    "vite": "^8.1.5"
   },
-  "type": "module",
-  "allowScripts": {
-    "electron@43.2.0": true
-  }
+  "type": "module"
 }

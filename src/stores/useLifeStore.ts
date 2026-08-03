@@ -21,7 +21,7 @@ interface LifeState {
   toggleDark: () => void;
   initialize: () => Promise<void>;
   addLog: (activityId: string, value?: number, status?: ActivityLog["status"], metadata?: ActivityLog["metadata"], note?: string) => Promise<void>;
-  addTransaction: (data: Pick<Transaction, "type" | "amount" | "category" | "account"> & Partial<Pick<Transaction, "note" | "occurredAt" | "accountId" | "counterparty" | "item">>) => Promise<void>;
+  addTransaction: (data: Pick<Transaction, "type" | "amount" | "category" | "account"> & Partial<Pick<Transaction, "note" | "occurredAt" | "accountId" | "toAccount" | "toAccountId" | "counterparty" | "item">>) => Promise<void>;
   saveReview: (data: Pick<DailyReview, "energy" | "mood" | "bestThing" | "problem" | "tomorrowPriority" | "note">) => Promise<void>;
   addActivity: (data: Pick<Activity, "name" | "type" | "unit" | "normalTarget" | "targetPeriod"> & Partial<Pick<Activity, "minimumTarget" | "targetDays" | "icon" | "color" | "scheduleType" | "startDate" | "checkinMethod" | "syncSource" | "description">>) => Promise<void>;
   updateActivity: (id: string, data: Partial<Pick<Activity, "name" | "type" | "unit" | "minimumTarget" | "normalTarget" | "targetPeriod" | "targetDays" | "icon" | "color" | "scheduleType" | "startDate" | "checkinMethod" | "syncSource" | "description">>) => Promise<void>;
@@ -102,7 +102,7 @@ export const useLifeStore = create<LifeState>((set, get) => ({
   },
   saveAccount: async (data) => {
     const stamp=now(); const existing=data.id?get().accounts.find(item=>item.id===data.id):undefined;
-    const account:FinanceAccount={id:existing?.id??uid(),userId:"local-user",name:data.name,type:data.type,balance:data.balance??existing?.balance??0,last4:data.last4??existing?.last4,color:data.color,icon:data.icon,isArchived:false,createdAt:existing?.createdAt??stamp,updatedAt:stamp};
+    const account:FinanceAccount={id:existing?.id??uid(),userId:"local-user",name:data.name,type:data.type,balance:data.balance??existing?.balance??0,balanceAt:data.balanceAt??existing?.balanceAt,last4:data.last4??existing?.last4,color:data.color,icon:data.icon,isArchived:false,createdAt:existing?.createdAt??stamp,updatedAt:stamp};
     await mutateSQLite({operation:"put",table:"accounts",value:account});
     set({accounts:existing?get().accounts.map(item=>item.id===account.id?account:item):[...get().accounts,account]});
   },
