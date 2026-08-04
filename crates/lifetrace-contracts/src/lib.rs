@@ -18,10 +18,12 @@
 //!   wire to avoid JavaScript safe-integer issues.
 
 pub mod common;
+pub mod domain;
 pub mod error;
 pub mod ids;
 pub mod json_value;
 pub mod money;
+pub mod registry;
 pub mod time;
 
 pub use common::EntityMeta;
