@@ -6,6 +6,6 @@ use rusqlite::Connection;
 ///
 /// 阶段 1 先复用现有 `server::migration::migrate_once` 实现，保证行为不变；
 /// 阶段 7 将把实现收敛到本模块并补齐缺失表。
-pub fn import_once(connection: &Connection, data_dir: &Path) -> Result<usize, String> {
+pub fn import_once(connection: &mut Connection, data_dir: &Path) -> Result<usize, String> {
     crate::server::migration::migrate_once(connection, data_dir)
 }

@@ -39,7 +39,7 @@ pub fn create_backup(
 
     let mut destination = Connection::open(&path)
         .map_err(|error| format!("打开备份目标失败: {error}"))?;
-    let mut backup = rusqlite::backup::Backup::new(connection, &mut destination)
+    let backup = rusqlite::backup::Backup::new(connection, &mut destination)
         .map_err(|error| format!("创建备份失败: {error}"))?;
     let progress: Option<fn(rusqlite::backup::Progress)> = None;
     backup

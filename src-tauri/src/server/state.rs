@@ -7,20 +7,20 @@ use axum::{
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Map, Value};
 
+use crate::database::repositories::finance;
+
 use super::AppState;
 
-const TABLES: [(&str, &str); 7] = [
+const JSON_TABLES: [(&str, &str); 5] = [
     ("activities", "activities"),
     ("logs", "activity_logs"),
-    ("transactions", "transactions"),
     ("reviews", "daily_reviews"),
     ("settings", "settings"),
-    ("accounts", "finance_accounts"),
     ("workoutHistory", "workout_history"),
 ];
 
 fn table_name(key: &str) -> Option<&'static str> {
-    TABLES
+    JSON_TABLES
         .iter()
         .find_map(|(candidate, table)| (*candidate == key).then_some(*table))
 }
@@ -94,7 +94,7 @@ fn read_table(connection: &Connection, table: &str) -> Result<Value, String> {
 }
 
 pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
-    for (_, table) in TABLES {
+    for (_, table) in JSON_TABLES {
         connection.execute(
             &format!(
                 "CREATE TABLE IF NOT EXISTS {table} (
@@ -128,7 +128,7 @@ pub async fn get(State(state): State<AppState>) -> Response {
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "SQLite 锁已损坏"),
     };
     let mut result = Map::new();
-    for (key, table) in TABLES {
+    for (key, table) in JSON_TABLES {
         let values = match read_table(&connection, table) {
             Ok(value) => value,
             Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
@@ -145,6 +145,18 @@ pub async fn get(State(state): State<AppState>) -> Response {
         } else {
             result.insert(key.to_owned(), values);
         }
+    }
+    match finance::list_accounts(&connection) {
+        Ok(accounts) => {
+            result.insert("accounts".to_owned(), Value::Array(accounts));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
+    match finance::list_transactions(&connection) {
+        Ok(transactions) => {
+            result.insert("transactions".to_owned(), Value::Array(transactions));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
     }
     Json(Value::Object(result)).into_response()
 }
@@ -165,11 +177,23 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("table")
                 .and_then(Value::as_str)
                 .unwrap_or_default();
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
             let Some(value) = body.get("value") else {
                 return error(StatusCode::BAD_REQUEST, "缺少写入数据");
+            };
+            if key == "accounts" {
+                return match finance::save_account(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "transactions" {
+                return match finance::save_transaction(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            let Some(table) = table_name(key) else {
+                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
             };
             put(&connection, table, value)
         }
@@ -181,14 +205,33 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             if key == "settings" {
                 return error(StatusCode::BAD_REQUEST, "设置不支持局部更新");
             }
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
             let Some(id) = body.get("id").and_then(Value::as_str) else {
                 return error(StatusCode::BAD_REQUEST, "缺少数据 id");
             };
             let Some(patch) = body.get("patch").and_then(Value::as_object) else {
                 return error(StatusCode::BAD_REQUEST, "缺少更新内容");
+            };
+            if key == "accounts" {
+                let existing = finance::list_accounts(&connection)
+                    .ok()
+                    .and_then(|items| items.into_iter().find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
+                    .ok_or_else(|| "项目不存在".to_owned());
+                return match existing {
+                    Ok(mut value) => {
+                        if let Some(object) = value.as_object_mut() {
+                            object.extend(patch.clone());
+                            object.insert("id".to_owned(), Value::String(id.to_owned()));
+                        }
+                        match finance::save_account(&connection, &value) {
+                            Ok(()) => Json(json!({ "ok": true })).into_response(),
+                            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                        }
+                    }
+                    Err(message) => error(StatusCode::NOT_FOUND, message),
+                };
+            }
+            let Some(table) = table_name(key) else {
+                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
             };
             let sql = format!("SELECT data_json FROM {table} WHERE id=?1");
             let raw = match connection
@@ -218,11 +261,23 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             if key == "settings" {
                 return error(StatusCode::BAD_REQUEST, "不能删除设置");
             }
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
             let Some(id) = body.get("id").and_then(Value::as_str) else {
                 return error(StatusCode::BAD_REQUEST, "缺少数据 id");
+            };
+            if key == "accounts" {
+                return match finance::delete_account(&connection, id) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "transactions" {
+                return match finance::delete_transaction(&connection, id) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            let Some(table) = table_name(key) else {
+                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
             };
             connection
                 .execute(&format!("DELETE FROM {table} WHERE id=?1"), [id])
@@ -233,12 +288,33 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let Some(data) = body.get("data").and_then(Value::as_object) else {
                 return error(StatusCode::BAD_REQUEST, "备份数据格式错误");
             };
+            // 恢复前必须创建一致性备份。
+            if let Err(message) = crate::database::backup::create_backup(
+                &connection,
+                &state.data_dir,
+                "before-restore",
+            ) {
+                return error(StatusCode::INTERNAL_SERVER_ERROR, message);
+            }
             let transaction = match connection.transaction() {
                 Ok(value) => value,
                 Err(value) => return error(StatusCode::INTERNAL_SERVER_ERROR, value.to_string()),
             };
+            let accounts = data
+                .get("accounts")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let transactions = data
+                .get("transactions")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if let Err(message) = finance::replace_all(&transaction, &accounts, &transactions) {
+                return error(StatusCode::INTERNAL_SERVER_ERROR, message);
+            }
             let mut restore_error = None;
-            for (key, table) in TABLES {
+            for (key, table) in JSON_TABLES {
                 if key == "settings" {
                     continue;
                 }

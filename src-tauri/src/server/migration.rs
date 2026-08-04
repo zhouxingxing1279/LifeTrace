@@ -33,6 +33,19 @@ fn table_exists(connection: &Connection, table: &str) -> bool {
         .is_some()
 }
 
+fn has_column(connection: &Connection, table: &str, column: &str) -> bool {
+    let mut statement = match connection.prepare(&format!("PRAGMA table_info({table})")) {
+        Ok(statement) => statement,
+        Err(_) => return false,
+    };
+    statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map(|rows| {
+            rows.flatten().any(|name| name == column)
+        })
+        .unwrap_or(false)
+}
+
 fn collect_sqlite_files(directory: &Path, depth: usize, result: &mut Vec<PathBuf>) {
     if depth > 7 {
         return;
@@ -73,12 +86,21 @@ fn candidates(data_dir: &Path) -> Vec<PathBuf> {
 
 fn copy_json_table(
     source: &Connection,
-    destination: &Connection,
+    destination: &mut Connection,
     source_table: &str,
     destination_table: &str,
 ) -> Result<usize, String> {
     if !table_exists(source, source_table) {
         return Ok(0);
+    }
+    if !has_column(destination, destination_table, "data_json") {
+        // 目标已是规范化真实列表：通过 Repository 导入。
+        return crate::database::legacy::finance_d1::import_json_table(
+            source,
+            destination,
+            source_table,
+            destination_table,
+        );
     }
     let mut statement = source
         .prepare(&format!(
@@ -182,7 +204,7 @@ fn migrate_notes(source: &Connection, destination: &Connection) -> Result<usize,
     Ok(copied)
 }
 
-pub fn migrate_once(destination: &Connection, data_dir: &Path) -> Result<usize, String> {
+pub fn migrate_once(destination: &mut Connection, data_dir: &Path) -> Result<usize, String> {
     destination
         .execute(
             "CREATE TABLE IF NOT EXISTS app_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)",
@@ -216,8 +238,14 @@ pub fn migrate_once(destination: &Connection, data_dir: &Path) -> Result<usize, 
             continue;
         }
         for (source_table, destination_table) in JSON_TABLES {
-            copied += copy_json_table(&source, destination, source_table, destination_table)?;
+            if source_table == "finance_accounts" || source_table == "transactions" {
+                continue;
+            }
+        copied += copy_json_table(&source, destination, source_table, destination_table)?;
         }
+        // 财务：账户必须先于交易导入。
+        copied += copy_json_table(&source, destination, "finance_accounts", "finance_accounts")?;
+        copied += copy_json_table(&source, destination, "transactions", "transactions")?;
         copied += migrate_notes(&source, destination)?;
         if copied > 0 {
             break;
