@@ -7,17 +7,11 @@ use axum::{
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Map, Value};
 
-use crate::database::repositories::finance;
+use crate::database::repositories::{finance, habits};
 
 use super::AppState;
 
-const JSON_TABLES: [(&str, &str); 5] = [
-    ("activities", "activities"),
-    ("logs", "activity_logs"),
-    ("reviews", "daily_reviews"),
-    ("settings", "settings"),
-    ("workoutHistory", "workout_history"),
-];
+const JSON_TABLES: [(&str, &str); 2] = [("settings", "settings"), ("workoutHistory", "workout_history")];
 
 fn table_name(key: &str) -> Option<&'static str> {
     JSON_TABLES
@@ -128,6 +122,24 @@ pub async fn get(State(state): State<AppState>) -> Response {
         Err(_) => return error(StatusCode::INTERNAL_SERVER_ERROR, "SQLite 锁已损坏"),
     };
     let mut result = Map::new();
+    match habits::list_activities(&connection) {
+        Ok(activities) => {
+            result.insert("activities".to_owned(), Value::Array(activities));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
+    match habits::list_activity_logs(&connection) {
+        Ok(logs) => {
+            result.insert("logs".to_owned(), Value::Array(logs));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
+    match habits::list_daily_reviews(&connection) {
+        Ok(reviews) => {
+            result.insert("reviews".to_owned(), Value::Array(reviews));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
     for (key, table) in JSON_TABLES {
         let values = match read_table(&connection, table) {
             Ok(value) => value,
@@ -192,6 +204,24 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                     Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                 };
             }
+            if key == "activities" {
+                return match habits::save_activity(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "logs" {
+                return match habits::save_activity_log(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "reviews" {
+                return match habits::save_daily_review(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
             let Some(table) = table_name(key) else {
                 return error(StatusCode::BAD_REQUEST, "不支持的数据表");
             };
@@ -223,6 +253,25 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                             object.insert("id".to_owned(), Value::String(id.to_owned()));
                         }
                         match finance::save_account(&connection, &value) {
+                            Ok(()) => Json(json!({ "ok": true })).into_response(),
+                            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                        }
+                    }
+                    Err(message) => error(StatusCode::NOT_FOUND, message),
+                };
+            }
+            if key == "activities" {
+                let existing = habits::list_activities(&connection)
+                    .ok()
+                    .and_then(|items| items.into_iter().find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
+                    .ok_or_else(|| "项目不存在".to_owned());
+                return match existing {
+                    Ok(mut value) => {
+                        if let Some(object) = value.as_object_mut() {
+                            object.extend(patch.clone());
+                            object.insert("id".to_owned(), Value::String(id.to_owned()));
+                        }
+                        match habits::save_activity(&connection, &value) {
                             Ok(()) => Json(json!({ "ok": true })).into_response(),
                             Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                         }
@@ -311,6 +360,24 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .cloned()
                 .unwrap_or_default();
             if let Err(message) = finance::replace_all(&transaction, &accounts, &transactions) {
+                return error(StatusCode::INTERNAL_SERVER_ERROR, message);
+            }
+            let activities = data
+                .get("activities")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let logs = data
+                .get("logs")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let reviews = data
+                .get("reviews")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if let Err(message) = habits::replace_all(&transaction, &activities, &logs, &reviews) {
                 return error(StatusCode::INTERNAL_SERVER_ERROR, message);
             }
             let mut restore_error = None;

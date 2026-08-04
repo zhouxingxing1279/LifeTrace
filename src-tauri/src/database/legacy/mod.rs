@@ -5,4 +5,5 @@
 
 pub mod d1_import;
 pub mod finance_d1;
+pub mod habits_d1;
 pub mod json_parser;

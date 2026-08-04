@@ -416,7 +416,7 @@ fn validate_finance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::m0001_framework::M0001Framework;
+    use crate::database::migrations::{M0001Framework, all};
     use crate::database::migration_runner::run;
     use rusqlite::Connection;
     use rusqlite::params;
@@ -641,8 +641,7 @@ mod tests {
         assert_eq!(legacy_count, 1, "fixture 必须包含旧 JSON transactions 表");
 
         let context = crate::database::migration_runner::MigrationContext::new(directory.clone());
-        let migrations: Vec<Box<dyn Migration>> =
-            vec![Box::new(M0001Framework), Box::new(M0002Finance)];
+        let migrations = all();
         run(&mut connection, &context, &migrations).expect("真实旧库迁移失败");
 
         // 新表汇总（分）。
@@ -692,8 +691,16 @@ mod tests {
         assert_eq!(new_count, legacy_count_total, "交易数量不一致");
         assert_eq!(new_expense, legacy_sums.0, "支出金额不一致（分）");
         assert_eq!(new_income, legacy_sums.1, "收入金额不一致（分）");
+        let activities = crate::database::repositories::habits::list_activities(&connection).unwrap();
+        let logs = crate::database::repositories::habits::list_activity_logs(&connection).unwrap();
+        let reviews =
+            crate::database::repositories::habits::list_daily_reviews(&connection).unwrap();
         eprintln!(
-            "真实旧库演练通过: 交易 {new_count} 条，支出 {new_expense} 分，收入 {new_income} 分"
+            "真实旧库演练通过: 交易 {new_count} 条，支出 {new_expense} 分，收入 {new_income} 分，\
+             习惯 {} 条，打卡 {} 条，复盘 {} 条",
+            activities.len(),
+            logs.len(),
+            reviews.len()
         );
 
         fs::remove_dir_all(&directory).ok();

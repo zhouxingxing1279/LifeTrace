@@ -94,13 +94,26 @@ fn copy_json_table(
         return Ok(0);
     }
     if !has_column(destination, destination_table, "data_json") {
-        // 目标已是规范化真实列表：通过 Repository 导入。
-        return crate::database::legacy::finance_d1::import_json_table(
-            source,
-            destination,
-            source_table,
-            destination_table,
-        );
+        // 目标已是规范化真实列表：通过对应 Repository 导入。
+        return match destination_table {
+            "finance_accounts" | "transactions" => {
+                crate::database::legacy::finance_d1::import_json_table(
+                    source,
+                    destination,
+                    source_table,
+                    destination_table,
+                )
+            }
+            "activities" | "activity_logs" | "daily_reviews" => {
+                crate::database::legacy::habits_d1::import_json_table(
+                    source,
+                    destination,
+                    source_table,
+                    destination_table,
+                )
+            }
+            _ => Ok(0),
+        };
     }
     let mut statement = source
         .prepare(&format!(

@@ -5,13 +5,19 @@
 
 mod m0001_framework;
 mod m0002_finance;
+mod m0003_habits_reviews;
 
 pub use m0001_framework::M0001Framework;
 pub use m0002_finance::M0002Finance;
+pub use m0003_habits_reviews::M0003HabitsReviews;
 
 use crate::database::migration_runner::Migration;
 
 /// 全部已注册 Migration（按 version 升序执行）。
 pub fn all() -> Vec<Box<dyn Migration>> {
-    vec![Box::new(M0001Framework), Box::new(M0002Finance)]
+    vec![
+        Box::new(M0001Framework),
+        Box::new(M0002Finance),
+        Box::new(M0003HabitsReviews),
+    ]
 }
