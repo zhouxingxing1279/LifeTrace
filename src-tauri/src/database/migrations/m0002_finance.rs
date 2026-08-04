@@ -695,9 +695,23 @@ mod tests {
         let logs = crate::database::repositories::habits::list_activity_logs(&connection).unwrap();
         let reviews =
             crate::database::repositories::habits::list_daily_reviews(&connection).unwrap();
+        let english_articles: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM english_articles",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let english_vocabulary: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM english_vocabulary",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         eprintln!(
             "真实旧库演练通过: 交易 {new_count} 条，支出 {new_expense} 分，收入 {new_income} 分，\
-             习惯 {} 条，打卡 {} 条，复盘 {} 条",
+             习惯 {} 条，打卡 {} 条，复盘 {} 条，英语文章 {english_articles} 条，生词 {english_vocabulary} 条",
             activities.len(),
             logs.len(),
             reviews.len()

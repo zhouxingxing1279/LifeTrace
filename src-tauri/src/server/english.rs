@@ -16,13 +16,8 @@ use uuid::Uuid;
 
 use super::AppState;
 
-const ENTITY_TABLES: [(&str, &str); 8] = [
-    ("articles", "english_articles"),
-    ("records", "english_learning_records"),
-    ("vocabulary", "english_user_vocabulary"),
-    ("highlights", "english_highlights"),
-    ("notes", "english_notes"),
-    ("analysis", "english_ai_analysis"),
+// 运行配置类表仍使用 JSON 结构；业务实体表已规范化，由 Repository 读写。
+const JSON_ENTITY_TABLES: [(&str, &str); 2] = [
     ("sources", "english_sources"),
     ("tasks", "english_sync_tasks"),
 ];
@@ -46,13 +41,15 @@ fn error(status: StatusCode, message: impl Into<String>) -> Response {
 }
 
 fn table(key: &str) -> Option<&'static str> {
-    ENTITY_TABLES
+    JSON_ENTITY_TABLES
         .iter()
         .find_map(|(name, table)| (*name == key).then_some(*table))
 }
 
 fn put(connection: &Connection, key: &str, value: &Value) -> Result<(), String> {
-    let table = table(key).ok_or_else(|| "未知英语数据表".to_owned())?;
+    let Some(table) = table(key) else {
+        return crate::database::repositories::english::put(connection, key, value);
+    };
     let entity_id = value
         .get("id")
         .or_else(|| value.get("taskId"))
@@ -80,7 +77,9 @@ fn put(connection: &Connection, key: &str, value: &Value) -> Result<(), String> 
 }
 
 fn list(connection: &Connection, key: &str) -> Result<Vec<Value>, String> {
-    let table = table(key).ok_or_else(|| "未知英语数据表".to_owned())?;
+    let Some(table) = table(key) else {
+        return crate::database::repositories::english::list(connection, key);
+    };
     let mut statement = connection
         .prepare(&format!(
             "SELECT data_json FROM {table} ORDER BY updated_at DESC"
@@ -97,7 +96,9 @@ fn list(connection: &Connection, key: &str) -> Result<Vec<Value>, String> {
 }
 
 fn get(connection: &Connection, key: &str, entity_id: &str) -> Result<Option<Value>, String> {
-    let table = table(key).ok_or_else(|| "未知英语数据表".to_owned())?;
+    let Some(table) = table(key) else {
+        return crate::database::repositories::english::get(connection, key, entity_id);
+    };
     let raw = connection
         .query_row(
             &format!("SELECT data_json FROM {table} WHERE id=?1"),
@@ -111,7 +112,9 @@ fn get(connection: &Connection, key: &str, entity_id: &str) -> Result<Option<Val
 }
 
 fn remove(connection: &Connection, key: &str, entity_id: &str) -> Result<bool, String> {
-    let table = table(key).ok_or_else(|| "未知英语数据表".to_owned())?;
+    let Some(table) = table(key) else {
+        return crate::database::repositories::english::remove(connection, key, entity_id);
+    };
     connection
         .execute(&format!("DELETE FROM {table} WHERE id=?1"), [entity_id])
         .map(|count| count > 0)
@@ -138,16 +141,7 @@ fn body_json(body: Body) -> impl std::future::Future<Output = Result<Value, Stri
 }
 
 pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
-    for (_, table) in ENTITY_TABLES {
-        connection.execute(
-            &format!(
-                "CREATE TABLE IF NOT EXISTS {table}(
-                   id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL
-                 )"
-            ),
-            [],
-        )?;
-    }
+    // 业务实体表已由版本化 Migration 创建，这里只保留配置类表与种子数据。
     connection.execute(
         "CREATE TABLE IF NOT EXISTS english_preferences(
            key TEXT PRIMARY KEY,value_json TEXT NOT NULL,updated_at TEXT NOT NULL

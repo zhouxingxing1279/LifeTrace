@@ -4,6 +4,7 @@
 //! - `d1_import`：旧 D1 / wrangler 数据库导入入口（阶段 7 收敛为唯一实现）。
 
 pub mod d1_import;
+pub mod english_d1;
 pub mod finance_d1;
 pub mod habits_d1;
 pub mod json_parser;

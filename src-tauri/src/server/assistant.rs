@@ -82,25 +82,25 @@ const DATASETS: &[Dataset] = &[
     Dataset {
         key: "notes",
         label: "笔记",
-        table: "notes_v2",
+        table: "notes",
         kind: DatasetKind::Json,
     },
     Dataset {
         key: "note_folders",
         label: "笔记文件夹",
-        table: "note_folders_v2",
+        table: "note_folders",
         kind: DatasetKind::Json,
     },
     Dataset {
         key: "note_tags",
         label: "笔记标签",
-        table: "note_tags_v2",
+        table: "note_tags",
         kind: DatasetKind::Json,
     },
     Dataset {
         key: "note_revisions",
         label: "笔记版本",
-        table: "note_revisions_v2",
+        table: "note_revisions",
         kind: DatasetKind::Json,
     },
     Dataset {
@@ -118,7 +118,7 @@ const DATASETS: &[Dataset] = &[
     Dataset {
         key: "english_vocabulary",
         label: "英语生词",
-        table: "english_user_vocabulary",
+        table: "english_vocabulary",
         kind: DatasetKind::Json,
     },
     Dataset {
@@ -575,20 +575,31 @@ fn json_records(
     } else {
         format!("{date}%")
     };
-    let date_expression = match source.key {
-        "activity_logs" => "json_extract(data_json,'$.createdAt')",
-        "transactions" => "json_extract(data_json,'$.occurredAt')",
-        "daily_reviews" => "json_extract(data_json,'$.reviewDate')",
-        "workout_history" => "json_extract(data_json,'$.occurredAt')",
-        "workout_import_records" | "english_highlights" | "english_notes" | "english_analysis" | "import_uploads" => "json_extract(data_json,'$.createdAt')",
-        "training_notes" => "COALESCE(json_extract(data_json,'$.noteDate'),json_extract(data_json,'$.createdAt'))",
-        "english_articles" => "COALESCE(json_extract(data_json,'$.publishedAt'),json_extract(data_json,'$.createdTime'))",
-        "english_learning_records" => "json_extract(data_json,'$.date')",
-        "note_revisions" => "json_extract(data_json,'$.createdAt')",
-        _ => "COALESCE(json_extract(data_json,'$.updatedAt'),json_extract(data_json,'$.createdAt'))",
+    let normalized_expression = normalized_json_expression(source.key);
+    let (select_expression, date_expression) = if let Some(expression) = normalized_expression {
+        (expression.to_owned(), normalized_date_expression(source.key).to_owned())
+    } else {
+        let date_expression = match source.key {
+            "activity_logs" => "json_extract(data_json,'$.createdAt')",
+            "transactions" => "json_extract(data_json,'$.occurredAt')",
+            "daily_reviews" => "json_extract(data_json,'$.reviewDate')",
+            "workout_history" => "json_extract(data_json,'$.occurredAt')",
+            "workout_import_records" | "english_highlights" | "english_notes" | "english_analysis" | "import_uploads" => "json_extract(data_json,'$.createdAt')",
+            "training_notes" => "COALESCE(json_extract(data_json,'$.noteDate'),json_extract(data_json,'$.createdAt'))",
+            "english_articles" => "COALESCE(json_extract(data_json,'$.publishedAt'),json_extract(data_json,'$.createdTime'))",
+            "english_learning_records" => "json_extract(data_json,'$.date')",
+            "note_revisions" => "json_extract(data_json,'$.createdAt')",
+            _ => "COALESCE(json_extract(data_json,'$.updatedAt'),json_extract(data_json,'$.createdAt'))",
+        };
+        ("data_json".to_owned(), date_expression.to_owned())
+    };
+    let search_clause = if normalized_expression.is_some() {
+        format!("lower({select_expression}) LIKE ?2")
+    } else {
+        "lower(data_json) LIKE ?2".to_owned()
     };
     let sql = format!(
-        "SELECT data_json FROM {} WHERE (?1='' OR lower(data_json) LIKE ?2) AND (?3='' OR {date_expression} LIKE ?4) ORDER BY updated_at DESC LIMIT ?5 OFFSET ?6",
+        "SELECT {select_expression} FROM {} WHERE (?1='' OR {search_clause}) AND (?3='' OR {date_expression} LIKE ?4) ORDER BY updated_at DESC LIMIT ?5 OFFSET ?6",
         source.table,
     );
     let mut statement = connection
@@ -612,6 +623,44 @@ fn json_records(
         serde_json::from_str(&raw).map_err(|error| error.to_string())
     })
     .collect()
+}
+
+/// 规范化表的 JSON 视图表达式（用于个人数据目录查询）。
+fn normalized_json_expression(key: &str) -> Option<&'static str> {
+    match key {
+        "activities" => Some("json_object('id',id,'name',name,'type',activity_type,'unit',unit,'isArchived',is_archived,'createdAt',created_at,'updatedAt',updated_at)"),
+        "activity_logs" => Some("json_object('id',id,'activityId',activity_id,'value',value,'status',status,'createdAt',created_at,'updatedAt',updated_at)"),
+        "transactions" => Some("json_object('id',id,'type',transaction_type,'amount',amount_cents/100.0,'category',COALESCE(legacy_category_name,''),'account',COALESCE(legacy_account_name,''),'occurredAt',occurred_at,'createdAt',created_at,'updatedAt',updated_at)"),
+        "daily_reviews" => Some("json_object('id',id,'reviewDate',review_date,'energy',energy,'mood',mood,'createdAt',created_at,'updatedAt',updated_at)"),
+        "finance_accounts" => Some("json_object('id',id,'name',name,'type',account_type,'balance',opening_balance_cents/100.0,'createdAt',created_at,'updatedAt',updated_at)"),
+        "notes" => Some("json_object('id',id,'title',title,'noteType',note_type,'summary',summary,'isArchived',is_archived,'createdAt',created_at,'updatedAt',updated_at)"),
+        "note_folders" => Some("json_object('id',id,'name',name,'createdAt',created_at,'updatedAt',updated_at)"),
+        "note_tags" => Some("json_object('id',id,'name',name,'createdAt',created_at,'updatedAt',updated_at)"),
+        "note_revisions" => Some("json_object('id',id,'noteId',note_id,'version',revision_version,'createdAt',created_at)"),
+        "english_articles" => Some("json_object('id',id,'title',title,'level',level,'category',category,'wordCount',word_count,'createdTime',created_time,'createdAt',created_at,'updatedAt',updated_at)"),
+        "english_learning_records" => Some("json_object('id',id,'date',record_date,'articleId',article_id,'readingTimeSeconds',reading_time_seconds,'summary',summary,'createdAt',created_at,'updatedAt',updated_at)"),
+        "english_vocabulary" => Some("json_object('id',id,'word',display_word,'normalizedWord',normalized_word,'status',status,'nextReviewAt',next_review_at,'createdAt',created_at,'updatedAt',updated_at)"),
+        "english_highlights" => Some("json_object('id',id,'articleId',article_id,'text',selected_text,'createdAt',created_at,'updatedAt',updated_at)"),
+        "english_notes" => Some("json_object('id',id,'articleId',article_id,'content',content,'createdAt',created_at,'updatedAt',updated_at)"),
+        "english_analysis" => Some("json_object('id',id,'recordId',record_id,'articleId',article_id,'score',score,'createdAt',created_at,'updatedAt',updated_at)"),
+        _ => None,
+    }
+}
+
+/// 规范化表的日期表达式（真实列）。
+fn normalized_date_expression(key: &str) -> &'static str {
+    match key {
+        "activity_logs" => "created_at",
+        "transactions" => "occurred_at",
+        "daily_reviews" => "review_date",
+        "finance_accounts" => "created_at",
+        "notes" | "note_folders" | "note_tags" => "created_at",
+        "note_revisions" => "created_at",
+        "english_articles" => "COALESCE(published_at, created_time, created_at)",
+        "english_learning_records" => "record_date",
+        "english_vocabulary" | "english_highlights" | "english_notes" | "english_analysis" => "created_at",
+        _ => "updated_at",
+    }
 }
 
 fn trim_value(value: &mut Value, string_limit: usize, array_limit: usize, depth: usize) {
@@ -1190,7 +1239,46 @@ mod tests {
         for source in DATASETS {
             match source.kind {
                 DatasetKind::Json => {
-                    connection.execute(&format!("CREATE TABLE {}(id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL)", source.table), []).ok();
+                    let normalized = matches!(
+                        source.key,
+                        "activities"
+                            | "activity_logs"
+                            | "transactions"
+                            | "daily_reviews"
+                            | "finance_accounts"
+                            | "notes"
+                            | "note_folders"
+                            | "note_tags"
+                            | "note_revisions"
+                            | "english_articles"
+                            | "english_learning_records"
+                            | "english_vocabulary"
+                            | "english_highlights"
+                            | "english_notes"
+                            | "english_analysis"
+                    );
+                    if normalized {
+                        let sql = match source.key {
+                            "activities" => "CREATE TABLE activities(id TEXT PRIMARY KEY,name TEXT,activity_type TEXT,unit TEXT,is_archived INTEGER,created_at TEXT,updated_at TEXT)",
+                            "activity_logs" => "CREATE TABLE activity_logs(id TEXT PRIMARY KEY,activity_id TEXT,value REAL,status TEXT,created_at TEXT,updated_at TEXT)",
+                            "transactions" => "CREATE TABLE transactions(id TEXT PRIMARY KEY,transaction_type TEXT,amount_cents INTEGER,legacy_category_name TEXT,legacy_account_name TEXT,occurred_at TEXT,created_at TEXT,updated_at TEXT)",
+                            "daily_reviews" => "CREATE TABLE daily_reviews(id TEXT PRIMARY KEY,review_date TEXT,energy INTEGER,mood INTEGER,created_at TEXT,updated_at TEXT)",
+                            "finance_accounts" => "CREATE TABLE finance_accounts(id TEXT PRIMARY KEY,name TEXT,account_type TEXT,opening_balance_cents INTEGER,created_at TEXT,updated_at TEXT)",
+                            "notes" => "CREATE TABLE notes(id TEXT PRIMARY KEY,title TEXT,note_type TEXT,summary TEXT,is_archived INTEGER,created_at TEXT,updated_at TEXT)",
+                            "note_folders" => "CREATE TABLE note_folders(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,updated_at TEXT)",
+                            "note_tags" => "CREATE TABLE note_tags(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,updated_at TEXT)",
+                            "note_revisions" => "CREATE TABLE note_revisions(id TEXT PRIMARY KEY,note_id TEXT,revision_version INTEGER,created_at TEXT)",
+                            "english_articles" => "CREATE TABLE english_articles(id TEXT PRIMARY KEY,title TEXT,level TEXT,category TEXT,word_count INTEGER,created_time TEXT,published_at TEXT,created_at TEXT,updated_at TEXT)",
+                            "english_learning_records" => "CREATE TABLE english_learning_records(id TEXT PRIMARY KEY,article_id TEXT,record_date TEXT,reading_time_seconds INTEGER,summary TEXT,created_at TEXT,updated_at TEXT)",
+                            "english_vocabulary" => "CREATE TABLE english_vocabulary(id TEXT PRIMARY KEY,display_word TEXT,normalized_word TEXT,status TEXT,next_review_at TEXT,created_at TEXT,updated_at TEXT)",
+                            "english_highlights" => "CREATE TABLE english_highlights(id TEXT PRIMARY KEY,article_id TEXT,selected_text TEXT,created_at TEXT,updated_at TEXT)",
+                            "english_notes" => "CREATE TABLE english_notes(id TEXT PRIMARY KEY,article_id TEXT,content TEXT,created_at TEXT,updated_at TEXT)",
+                            _ => "CREATE TABLE english_ai_analysis(id TEXT PRIMARY KEY,record_id TEXT,article_id TEXT,score REAL,created_at TEXT,updated_at TEXT)",
+                        };
+                        connection.execute(sql, []).ok();
+                    } else {
+                        connection.execute(&format!("CREATE TABLE {}(id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL)", source.table), []).ok();
+                    }
                 }
                 DatasetKind::Photos => {
                     connection.execute("CREATE TABLE photos(id TEXT,original_file_name TEXT,media_type TEXT,mime_type TEXT,file_size INTEGER,width INTEGER,height INTEGER,duration_ms INTEGER,captured_at TEXT,imported_at TEXT,processing_status TEXT,processing_error TEXT,source_device_id TEXT,deleted_at TEXT)", []).ok();

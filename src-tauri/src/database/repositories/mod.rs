@@ -5,4 +5,5 @@
 pub mod finance;
 pub mod habits;
 pub mod notes;
+pub mod english;
 pub mod state_compat;
