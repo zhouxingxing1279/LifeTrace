@@ -14,6 +14,324 @@ use ts_rs::{TypeVisitor, TS};
 
 use crate::ids::EntityId;
 
+/// Entity ownership class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum EntityOwnership {
+    /// Owned and edited by the user; bidirectional sync with conflict checks.
+    UserOwned,
+    /// Managed by the server (for example identity.user, identity.device).
+    ServerManaged,
+    /// Global catalog shared by all users (for example english.article).
+    SharedCatalog,
+    /// Only meaningful on the device that created it; never synced.
+    DeviceLocal,
+    /// Credentials and secrets; MUST NEVER enter a sync payload.
+    SecretLocalOnly,
+}
+
+/// Entity sync mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum SyncMode {
+    Bidirectional,
+    ServerToClient,
+    ClientToServer,
+    NotSynced,
+}
+
+/// Entity conflict handling mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[serde(rename_all = "snake_case")]
+#[ts(rename_all = "snake_case")]
+pub enum ConflictMode {
+    /// Client `baseServerVersion` must equal the current server version;
+    /// otherwise an explicit conflict is returned. No automatic last-write-wins.
+    Optimistic,
+    /// The server is authoritative; client writes are rejected or ignored.
+    ServerAuthoritative,
+    /// No conflict semantics (device-local / not synced data).
+    None,
+}
+
+/// Static registry entry for one entity type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EntityDescriptor {
+    pub entity_type: &'static str,
+    pub schema_version: u32,
+    pub ownership: EntityOwnership,
+    pub sync_mode: SyncMode,
+    pub conflict_mode: ConflictMode,
+    /// Whether the entity payload references files (binary content is synced
+    /// separately by EPIC-12; only metadata/IDs cross the wire).
+    pub contains_file_references: bool,
+}
+
+/// Complete static entity type registry.
+///
+/// Device-local and secret-local-only data (photos, AI/translation settings,
+/// certificates, import uploads, ...) are intentionally NOT registered here:
+/// unknown entity types are rejected by the sync protocol with
+/// `LIFETRACE_UNKNOWN_ENTITY_TYPE`, giving defense in depth against secrets
+/// entering a sync payload.
+pub const REGISTRY: &[EntityDescriptor] = &[
+    EntityDescriptor {
+        entity_type: EntityType::IDENTITY_USER,
+        schema_version: 1,
+        ownership: EntityOwnership::ServerManaged,
+        sync_mode: SyncMode::ServerToClient,
+        conflict_mode: ConflictMode::ServerAuthoritative,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::IDENTITY_DEVICE,
+        schema_version: 1,
+        ownership: EntityOwnership::ServerManaged,
+        sync_mode: SyncMode::ServerToClient,
+        conflict_mode: ConflictMode::ServerAuthoritative,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::FINANCE_ACCOUNT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::FINANCE_CATEGORY,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::FINANCE_TRANSACTION,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::FINANCE_TRANSACTION_EVIDENCE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::HABIT_ACTIVITY,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::HABIT_LOG,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::REVIEW_DAILY,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_FOLDER,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_NOTE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: true,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_TAG,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_TAG_RELATION,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_RELATION,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::NOTE_REVISION,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_ARTICLE,
+        schema_version: 1,
+        ownership: EntityOwnership::SharedCatalog,
+        sync_mode: SyncMode::ServerToClient,
+        conflict_mode: ConflictMode::ServerAuthoritative,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_LEARNING_RECORD,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_HIGHLIGHT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_NOTE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_VOCABULARY,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_VOCABULARY_OCCURRENCE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENGLISH_VOCABULARY_REVIEW_STATE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::WORKOUT_IMPORT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::WORKOUT_WORKOUT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::WORKOUT_EXERCISE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::WORKOUT_SET,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::WORKOUT_TRAINING_NOTE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::FILE_METADATA,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: true,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::ENTITY_LINK,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::USER_PREFERENCE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+];
+
+/// Look up a registered descriptor by entity type name.
+pub fn describe(entity_type: &str) -> Option<&'static EntityDescriptor> {
+    REGISTRY
+        .iter()
+        .find(|descriptor| descriptor.entity_type == entity_type)
+}
+
+/// Whether an entity type is registered and allowed to sync.
+pub fn is_syncable(entity_type: &str) -> bool {
+    describe(entity_type)
+        .is_some_and(|descriptor| descriptor.sync_mode != SyncMode::NotSynced)
+}
+
 /// Stable entity type name used in sync changes and cross-entity links.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityType(String);
@@ -200,5 +518,105 @@ mod tests {
         let value = serde_json::to_value(&reference).unwrap();
         assert_eq!(value["entityType"], "finance.transaction");
         assert_eq!(value["entityId"], "tx-1");
+    }
+
+    #[test]
+    fn registry_covers_every_known_entity_type_with_unique_names() {
+        let known = EntityType::known();
+        assert_eq!(REGISTRY.len(), known.len());
+        for expected in known {
+            let descriptor = describe(expected)
+                .unwrap_or_else(|| panic!("entity type {expected} must be registered"));
+            assert_eq!(descriptor.entity_type, *expected);
+            assert_eq!(descriptor.schema_version, 1);
+        }
+        let mut names: Vec<&str> = REGISTRY.iter().map(|item| item.entity_type).collect();
+        names.sort_unstable();
+        let mut unique = names.clone();
+        unique.dedup();
+        assert_eq!(names, unique, "entity type names must be unique");
+    }
+
+    #[test]
+    fn every_entity_has_ownership_sync_and_conflict_modes() {
+        for descriptor in REGISTRY {
+            assert!(matches!(
+                descriptor.ownership,
+                EntityOwnership::UserOwned
+                    | EntityOwnership::ServerManaged
+                    | EntityOwnership::SharedCatalog
+                    | EntityOwnership::DeviceLocal
+                    | EntityOwnership::SecretLocalOnly
+            ));
+            assert!(matches!(
+                descriptor.sync_mode,
+                SyncMode::Bidirectional
+                    | SyncMode::ServerToClient
+                    | SyncMode::ClientToServer
+                    | SyncMode::NotSynced
+            ));
+            assert!(matches!(
+                descriptor.conflict_mode,
+                ConflictMode::Optimistic | ConflictMode::ServerAuthoritative | ConflictMode::None
+            ));
+        }
+    }
+
+    #[test]
+    fn user_owned_entities_use_optimistic_conflict_never_lww() {
+        for descriptor in REGISTRY {
+            if descriptor.ownership == EntityOwnership::UserOwned {
+                assert_eq!(descriptor.conflict_mode, ConflictMode::Optimistic);
+                assert_eq!(descriptor.sync_mode, SyncMode::Bidirectional);
+            }
+        }
+    }
+
+    #[test]
+    fn unknown_entity_types_are_not_syncable() {
+        assert!(!is_syncable("secret.credential"));
+        assert!(!is_syncable(""));
+        assert!(is_syncable(EntityType::FINANCE_TRANSACTION));
+        assert!(is_syncable(EntityType::ENGLISH_ARTICLE));
+    }
+
+    #[test]
+    fn file_reference_flags_are_set_where_expected() {
+        assert!(describe(EntityType::NOTE_NOTE).unwrap().contains_file_references);
+        assert!(
+            describe(EntityType::FILE_METADATA)
+                .unwrap()
+                .contains_file_references
+        );
+        assert!(
+            !describe(EntityType::FINANCE_TRANSACTION)
+                .unwrap()
+                .contains_file_references
+        );
+    }
+
+    #[test]
+    fn all_five_ownership_classes_are_representable() {
+        let classes = [
+            EntityOwnership::UserOwned,
+            EntityOwnership::ServerManaged,
+            EntityOwnership::SharedCatalog,
+            EntityOwnership::DeviceLocal,
+            EntityOwnership::SecretLocalOnly,
+        ];
+        let wire = classes
+            .iter()
+            .map(|value| serde_json::to_string(value).unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            wire,
+            vec![
+                "\"user_owned\"",
+                "\"server_managed\"",
+                "\"shared_catalog\"",
+                "\"device_local\"",
+                "\"secret_local_only\"",
+            ]
+        );
     }
 }
