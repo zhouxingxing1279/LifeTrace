@@ -60,6 +60,8 @@ next-env.d.ts
 /dist/
 /dist-tauri/
 /src-tauri/target/
+/crates/*/target/
+/tools/*/target/
 /src-tauri/gen/
 /build/
 /release/
