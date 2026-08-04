@@ -1,0 +1,62 @@
+{
+  "requestId": "req-20260804-0003",
+  "serverTime": "2026-08-04T15:32:00Z",
+  "changes": [
+    {
+      "cursor": "41",
+      "entityType": "finance.transaction",
+      "entityId": "tx-2026-08-04-0001",
+      "operation": "upsert",
+      "serverVersion": "41",
+      "serverModifiedAt": "2026-08-04T15:29:05Z",
+      "payload": {
+        "meta": {
+          "id": "tx-2026-08-04-0001",
+          "userId": "local-user",
+          "createdAt": "2026-08-04T15:29:00Z",
+          "updatedAt": "2026-08-04T15:29:05Z",
+          "deletedAt": null,
+          "localVersion": 1,
+          "serverVersion": "41",
+          "modifiedByDevice": "11111111-1111-4111-8111-111111111111"
+        },
+        "transactionType": "expense",
+        "amountCents": 12525,
+        "currency": "CNY",
+        "accountId": "wechat-wallet",
+        "toAccountId": null,
+        "categoryId": "cat-food",
+        "counterparty": "coffee shop",
+        "merchant": null,
+        "item": "latte",
+        "note": null,
+        "occurredAt": "2026-08-04T09:00:24Z",
+        "localDate": "2026-08-04",
+        "status": "confirmed",
+        "sourceType": "manual",
+        "externalTransactionId": null
+      },
+      "tombstone": null,
+      "originDeviceId": "11111111-1111-4111-8111-111111111111"
+    },
+    {
+      "cursor": "42",
+      "entityType": "finance.transaction",
+      "entityId": "tx-2026-08-04-0002",
+      "operation": "delete",
+      "serverVersion": "12",
+      "serverModifiedAt": "2026-08-04T15:31:00Z",
+      "payload": null,
+      "tombstone": {
+        "entityType": "finance.transaction",
+        "entityId": "tx-2026-08-04-0002",
+        "deletedAt": "2026-08-04T15:31:00Z",
+        "serverVersion": "12",
+        "deletedByDevice": "22222222-2222-4222-8222-222222222222"
+      },
+      "originDeviceId": "22222222-2222-4222-8222-222222222222"
+    }
+  ],
+  "nextCursor": "42",
+  "hasMore": false
+}

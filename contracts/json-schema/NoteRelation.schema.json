@@ -1,0 +1,115 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityMeta": {
+      "description": "Metadata shared by every syncable entity payload.\n\n`local_version` is the local revision counter (EPIC-01 `version` column).\nIt is NOT a server authority; `server_version` is assigned by the server\nand `base_server_version` (on changes) is what the client knew when it\nmade the change. Offline edits must never fabricate `server_version`.",
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "localVersion": {
+          "description": "Local revision number (never the server-authoritative version).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modifiedByDevice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Device that last modified the entity locally (audit only)."
+        },
+        "serverVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServerVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Server-authoritative version; `None` until the server first accepts it."
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "userId": {
+          "$ref": "#/$defs/UserId"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "createdAt",
+        "updatedAt",
+        "localVersion"
+      ],
+      "type": "object"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "UserId": {
+      "description": "Stable user identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`note.relation`",
+  "properties": {
+    "entityId": {
+      "$ref": "#/$defs/EntityId"
+    },
+    "entityType": {
+      "$ref": "#/$defs/EntityType"
+    },
+    "meta": {
+      "$ref": "#/$defs/EntityMeta"
+    },
+    "noteId": {
+      "$ref": "#/$defs/EntityId"
+    },
+    "relationType": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "meta",
+    "noteId",
+    "entityType",
+    "entityId",
+    "relationType"
+  ],
+  "title": "NoteRelation",
+  "type": "object"
+}

@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Groups changes that must be applied all-or-nothing in one push request.",
+  "title": "AtomicGroupId",
+  "type": "string"
+}

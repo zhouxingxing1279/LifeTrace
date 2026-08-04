@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "English article fetch status. Known values: PENDING, SUCCESS, FAILED, SKIPPED. Unknown values are preserved (forward compatible).",
+  "title": "EnglishFetchStatus",
+  "type": "string"
+}

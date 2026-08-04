@@ -1,0 +1,25 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Field-level validation error inside `ApiErrorV1`.",
+  "properties": {
+    "code": {
+      "description": "Field-level error code (string; server-defined, forward compatible).",
+      "type": "string"
+    },
+    "field": {
+      "description": "Field path, for example `changes[3].entityType`.",
+      "type": "string"
+    },
+    "message": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "field",
+    "code",
+    "message"
+  ],
+  "title": "FieldError",
+  "type": "object"
+}

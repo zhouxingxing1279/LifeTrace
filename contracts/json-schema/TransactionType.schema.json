@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Financial transaction type. Known values: expense, income, transfer, refund, fee. Unknown values are preserved (forward compatible).",
+  "title": "TransactionType",
+  "type": "string"
+}

@@ -1,0 +1,166 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "ChangeOperation": {
+      "description": "Change operation. Known values: upsert, delete. Unknown values are preserved.",
+      "type": "string"
+    },
+    "Cursor": {
+      "description": "Opaque server cursor. Clients must never parse, add, subtract or guess it.\nWire format: string.",
+      "type": "string"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "JsonValue": true,
+    "RequestId": {
+      "description": "Request tracing id. It never replaces changeId for idempotency.",
+      "type": "string"
+    },
+    "ServerChangeV1": {
+      "description": "A change as served by pull, in strict server cursor order.",
+      "properties": {
+        "cursor": {
+          "$ref": "#/$defs/Cursor"
+        },
+        "entityId": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "entityType": {
+          "$ref": "#/$defs/EntityType"
+        },
+        "operation": {
+          "$ref": "#/$defs/ChangeOperation"
+        },
+        "originDeviceId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Present for `upsert`; empty for `delete`."
+        },
+        "serverModifiedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "serverVersion": {
+          "$ref": "#/$defs/ServerVersion"
+        },
+        "tombstone": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TombstoneV1"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Present for `delete` (and for conflicts involving deletion)."
+        }
+      },
+      "required": [
+        "cursor",
+        "entityType",
+        "entityId",
+        "operation",
+        "serverVersion",
+        "serverModifiedAt"
+      ],
+      "type": "object"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "TombstoneV1": {
+      "description": "Server-generated record of a deleted entity.\n\nRe-creating a deleted entity requires a NEW entity id. Restoring a soft\ndelete must explicitly submit based on the tombstone's latest\n`server_version`.",
+      "properties": {
+        "deletedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedByDevice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "entityId": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "entityType": {
+          "$ref": "#/$defs/EntityType"
+        },
+        "serverVersion": {
+          "$ref": "#/$defs/ServerVersion"
+        }
+      },
+      "required": [
+        "entityType",
+        "entityId",
+        "deletedAt",
+        "serverVersion"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /api/v1/sync/pull` response.\n\nChanges are ordered strictly by server cursor. Clients MUST apply them in\norder and MUST NOT re-sort by `updatedAt`; only persist `next_cursor` after\nthe whole batch succeeded.",
+  "properties": {
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/ServerChangeV1"
+      },
+      "type": "array"
+    },
+    "hasMore": {
+      "type": "boolean"
+    },
+    "nextCursor": {
+      "$ref": "#/$defs/Cursor"
+    },
+    "requestId": {
+      "$ref": "#/$defs/RequestId"
+    },
+    "serverTime": {
+      "format": "date-time",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestId",
+    "serverTime",
+    "changes",
+    "nextCursor",
+    "hasMore"
+  ],
+  "title": "PullResponseV1",
+  "type": "object"
+}

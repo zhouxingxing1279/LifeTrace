@@ -1,0 +1,96 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "Cursor": {
+      "description": "Opaque server cursor. Clients must never parse, add, subtract or guess it.\nWire format: string.",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntitySnapshotV1": {
+      "description": "One current entity in a snapshot.",
+      "properties": {
+        "entityId": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "entityType": {
+          "$ref": "#/$defs/EntityType"
+        },
+        "payload": {
+          "$ref": "#/$defs/JsonValue"
+        },
+        "serverVersion": {
+          "$ref": "#/$defs/ServerVersion"
+        }
+      },
+      "required": [
+        "entityType",
+        "entityId",
+        "serverVersion",
+        "payload"
+      ],
+      "type": "object"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "JsonValue": true,
+    "RequestId": {
+      "description": "Request tracing id. It never replaces changeId for idempotency.",
+      "type": "string"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "SnapshotId": {
+      "description": "Stable id assigned by the server to a snapshot; all pages share one consistent view.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /api/v1/sync/snapshot` response.\n\nAll pages of one snapshot correspond to one consistent view. After the\nclient finishes (completed == true), it sets its cursor to\n`snapshot_cursor` and continues with Pull from there; concurrent changes\nare then received without gaps.",
+  "properties": {
+    "completed": {
+      "type": "boolean"
+    },
+    "items": {
+      "items": {
+        "$ref": "#/$defs/EntitySnapshotV1"
+      },
+      "type": "array"
+    },
+    "nextPageToken": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requestId": {
+      "$ref": "#/$defs/RequestId"
+    },
+    "serverTime": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "snapshotCursor": {
+      "$ref": "#/$defs/Cursor"
+    },
+    "snapshotId": {
+      "$ref": "#/$defs/SnapshotId"
+    }
+  },
+  "required": [
+    "requestId",
+    "snapshotId",
+    "snapshotCursor",
+    "items",
+    "completed",
+    "serverTime"
+  ],
+  "title": "SnapshotResponseV1",
+  "type": "object"
+}

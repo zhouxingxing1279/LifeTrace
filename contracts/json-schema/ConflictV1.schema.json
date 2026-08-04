@@ -1,0 +1,81 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "ChangeId": {
+      "description": "Idempotency key for a sync change: userId + changeId must be unique per payload.",
+      "type": "string"
+    },
+    "ConflictId": {
+      "description": "Stable id assigned by the server to a returned conflict.",
+      "type": "string"
+    },
+    "ConflictReason": {
+      "description": "Conflict reason. Known values: base_version_mismatch, client_modified_server_deleted, client_deleted_server_modified, both_deleted. Unknown values are preserved.",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "JsonValue": true,
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Explicit conflict returned by the server. Resolution is client-side:\n`keep_server`, `keep_local` (new changeId, based on the latest server\nversion) or `manual_merge`. No automatic last-write-wins.",
+  "properties": {
+    "changeId": {
+      "$ref": "#/$defs/ChangeId"
+    },
+    "clientBaseServerVersion": {
+      "$ref": "#/$defs/ServerVersion"
+    },
+    "conflictId": {
+      "$ref": "#/$defs/ConflictId"
+    },
+    "currentServerVersion": {
+      "$ref": "#/$defs/ServerVersion"
+    },
+    "entityId": {
+      "$ref": "#/$defs/EntityId"
+    },
+    "entityType": {
+      "$ref": "#/$defs/EntityType"
+    },
+    "reason": {
+      "$ref": "#/$defs/ConflictReason"
+    },
+    "serverDeleted": {
+      "type": "boolean"
+    },
+    "serverEntity": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/JsonValue"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Current server entity (or tombstone payload) for client resolution."
+    }
+  },
+  "required": [
+    "conflictId",
+    "changeId",
+    "entityType",
+    "entityId",
+    "clientBaseServerVersion",
+    "currentServerVersion",
+    "serverDeleted",
+    "reason"
+  ],
+  "title": "ConflictV1",
+  "type": "object"
+}

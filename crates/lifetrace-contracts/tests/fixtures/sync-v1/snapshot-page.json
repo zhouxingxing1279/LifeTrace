@@ -1,0 +1,42 @@
+{
+  "requestId": "req-20260804-0004",
+  "snapshotId": "snapshot-0001",
+  "snapshotCursor": "100",
+  "items": [
+    {
+      "entityType": "finance.transaction",
+      "entityId": "tx-2026-08-04-0001",
+      "serverVersion": "42",
+      "payload": {
+        "meta": {
+          "id": "tx-2026-08-04-0001",
+          "userId": "local-user",
+          "createdAt": "2026-08-04T15:29:00Z",
+          "updatedAt": "2026-08-04T15:30:05Z",
+          "deletedAt": null,
+          "localVersion": 2,
+          "serverVersion": "42",
+          "modifiedByDevice": "11111111-1111-4111-8111-111111111111"
+        },
+        "transactionType": "expense",
+        "amountCents": 12800,
+        "currency": "CNY",
+        "accountId": "wechat-wallet",
+        "toAccountId": null,
+        "categoryId": "cat-food",
+        "counterparty": "coffee shop",
+        "merchant": null,
+        "item": "latte",
+        "note": null,
+        "occurredAt": "2026-08-04T09:00:24Z",
+        "localDate": "2026-08-04",
+        "status": "confirmed",
+        "sourceType": "manual",
+        "externalTransactionId": null
+      }
+    }
+  ],
+  "nextPageToken": "page-1",
+  "completed": false,
+  "serverTime": "2026-08-04T15:33:00Z"
+}

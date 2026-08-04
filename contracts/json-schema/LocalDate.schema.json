@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A natural calendar day in `YYYY-MM-DD` (wire format).",
+  "title": "LocalDate",
+  "type": "string"
+}

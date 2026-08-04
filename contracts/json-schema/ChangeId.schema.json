@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Idempotency key for a sync change: userId + changeId must be unique per payload.",
+  "title": "ChangeId",
+  "type": "string"
+}

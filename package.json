@@ -15,7 +15,10 @@
     "lint": "tsc --noEmit",
     "test": "npm run lint && npm run test:unit && npm run web:build",
     "test:unit": "tsx --test tests/*.test.ts",
-    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "contracts:generate": "cargo run --manifest-path tools/contract-exporter/Cargo.toml",
+    "contracts:test": "cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml",
+    "contracts:check": "npm run contracts:generate && git diff --exit-code -- contracts/"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",

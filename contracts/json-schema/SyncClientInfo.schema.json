@@ -1,0 +1,54 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "ClientPlatform": {
+      "description": "Client platform. Known values: windows, android, web. Unknown values are preserved.",
+      "type": "string"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Sync client info carried by every request body (headers may also carry it;\nthe server validates consistency).",
+  "properties": {
+    "appId": {
+      "$ref": "#/$defs/AppId"
+    },
+    "clientVersion": {
+      "description": "Client app release version (for example `0.2.1`).",
+      "type": "string"
+    },
+    "deviceId": {
+      "$ref": "#/$defs/DeviceId"
+    },
+    "platform": {
+      "$ref": "#/$defs/ClientPlatform"
+    },
+    "protocolVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "appId",
+    "clientVersion",
+    "platform",
+    "protocolVersion",
+    "schemaVersion",
+    "deviceId"
+  ],
+  "title": "SyncClientInfo",
+  "type": "object"
+}

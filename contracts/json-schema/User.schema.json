@@ -1,0 +1,111 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityMeta": {
+      "description": "Metadata shared by every syncable entity payload.\n\n`local_version` is the local revision counter (EPIC-01 `version` column).\nIt is NOT a server authority; `server_version` is assigned by the server\nand `base_server_version` (on changes) is what the client knew when it\nmade the change. Offline edits must never fabricate `server_version`.",
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "localVersion": {
+          "description": "Local revision number (never the server-authoritative version).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modifiedByDevice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Device that last modified the entity locally (audit only)."
+        },
+        "serverVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServerVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Server-authoritative version; `None` until the server first accepts it."
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "userId": {
+          "$ref": "#/$defs/UserId"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "createdAt",
+        "updatedAt",
+        "localVersion"
+      ],
+      "type": "object"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "UserId": {
+      "description": "Stable user identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`identity.user`",
+  "properties": {
+    "displayName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "email": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "meta": {
+      "$ref": "#/$defs/EntityMeta"
+    },
+    "status": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "meta",
+    "status"
+  ],
+  "title": "User",
+  "type": "object"
+}

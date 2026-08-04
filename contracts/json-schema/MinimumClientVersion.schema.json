@@ -1,0 +1,25 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Minimum required client version for one app id.",
+  "properties": {
+    "appId": {
+      "$ref": "#/$defs/AppId"
+    },
+    "clientVersion": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "appId",
+    "clientVersion"
+  ],
+  "title": "MinimumClientVersion",
+  "type": "object"
+}

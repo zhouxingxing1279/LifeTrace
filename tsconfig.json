@@ -26,6 +26,7 @@
     "src/hooks/**/*.ts",
     "src/services/**/*.ts",
     "src/types/**/*.ts",
+    "contracts/typescript/**/*.ts",
     "vite.tauri.config.ts"
   ],
   "exclude": ["node_modules", "src/server", "app/api", "desktop", "scripts", "tests"]

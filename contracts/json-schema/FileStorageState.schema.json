@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "File storage state. Known values: local_only, pending_upload, server_stored. Unknown values are preserved (forward compatible).",
+  "title": "FileStorageState",
+  "type": "string"
+}

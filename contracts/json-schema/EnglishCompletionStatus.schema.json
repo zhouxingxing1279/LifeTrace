@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "English learning record completion status. Known values: reading, summarized, analyzed, completed. Unknown values are preserved (forward compatible).",
+  "title": "EnglishCompletionStatus",
+  "type": "string"
+}

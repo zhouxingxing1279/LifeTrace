@@ -1,0 +1,51 @@
+{
+  "protocolVersion": 1,
+  "supportedProtocolVersions": [1],
+  "schemaVersion": 1,
+  "minimumSchemaVersion": 1,
+  "minimumClientVersions": [
+    {
+      "appId": "lifetrace-desktop",
+      "clientVersion": "0.2.1"
+    }
+  ],
+  "maximumPushBatchSize": 500,
+  "maximumPullBatchSize": 200,
+  "maximumRequestBytes": 4194304,
+  "maximumSnapshotPageSize": 200,
+  "maximumAtomicGroupSize": 50,
+  "tombstoneRetentionDays": 90,
+  "supportedEntityTypes": [
+    "identity.user",
+    "identity.device",
+    "finance.account",
+    "finance.category",
+    "finance.transaction",
+    "finance.transaction_evidence",
+    "habit.activity",
+    "habit.log",
+    "review.daily",
+    "note.folder",
+    "note.note",
+    "note.tag",
+    "note.tag_relation",
+    "note.relation",
+    "note.revision",
+    "english.article",
+    "english.learning_record",
+    "english.highlight",
+    "english.note",
+    "english.vocabulary",
+    "english.vocabulary_occurrence",
+    "english.vocabulary_review_state",
+    "workout.import",
+    "workout.workout",
+    "workout.exercise",
+    "workout.set",
+    "workout.training_note",
+    "file.metadata",
+    "entity.link",
+    "user.preference"
+  ],
+  "serverTime": "2026-08-04T15:34:00Z"
+}

@@ -1,0 +1,23 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Entity conflict handling mode.",
+  "oneOf": [
+    {
+      "const": "optimistic",
+      "description": "Client `baseServerVersion` must equal the current server version;\notherwise an explicit conflict is returned. No automatic last-write-wins.",
+      "type": "string"
+    },
+    {
+      "const": "server_authoritative",
+      "description": "The server is authoritative; client writes are rejected or ignored.",
+      "type": "string"
+    },
+    {
+      "const": "none",
+      "description": "No conflict semantics (device-local / not synced data).",
+      "type": "string"
+    }
+  ],
+  "title": "ConflictMode"
+}

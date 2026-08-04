@@ -1,0 +1,114 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "ClientPlatform": {
+      "description": "Client platform. Known values: windows, android, web. Unknown values are preserved.",
+      "type": "string"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "RequestId": {
+      "description": "Request tracing id. It never replaces changeId for idempotency.",
+      "type": "string"
+    },
+    "SnapshotId": {
+      "description": "Stable id assigned by the server to a snapshot; all pages share one consistent view.",
+      "type": "string"
+    },
+    "SyncClientInfo": {
+      "description": "Sync client info carried by every request body (headers may also carry it;\nthe server validates consistency).",
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "clientVersion": {
+          "description": "Client app release version (for example `0.2.1`).",
+          "type": "string"
+        },
+        "deviceId": {
+          "$ref": "#/$defs/DeviceId"
+        },
+        "platform": {
+          "$ref": "#/$defs/ClientPlatform"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "appId",
+        "clientVersion",
+        "platform",
+        "protocolVersion",
+        "schemaVersion",
+        "deviceId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /api/v1/sync/snapshot` request.",
+  "properties": {
+    "client": {
+      "$ref": "#/$defs/SyncClientInfo"
+    },
+    "entityTypes": {
+      "items": {
+        "$ref": "#/$defs/EntityType"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "pageSize": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pageToken": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "requestId": {
+      "$ref": "#/$defs/RequestId"
+    },
+    "snapshotId": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/SnapshotId"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Omitted on the first page; the server assigns one and expects it on\nsubsequent pages so all pages share one consistent view."
+    }
+  },
+  "required": [
+    "requestId",
+    "client",
+    "pageSize"
+  ],
+  "title": "SnapshotRequestV1",
+  "type": "object"
+}

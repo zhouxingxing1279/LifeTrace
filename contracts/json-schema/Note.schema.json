@@ -1,0 +1,177 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityMeta": {
+      "description": "Metadata shared by every syncable entity payload.\n\n`local_version` is the local revision counter (EPIC-01 `version` column).\nIt is NOT a server authority; `server_version` is assigned by the server\nand `base_server_version` (on changes) is what the client knew when it\nmade the change. Offline edits must never fabricate `server_version`.",
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "localVersion": {
+          "description": "Local revision number (never the server-authoritative version).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modifiedByDevice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Device that last modified the entity locally (audit only)."
+        },
+        "serverVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServerVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Server-authoritative version; `None` until the server first accepts it."
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "userId": {
+          "$ref": "#/$defs/UserId"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "createdAt",
+        "updatedAt",
+        "localVersion"
+      ],
+      "type": "object"
+    },
+    "JsonValue": true,
+    "NoteType": {
+      "description": "Note type. Known values: quick, document, daily, habit_log, workout_review, expense_note, weekly_review, monthly_review. Unknown values are preserved (forward compatible).",
+      "type": "string"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "UserId": {
+      "description": "Stable user identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`note.note`\n\nThe sync payload is the authoritative full snapshot (including content).\nTags, relations, attachments and revisions are separate entity types.",
+  "properties": {
+    "aiSummary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "aiTags": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "contentHtml": {
+      "type": "string"
+    },
+    "contentJson": {
+      "$ref": "#/$defs/JsonValue"
+    },
+    "contentMarkdown": {
+      "type": "string"
+    },
+    "contentText": {
+      "type": "string"
+    },
+    "embeddingStatus": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "folderId": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EntityId"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "isArchived": {
+      "type": "boolean"
+    },
+    "isFavorite": {
+      "type": "boolean"
+    },
+    "isPinned": {
+      "type": "boolean"
+    },
+    "lastAiProcessedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "meta": {
+      "$ref": "#/$defs/EntityMeta"
+    },
+    "noteType": {
+      "$ref": "#/$defs/NoteType"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "title": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "meta",
+    "noteType",
+    "contentJson",
+    "contentHtml",
+    "contentText",
+    "contentMarkdown",
+    "summary",
+    "isPinned",
+    "isFavorite",
+    "isArchived"
+  ],
+  "title": "Note",
+  "type": "object"
+}

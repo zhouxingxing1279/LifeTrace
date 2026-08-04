@@ -1,0 +1,15 @@
+[package]
+name = "contract-exporter"
+version = "0.1.0"
+edition = "2021"
+description = "LifeTrace contract exporter: JSON Schema, OpenAPI and TypeScript generation"
+
+[[bin]]
+name = "contract-exporter"
+path = "src/main.rs"
+
+[dependencies]
+lifetrace-contracts = { path = "../../crates/lifetrace-contracts" }
+schemars = { version = "1", features = ["chrono04"] }
+serde_json = "1"
+ts-rs = { version = "11", features = ["chrono-impl"] }

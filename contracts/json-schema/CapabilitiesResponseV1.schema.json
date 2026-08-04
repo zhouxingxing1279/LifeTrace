@@ -1,0 +1,115 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "MinimumClientVersion": {
+      "description": "Minimum required client version for one app id.",
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "clientVersion": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "appId",
+        "clientVersion"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`GET /api/v1/sync/capabilities` response.",
+  "properties": {
+    "maximumAtomicGroupSize": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maximumPullBatchSize": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maximumPushBatchSize": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maximumRequestBytes": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "maximumSnapshotPageSize": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "minimumClientVersions": {
+      "items": {
+        "$ref": "#/$defs/MinimumClientVersion"
+      },
+      "type": "array"
+    },
+    "minimumSchemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "protocolVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "schemaVersion": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "serverTime": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "supportedEntityTypes": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "supportedProtocolVersions": {
+      "items": {
+        "format": "uint32",
+        "minimum": 0,
+        "type": "integer"
+      },
+      "type": "array"
+    },
+    "tombstoneRetentionDays": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "supportedProtocolVersions",
+    "schemaVersion",
+    "minimumSchemaVersion",
+    "minimumClientVersions",
+    "maximumPushBatchSize",
+    "maximumPullBatchSize",
+    "maximumRequestBytes",
+    "maximumSnapshotPageSize",
+    "maximumAtomicGroupSize",
+    "tombstoneRetentionDays",
+    "supportedEntityTypes",
+    "serverTime"
+  ],
+  "title": "CapabilitiesResponseV1",
+  "type": "object"
+}

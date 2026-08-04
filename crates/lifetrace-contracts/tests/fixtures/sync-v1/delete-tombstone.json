@@ -1,0 +1,7 @@
+{
+  "entityType": "finance.transaction",
+  "entityId": "tx-2026-08-04-0002",
+  "deletedAt": "2026-08-04T15:31:00Z",
+  "serverVersion": "12",
+  "deletedByDevice": "22222222-2222-4222-8222-222222222222"
+}

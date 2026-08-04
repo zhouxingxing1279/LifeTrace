@@ -1,0 +1,31 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Embedded article vocabulary item.",
+  "properties": {
+    "example": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "meaning": {
+      "type": "string"
+    },
+    "phonetic": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "word": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "word",
+    "meaning"
+  ],
+  "title": "ArticleVocabularyItem",
+  "type": "object"
+}

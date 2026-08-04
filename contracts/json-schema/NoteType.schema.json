@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Note type. Known values: quick, document, daily, habit_log, workout_review, expense_note, weekly_review, monthly_review. Unknown values are preserved (forward compatible).",
+  "title": "NoteType",
+  "type": "string"
+}

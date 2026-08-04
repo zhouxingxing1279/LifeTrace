@@ -1,0 +1,8 @@
+{
+  "code": "LIFETRACE_SNAPSHOT_REQUIRED",
+  "message": "cursor has expired; snapshot is required",
+  "requestId": "req-20260804-0005",
+  "retryable": false,
+  "fieldErrors": [],
+  "details": null
+}

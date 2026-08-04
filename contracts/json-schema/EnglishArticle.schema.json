@@ -1,0 +1,354 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "ArticleVocabularyItem": {
+      "description": "Embedded article vocabulary item.",
+      "properties": {
+        "example": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "meaning": {
+          "type": "string"
+        },
+        "phonetic": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "word": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "word",
+        "meaning"
+      ],
+      "type": "object"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EnglishCategory": {
+      "description": "English article category. Known values: Technology, Science, Life, Business, Culture. Unknown values are preserved (forward compatible).",
+      "type": "string"
+    },
+    "EnglishFetchStatus": {
+      "description": "English article fetch status. Known values: PENDING, SUCCESS, FAILED, SKIPPED. Unknown values are preserved (forward compatible).",
+      "type": "string"
+    },
+    "EnglishLevel": {
+      "description": "CEFR level. Known values: A1, A2, B1, B2, C1. Unknown values are preserved (forward compatible).",
+      "type": "string"
+    },
+    "EnglishProcessingStatus": {
+      "description": "English article processing status. Known values: FETCHED, CLEANED, ANALYZED, READY, REJECTED, FAILED. Unknown values are preserved (forward compatible).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityMeta": {
+      "description": "Metadata shared by every syncable entity payload.\n\n`local_version` is the local revision counter (EPIC-01 `version` column).\nIt is NOT a server authority; `server_version` is assigned by the server\nand `base_server_version` (on changes) is what the client knew when it\nmade the change. Offline edits must never fabricate `server_version`.",
+      "properties": {
+        "createdAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "deletedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "localVersion": {
+          "description": "Local revision number (never the server-authoritative version).",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "modifiedByDevice": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DeviceId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Device that last modified the entity locally (audit only)."
+        },
+        "serverVersion": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ServerVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Server-authoritative version; `None` until the server first accepts it."
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "userId": {
+          "$ref": "#/$defs/UserId"
+        }
+      },
+      "required": [
+        "id",
+        "userId",
+        "createdAt",
+        "updatedAt",
+        "localVersion"
+      ],
+      "type": "object"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "UserId": {
+      "description": "Stable user identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`english.article` (shared catalog; server to client).",
+  "properties": {
+    "attribution": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "audioUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "author": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "category": {
+      "$ref": "#/$defs/EnglishCategory"
+    },
+    "content": {
+      "type": "string"
+    },
+    "contentHash": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "createdTime": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "difficulty": {
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "estimatedMinutes": {
+      "format": "int64",
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "externalId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fetchStatus": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EnglishFetchStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "fetchedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "hasAudio": {
+      "type": "boolean"
+    },
+    "imageUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "language": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lastError": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "level": {
+      "$ref": "#/$defs/EnglishLevel"
+    },
+    "licenseType": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "meta": {
+      "$ref": "#/$defs/EntityMeta"
+    },
+    "normalizedSourceUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "processingStatus": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EnglishProcessingStatus"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "publishedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "qualityScore": {
+      "format": "double",
+      "type": [
+        "number",
+        "null"
+      ]
+    },
+    "questions": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "retryCount": {
+      "format": "int64",
+      "type": "integer"
+    },
+    "rightsNote": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceCategory": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceKey": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceUpdatedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "sourceUrl": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "type": "string"
+    },
+    "vocabulary": {
+      "items": {
+        "$ref": "#/$defs/ArticleVocabularyItem"
+      },
+      "type": "array"
+    },
+    "wordCount": {
+      "format": "int64",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "meta",
+    "title",
+    "level",
+    "category",
+    "content",
+    "wordCount",
+    "hasAudio",
+    "retryCount",
+    "questions",
+    "vocabulary"
+  ],
+  "title": "EnglishArticle",
+  "type": "object"
+}

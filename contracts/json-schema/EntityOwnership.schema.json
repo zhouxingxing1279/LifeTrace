@@ -1,0 +1,33 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Entity ownership class.",
+  "oneOf": [
+    {
+      "const": "user_owned",
+      "description": "Owned and edited by the user; bidirectional sync with conflict checks.",
+      "type": "string"
+    },
+    {
+      "const": "server_managed",
+      "description": "Managed by the server (for example identity.user, identity.device).",
+      "type": "string"
+    },
+    {
+      "const": "shared_catalog",
+      "description": "Global catalog shared by all users (for example english.article).",
+      "type": "string"
+    },
+    {
+      "const": "device_local",
+      "description": "Only meaningful on the device that created it; never synced.",
+      "type": "string"
+    },
+    {
+      "const": "secret_local_only",
+      "description": "Credentials and secrets; MUST NEVER enter a sync payload.",
+      "type": "string"
+    }
+  ],
+  "title": "EntityOwnership"
+}

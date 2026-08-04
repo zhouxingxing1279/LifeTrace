@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Conflict reason. Known values: base_version_mismatch, client_modified_server_deleted, client_deleted_server_modified, both_deleted. Unknown values are preserved.",
+  "title": "ConflictReason",
+  "type": "string"
+}

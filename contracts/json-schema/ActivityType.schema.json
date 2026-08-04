@@ -1,0 +1,7 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Habit activity type. Known values: duration, count, completion, weekly, control. Unknown values are preserved (forward compatible).",
+  "title": "ActivityType",
+  "type": "string"
+}

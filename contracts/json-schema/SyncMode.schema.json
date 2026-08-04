@@ -1,0 +1,13 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Entity sync mode.",
+  "enum": [
+    "bidirectional",
+    "server_to_client",
+    "client_to_server",
+    "not_synced"
+  ],
+  "title": "SyncMode",
+  "type": "string"
+}

@@ -1,0 +1,27 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "CurrencyCode": {
+      "description": "ISO 4217 currency code (for example `CNY`, `USD`).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A monetary amount: integer cents plus currency.",
+  "properties": {
+    "amountCents": {
+      "description": "Amount in the smallest currency unit (cents). Never use floats.",
+      "format": "int64",
+      "type": "integer"
+    },
+    "currency": {
+      "$ref": "#/$defs/CurrencyCode"
+    }
+  },
+  "required": [
+    "amountCents",
+    "currency"
+  ],
+  "title": "MoneyAmount",
+  "type": "object"
+}

@@ -1,0 +1,194 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "AtomicGroupId": {
+      "description": "Groups changes that must be applied all-or-nothing in one push request.",
+      "type": "string"
+    },
+    "ChangeId": {
+      "description": "Idempotency key for a sync change: userId + changeId must be unique per payload.",
+      "type": "string"
+    },
+    "ChangeOperation": {
+      "description": "Change operation. Known values: upsert, delete. Unknown values are preserved.",
+      "type": "string"
+    },
+    "ClientPlatform": {
+      "description": "Client platform. Known values: windows, android, web. Unknown values are preserved.",
+      "type": "string"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityId": {
+      "description": "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim.",
+      "type": "string"
+    },
+    "EntityRef": {
+      "description": "A typed reference to another syncable entity.",
+      "properties": {
+        "entityId": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "entityType": {
+          "$ref": "#/$defs/EntityType"
+        }
+      },
+      "required": [
+        "entityType",
+        "entityId"
+      ],
+      "type": "object"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "JsonValue": true,
+    "RequestId": {
+      "description": "Request tracing id. It never replaces changeId for idempotency.",
+      "type": "string"
+    },
+    "ServerVersion": {
+      "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
+      "type": "string"
+    },
+    "SyncChangeV1": {
+      "description": "One client change. `upsert` payloads are complete entity snapshots (no\nJSON patch). `delete` carries no payload by default; the server creates a\ntombstone. `client_modified_at` is audit-only and never used for ordering\nor conflict resolution.",
+      "properties": {
+        "atomicGroupId": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AtomicGroupId"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Changes sharing an atomic group must be in one request and succeed or\nfail together."
+        },
+        "baseServerVersion": {
+          "$ref": "#/$defs/ServerVersion",
+          "description": "Server version the client knew when making this change (`\"0\"` for new\nentities). Never fabricated offline."
+        },
+        "changeId": {
+          "$ref": "#/$defs/ChangeId"
+        },
+        "clientModifiedAt": {
+          "description": "Audit only. Never used for global ordering or conflict resolution.",
+          "format": "date-time",
+          "type": "string"
+        },
+        "dependencies": {
+          "description": "Entities this change depends on (must exist before applying).",
+          "items": {
+            "$ref": "#/$defs/EntityRef"
+          },
+          "type": "array"
+        },
+        "entityId": {
+          "$ref": "#/$defs/EntityId"
+        },
+        "entitySchemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "entityType": {
+          "$ref": "#/$defs/EntityType"
+        },
+        "operation": {
+          "$ref": "#/$defs/ChangeOperation"
+        },
+        "payload": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/JsonValue"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Full entity snapshot for `upsert`; empty for `delete`."
+        }
+      },
+      "required": [
+        "changeId",
+        "entityType",
+        "entityId",
+        "operation",
+        "baseServerVersion",
+        "entitySchemaVersion",
+        "clientModifiedAt",
+        "dependencies"
+      ],
+      "type": "object"
+    },
+    "SyncClientInfo": {
+      "description": "Sync client info carried by every request body (headers may also carry it;\nthe server validates consistency).",
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "clientVersion": {
+          "description": "Client app release version (for example `0.2.1`).",
+          "type": "string"
+        },
+        "deviceId": {
+          "$ref": "#/$defs/DeviceId"
+        },
+        "platform": {
+          "$ref": "#/$defs/ClientPlatform"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "appId",
+        "clientVersion",
+        "platform",
+        "protocolVersion",
+        "schemaVersion",
+        "deviceId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /api/v1/sync/push` request.",
+  "properties": {
+    "changes": {
+      "items": {
+        "$ref": "#/$defs/SyncChangeV1"
+      },
+      "type": "array"
+    },
+    "client": {
+      "$ref": "#/$defs/SyncClientInfo"
+    },
+    "requestId": {
+      "$ref": "#/$defs/RequestId",
+      "description": "Tracing only; never replaces `changeId` for idempotency."
+    }
+  },
+  "required": [
+    "requestId",
+    "client",
+    "changes"
+  ],
+  "title": "PushRequestV1",
+  "type": "object"
+}

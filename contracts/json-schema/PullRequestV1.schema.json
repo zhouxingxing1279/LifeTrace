@@ -1,0 +1,109 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "ClientPlatform": {
+      "description": "Client platform. Known values: windows, android, web. Unknown values are preserved.",
+      "type": "string"
+    },
+    "Cursor": {
+      "description": "Opaque server cursor. Clients must never parse, add, subtract or guess it.\nWire format: string.",
+      "type": "string"
+    },
+    "DeviceId": {
+      "description": "Stable device identifier (string, usually UUID v4).",
+      "type": "string"
+    },
+    "EntityType": {
+      "description": "Registered entity type. Known values: identity.user, identity.device, finance.account, finance.category, finance.transaction, finance.transaction_evidence, habit.activity, habit.log, review.daily, note.folder, note.note, note.tag, note.tag_relation, note.relation, note.revision, english.article, english.learning_record, english.highlight, english.note, english.vocabulary, english.vocabulary_occurrence, english.vocabulary_review_state, workout.import, workout.workout, workout.exercise, workout.set, workout.training_note, file.metadata, entity.link, user.preference. Unknown values are preserved.",
+      "type": "string"
+    },
+    "RequestId": {
+      "description": "Request tracing id. It never replaces changeId for idempotency.",
+      "type": "string"
+    },
+    "SyncClientInfo": {
+      "description": "Sync client info carried by every request body (headers may also carry it;\nthe server validates consistency).",
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "clientVersion": {
+          "description": "Client app release version (for example `0.2.1`).",
+          "type": "string"
+        },
+        "deviceId": {
+          "$ref": "#/$defs/DeviceId"
+        },
+        "platform": {
+          "$ref": "#/$defs/ClientPlatform"
+        },
+        "protocolVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "schemaVersion": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "appId",
+        "clientVersion",
+        "platform",
+        "protocolVersion",
+        "schemaVersion",
+        "deviceId"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "`POST /api/v1/sync/pull` request.",
+  "properties": {
+    "afterCursor": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Cursor"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Opaque server cursor. `None` means \"start from the beginning\" (may be\nanswered with `LIFETRACE_SNAPSHOT_REQUIRED` when history is pruned)."
+    },
+    "client": {
+      "$ref": "#/$defs/SyncClientInfo"
+    },
+    "entityTypes": {
+      "description": "Optional entity type filter.",
+      "items": {
+        "$ref": "#/$defs/EntityType"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "limit": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "requestId": {
+      "$ref": "#/$defs/RequestId"
+    }
+  },
+  "required": [
+    "requestId",
+    "client",
+    "limit"
+  ],
+  "title": "PullRequestV1",
+  "type": "object"
+}
