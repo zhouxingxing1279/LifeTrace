@@ -87,6 +87,14 @@ string_id!(
     ConflictId,
     "Stable id assigned by the server to a returned conflict."
 );
+string_id!(
+    AtomicGroupId,
+    "Groups changes that must be applied all-or-nothing in one push request."
+);
+string_id!(
+    SnapshotId,
+    "Stable id assigned by the server to a snapshot; all pages share one consistent view."
+);
 
 /// Opaque server cursor. Clients must never parse, add, subtract or guess it.
 /// Wire format: string.
