@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension};
+use rusqlite::Connection;
 use serde_json::{Map, Value};
 
 /// 读取一张 JSON 实体表的全部记录（`id, data_json, updated_at`）。
@@ -31,24 +31,6 @@ pub fn read_json_rows(connection: &Connection, table: &str) -> Result<Vec<Value>
         result.push(value);
     }
     Ok(result)
-}
-
-/// 读取单条 JSON 实体。
-pub fn read_json_row(
-    connection: &Connection,
-    table: &str,
-    entity_id: &str,
-) -> Result<Option<Value>, String> {
-    let raw = connection
-        .query_row(
-            &format!("SELECT data_json FROM {table} WHERE id=?1"),
-            [entity_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?;
-    raw.map(|value| serde_json::from_str(&value).map_err(|error| error.to_string()))
-        .transpose()
 }
 
 /// 把 JSON 值作为对象返回，带可读错误。

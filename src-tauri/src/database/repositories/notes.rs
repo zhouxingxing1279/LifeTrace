@@ -10,8 +10,6 @@ use uuid::Uuid;
 
 use crate::database::legacy::json_parser;
 
-pub const DEFAULT_USER_ID: &str = "local";
-
 const NOTE_TYPES: [&str; 8] = [
     "quick", "document", "daily", "habit_log", "workout_review", "expense_note",
     "weekly_review", "monthly_review",

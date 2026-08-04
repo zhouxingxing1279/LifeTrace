@@ -3,7 +3,7 @@
 //! `english_sources` / `english_sync_tasks` / `english_preferences` 属于运行配置，
 //! 仍保持 JSON/KV 结构，由 `server/english.rs` 直接读写。
 use chrono::Utc;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection};
 use serde_json::{json, Value};
 use uuid::Uuid;
 use crate::database::legacy::json_parser;

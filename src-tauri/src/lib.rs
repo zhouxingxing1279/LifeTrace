@@ -1,3 +1,5 @@
+#![allow(linker_messages)]
+
 mod desktop;
 mod database;
 mod server;

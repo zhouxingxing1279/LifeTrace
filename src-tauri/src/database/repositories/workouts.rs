@@ -29,7 +29,6 @@ fn user_id(object: &serde_json::Map<String, Value>) -> String {
 #[derive(Debug, Clone)]
 pub struct WorkoutSetRow {
     pub id: String,
-    pub exercise_id: String,
     pub set_number: i64,
     pub weight_kg: Option<f64>,
     pub reps: Option<i64>,
@@ -69,10 +68,10 @@ pub struct WorkoutRow {
     pub modified_by_device: Option<String>,
 }
 pub fn workout_from_legacy_json(
-    connection: &Connection,
+    _connection: &Connection,
     value: &Value,
-    context: Option<&crate::database::migration_runner::MigrationContext>,
-    transaction: Option<&rusqlite::Transaction>,
+    _context: Option<&crate::database::migration_runner::MigrationContext>,
+    _transaction: Option<&rusqlite::Transaction>,
 ) -> Result<(WorkoutRow, Vec<WorkoutExerciseRow>), String> {
     let object = json_parser::as_object(value, "训练记录")?;
     let id = json_parser::string_field(object, "id")
@@ -100,7 +99,6 @@ pub fn workout_from_legacy_json(
             let set_object = set.as_object().cloned().unwrap_or_default();
             sets.push(WorkoutSetRow {
                 id: Uuid::new_v4().to_string(),
-                exercise_id: String::new(),
                 set_number: (set_index + 1) as i64,
                 weight_kg: real_value(&set_object, "weight"),
                 reps: int_value(&set_object, "reps"),
@@ -159,7 +157,7 @@ pub fn upsert_workout(
            id, user_id, source, source_id, name, occurred_at, local_date, duration_seconds,
            exercise_count, set_count, planned_set_count, volume_kg, calories_kcal, status,
            raw_json, created_at, updated_at, deleted_at, version, modified_by_device
-         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,NULL)",
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         params![
             row.id,
             row.user_id,
@@ -179,7 +177,8 @@ pub fn upsert_workout(
             row.created_at,
             row.updated_at,
             row.deleted_at,
-            row.version
+            row.version,
+            row.modified_by_device
         ],
     ).map_err(|error| error.to_string())?;
     connection.execute("DELETE FROM workout_exercises WHERE workout_id = ?1", [&row.id]).map_err(|error| error.to_string())?;
@@ -420,7 +419,7 @@ pub fn upsert_import(connection: &Connection, row: &WorkoutImportRow) -> Result<
         "INSERT OR REPLACE INTO workout_imports(
            id, user_id, source, share_url, status, parser, parser_version, error, raw_json,
            workout_id, created_at, updated_at, deleted_at, version, modified_by_device
-         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,NULL)",
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
         params![
             row.id,
             row.user_id,
@@ -435,7 +434,8 @@ pub fn upsert_import(connection: &Connection, row: &WorkoutImportRow) -> Result<
             row.created_at,
             row.updated_at,
             row.deleted_at,
-            row.version
+            row.version,
+            row.modified_by_device
         ],
     ).map(|_| ()).map_err(|error| error.to_string())
 }
@@ -570,7 +570,7 @@ pub fn upsert_training_note(connection: &Connection, row: &TrainingNoteRow) -> R
         "INSERT OR REPLACE INTO training_notes(
            id, user_id, title, content, workout_id, source, note_date, created_at, updated_at,
            deleted_at, version, modified_by_device
-         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL)",
+         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
         params![
             row.id,
             row.user_id,
@@ -582,34 +582,10 @@ pub fn upsert_training_note(connection: &Connection, row: &TrainingNoteRow) -> R
             row.created_at,
             row.updated_at,
             row.deleted_at,
-            row.version
+            row.version,
+            row.modified_by_device
         ],
     ).map(|_| ()).map_err(|error| error.to_string())
-}
-pub fn list_training_notes(connection: &Connection) -> Result<Vec<Value>, String> {
-    let mut statement = connection
-        .prepare(
-            "SELECT id, user_id, title, content, workout_id, source, note_date, created_at, updated_at
-             FROM training_notes WHERE deleted_at IS NULL ORDER BY updated_at DESC",
-        )
-        .map_err(|error| error.to_string())?;
-    let rows = statement
-        .query_map([], |row| {
-            Ok(json!({
-                "id": row.get::<_, String>(0)?,
-                "userId": row.get::<_, String>(1)?,
-                "title": row.get::<_, String>(2)?,
-                "content": row.get::<_, String>(3)?,
-                "workoutRecordId": row.get::<_, Option<String>>(4)?,
-                "source": row.get::<_, String>(5)?,
-                "noteDate": row.get::<_, String>(6)?,
-                "createdAt": row.get::<_, String>(7)?,
-                "updatedAt": row.get::<_, String>(8)?
-            }))
-        })
-        .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())
 }
 pub fn save_training_note(connection: &Connection, dto: &Value) -> Result<(), String> {
     let row = training_note_from_legacy_json(connection, dto, None, None)?;

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value};
 

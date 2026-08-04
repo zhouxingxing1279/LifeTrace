@@ -8,7 +8,7 @@ use image::{imageops, DynamicImage, GrayImage};
 use regex::Regex;
 use reqwest::{redirect::Policy, Client};
 use rqrr::PreparedImage;
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::Connection;
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -457,10 +457,6 @@ fn read_entities(connection: &Connection, table: &str) -> Result<Vec<Value>, Str
         "activities" => habits::list_activities(connection),
         _ => Err(format!("未知数据表: {table}")),
     }
-}
-
-pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
-    Ok(())
 }
 
 pub async fn parse(State(state): State<AppState>, mut multipart: Multipart) -> Response {

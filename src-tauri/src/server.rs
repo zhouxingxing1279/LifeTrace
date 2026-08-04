@@ -69,16 +69,22 @@ pub async fn serve(
         )
     }?;
     if !summary.applied.is_empty() {
-        eprintln!(
-            "LifeTrace applied {} migration(s)",
-            summary.applied.len()
-        );
+        for applied in &summary.applied {
+            eprintln!(
+                "LifeTrace applied migration v{} ({})：迁移 {} 条，warning {} 条，error {} 条，metrics {:?}",
+                applied.version,
+                applied.name,
+                applied.report.migrated,
+                applied.report.warnings,
+                applied.report.errors,
+                applied.report.metrics
+            );
+        }
     }
     state::ensure_schema(&connection)?;
     assistant::ensure_schema(&connection)?;
     imports::ensure_schema(&connection)?;
     crate::database::repositories::notes::seed_default_folders(&connection)?;
-    xunji::ensure_schema(&connection)?;
     translation::ensure_schema(&connection)?;
     english::ensure_schema(&connection)?;
     photo::ensure_schema(&connection)?;

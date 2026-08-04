@@ -12,14 +12,12 @@ use crate::database::{backup, validation};
 #[derive(Debug, Clone)]
 pub struct MigrationContext {
     pub data_dir: PathBuf,
-    pub backup_dir: PathBuf,
     pub run_id: Option<String>,
 }
 
 impl MigrationContext {
     pub fn new(data_dir: PathBuf) -> Self {
         Self {
-            backup_dir: backup::backup_directory(&data_dir),
             data_dir,
             run_id: None,
         }
@@ -37,7 +35,6 @@ impl MigrationContext {
 #[derive(Debug, Default, Clone)]
 pub struct MigrationReport {
     pub migrated: usize,
-    pub skipped: usize,
     pub warnings: usize,
     pub errors: usize,
     pub metrics: BTreeMap<String, i64>,
@@ -314,6 +311,21 @@ pub fn run(
             version: migration.version(),
             message,
         })?;
+        if !backup_record.integrity_ok {
+            return Err(MigrationError {
+                version: migration.version(),
+                message: format!(
+                    "迁移前备份完整性校验失败: {}",
+                    backup_record.path.display()
+                ),
+            });
+        }
+        eprintln!(
+            "LifeTrace 迁移前备份: {}（{} 字节，sha256 {}）",
+            backup_record.path.display(),
+            backup_record.size_bytes,
+            backup_record.sha256
+        );
         let run_id = Uuid::new_v4().to_string();
         let started_at = Utc::now().to_rfc3339();
         connection
@@ -341,7 +353,23 @@ pub fn run(
                     version: migration.version(),
                     message: format!("开启迁移事务失败: {error}"),
                 })?;
-            let report = migration.up(&transaction, &run_context)?;
+            let mut report = migration.up(&transaction, &run_context)?;
+            report.warnings = transaction
+                .query_row(
+                    "SELECT COUNT(*) FROM migration_issues
+                     WHERE migration_run_id=?1 AND severity='warning'",
+                    [&run_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap_or(0) as usize;
+            report.errors = transaction
+                .query_row(
+                    "SELECT COUNT(*) FROM migration_issues
+                     WHERE migration_run_id=?1 AND severity='error'",
+                    [&run_id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap_or(0) as usize;
             validation::validate(&transaction).map_err(|message| MigrationError {
                 version: migration.version(),
                 message,

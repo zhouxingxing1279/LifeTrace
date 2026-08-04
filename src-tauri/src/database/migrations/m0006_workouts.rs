@@ -367,12 +367,14 @@ mod tests {
         run(&mut connection, &context, &migrations).unwrap();
         let workouts = workouts::list_workouts(&connection).unwrap();
         let imports = workouts::list_imports(&connection).unwrap();
-        let notes = workouts::list_training_notes(&connection).unwrap();
         assert_eq!(workouts.len(), 1);
         assert_eq!(workouts[0]["setCount"], json!(2));
         assert_eq!(imports.len(), 1);
         assert_eq!(imports[0]["workoutRecordId"], json!("w1"));
-        assert_eq!(notes.len(), 1);
+        let training_note_count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM training_notes", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(training_note_count, 1);
         let exercise_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM workout_exercises", [], |row| row.get(0))
             .unwrap();
