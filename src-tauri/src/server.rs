@@ -2,7 +2,7 @@ mod assistant;
 mod dictionary;
 mod english;
 mod imports;
-mod migration;
+pub(crate) mod migration;
 mod notes;
 pub(crate) mod photo;
 mod state;
@@ -20,6 +20,8 @@ use rusqlite::Connection;
 use serde::Serialize;
 use tokio::net::TcpListener;
 use tower_http::cors::{Any, CorsLayer};
+
+use crate::database;
 
 #[derive(Clone)]
 pub(crate) struct AppState {
@@ -55,12 +57,23 @@ pub async fn serve(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::fs::create_dir_all(&data_dir).await?;
     let database_path = data_dir.join("lifetrace.db");
-    let connection = Connection::open(database_path)?;
-    connection.execute_batch(
-        "PRAGMA journal_mode=WAL;
-         PRAGMA foreign_keys=ON;
-         PRAGMA busy_timeout=5000;",
-    )?;
+    // 启动顺序：打开数据库 → 设置 PRAGMA → 版本化 Migration → 初始化模块 → 启动服务。
+    let mut connection = database::connection::open(&database_path)?;
+    let migration_context = database::migration_runner::MigrationContext::new(data_dir.clone());
+    let summary = {
+        let migrations = database::migrations::all();
+        database::migration_runner::run(&mut connection, &migration_context, &migrations).map_err(
+            |error| {
+            Box::<dyn std::error::Error + Send + Sync>::from(format!("数据库迁移失败: {error}"))
+            },
+        )
+    }?;
+    if !summary.applied.is_empty() {
+        eprintln!(
+            "LifeTrace applied {} migration(s)",
+            summary.applied.len()
+        );
+    }
     state::ensure_schema(&connection)?;
     assistant::ensure_schema(&connection)?;
     imports::ensure_schema(&connection)?;

@@ -1,4 +1,5 @@
 mod desktop;
+mod database;
 mod server;
 
 use tauri::Manager;

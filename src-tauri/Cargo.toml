@@ -20,7 +20,7 @@ futures-util = "0.3"
 md5 = "0.8"
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
 rqrr = "0.10.1"
-rusqlite = { version = "0.37", features = ["bundled"] }
+rusqlite = { version = "0.37", features = ["bundled", "backup"] }
 rustls = { version = "0.23", features = ["ring"] }
 regex = "1"
 rcgen = "0.14"
