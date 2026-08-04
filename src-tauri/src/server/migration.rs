@@ -5,7 +5,7 @@ use std::{
 
 use rusqlite::{params, Connection, OpenFlags, OptionalExtension};
 
-const JSON_TABLES: [(&str, &str); 13] = [
+const JSON_TABLES: [(&str, &str); 15] = [
     ("activities", "activities"),
     ("activity_logs", "activity_logs"),
     ("transactions", "transactions"),
@@ -13,6 +13,8 @@ const JSON_TABLES: [(&str, &str); 13] = [
     ("settings", "settings"),
     ("finance_accounts", "finance_accounts"),
     ("workout_history", "workout_history"),
+    ("workout_import_records", "workout_imports"),
+    ("training_notes", "training_notes"),
     ("english_articles", "english_articles"),
     ("english_learning_records", "english_learning_records"),
     ("english_highlights", "english_highlights"),
@@ -120,6 +122,14 @@ fn copy_json_table(
             | "english_ai_analysis"
             | "english_vocabulary" => {
                 crate::database::legacy::english_d1::import_json_table(
+                    source,
+                    destination,
+                    source_table,
+                    destination_table,
+                )
+            }
+            "workouts" | "workout_imports" | "training_notes" => {
+                crate::database::legacy::workouts_d1::import_json_table(
                     source,
                     destination,
                     source_table,

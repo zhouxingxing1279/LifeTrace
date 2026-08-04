@@ -7,11 +7,11 @@ use axum::{
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Map, Value};
 
-use crate::database::repositories::{finance, habits};
+use crate::database::repositories::{finance, habits, workouts};
 
 use super::AppState;
 
-const JSON_TABLES: [(&str, &str); 2] = [("settings", "settings"), ("workoutHistory", "workout_history")];
+const JSON_TABLES: [(&str, &str); 1] = [("settings", "settings")];
 
 fn table_name(key: &str) -> Option<&'static str> {
     JSON_TABLES
@@ -140,6 +140,12 @@ pub async fn get(State(state): State<AppState>) -> Response {
         }
         Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
     }
+    match workouts::list_workouts(&connection) {
+        Ok(workout_history) => {
+            result.insert("workoutHistory".to_owned(), Value::Array(workout_history));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
     for (key, table) in JSON_TABLES {
         let values = match read_table(&connection, table) {
             Ok(value) => value,
@@ -218,6 +224,12 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             }
             if key == "reviews" {
                 return match habits::save_daily_review(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "workoutHistory" {
+                return match workouts::save_workout(&connection, value) {
                     Ok(()) => Json(json!({ "ok": true })).into_response(),
                     Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                 };
@@ -325,6 +337,12 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                     Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                 };
             }
+            if key == "workoutHistory" {
+                return match workouts::delete_workout(&connection, id) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
             let Some(table) = table_name(key) else {
                 return error(StatusCode::BAD_REQUEST, "不支持的数据表");
             };
@@ -378,6 +396,14 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .cloned()
                 .unwrap_or_default();
             if let Err(message) = habits::replace_all(&transaction, &activities, &logs, &reviews) {
+                return error(StatusCode::INTERNAL_SERVER_ERROR, message);
+            }
+            let workout_history = data
+                .get("workoutHistory")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if let Err(message) = workouts::replace_all(&transaction, &workout_history) {
                 return error(StatusCode::INTERNAL_SERVER_ERROR, message);
             }
             let mut restore_error = None;

@@ -9,3 +9,4 @@ pub mod finance_d1;
 pub mod habits_d1;
 pub mod json_parser;
 pub mod notes_d1;
+pub mod workouts_d1;

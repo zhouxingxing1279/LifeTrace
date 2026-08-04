@@ -6,4 +6,5 @@ pub mod finance;
 pub mod habits;
 pub mod notes;
 pub mod english;
+pub mod workouts;
 pub mod state_compat;

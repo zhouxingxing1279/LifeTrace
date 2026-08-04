@@ -64,13 +64,13 @@ const DATASETS: &[Dataset] = &[
     Dataset {
         key: "workout_history",
         label: "训练历史",
-        table: "workout_history",
+        table: "workouts",
         kind: DatasetKind::Json,
     },
     Dataset {
         key: "workout_import_records",
         label: "训练导入",
-        table: "workout_import_records",
+        table: "workout_imports",
         kind: DatasetKind::Json,
     },
     Dataset {
@@ -628,6 +628,9 @@ fn json_records(
 /// 规范化表的 JSON 视图表达式（用于个人数据目录查询）。
 fn normalized_json_expression(key: &str) -> Option<&'static str> {
     match key {
+        "workout_history" => Some("json_object('id',id,'name',name,'occurredAt',occurred_at,'durationSeconds',duration_seconds,'source',source,'sourceId',source_id,'createdAt',created_at,'updatedAt',updated_at)"),
+        "workout_import_records" => Some("json_object('id',id,'source',source,'shareUrl',share_url,'status',status,'workoutRecordId',workout_id,'createdAt',created_at,'updatedAt',updated_at)"),
+        "training_notes" => Some("json_object('id',id,'title',title,'content',content,'noteDate',note_date,'workoutRecordId',workout_id,'createdAt',created_at,'updatedAt',updated_at)"),
         "activities" => Some("json_object('id',id,'name',name,'type',activity_type,'unit',unit,'isArchived',is_archived,'createdAt',created_at,'updatedAt',updated_at)"),
         "activity_logs" => Some("json_object('id',id,'activityId',activity_id,'value',value,'status',status,'createdAt',created_at,'updatedAt',updated_at)"),
         "transactions" => Some("json_object('id',id,'type',transaction_type,'amount',amount_cents/100.0,'category',COALESCE(legacy_category_name,''),'account',COALESCE(legacy_account_name,''),'occurredAt',occurred_at,'createdAt',created_at,'updatedAt',updated_at)"),
@@ -650,6 +653,9 @@ fn normalized_json_expression(key: &str) -> Option<&'static str> {
 /// 规范化表的日期表达式（真实列）。
 fn normalized_date_expression(key: &str) -> &'static str {
     match key {
+        "workout_history" => "occurred_at",
+        "workout_import_records" => "created_at",
+        "training_notes" => "COALESCE(note_date, created_at)",
         "activity_logs" => "created_at",
         "transactions" => "occurred_at",
         "daily_reviews" => "review_date",
@@ -1250,6 +1256,9 @@ mod tests {
                             | "note_folders"
                             | "note_tags"
                             | "note_revisions"
+                            | "workout_history"
+                            | "workout_import_records"
+                            | "training_notes"
                             | "english_articles"
                             | "english_learning_records"
                             | "english_vocabulary"
@@ -1268,6 +1277,9 @@ mod tests {
                             "note_folders" => "CREATE TABLE note_folders(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,updated_at TEXT)",
                             "note_tags" => "CREATE TABLE note_tags(id TEXT PRIMARY KEY,name TEXT,created_at TEXT,updated_at TEXT)",
                             "note_revisions" => "CREATE TABLE note_revisions(id TEXT PRIMARY KEY,note_id TEXT,revision_version INTEGER,created_at TEXT)",
+                            "workout_history" => "CREATE TABLE workouts(id TEXT PRIMARY KEY,name TEXT,occurred_at TEXT,duration_seconds INTEGER,source TEXT,source_id TEXT,created_at TEXT,updated_at TEXT)",
+                            "workout_import_records" => "CREATE TABLE workout_imports(id TEXT PRIMARY KEY,source TEXT,share_url TEXT,status TEXT,workout_id TEXT,created_at TEXT,updated_at TEXT)",
+                            "training_notes" => "CREATE TABLE training_notes(id TEXT PRIMARY KEY,title TEXT,content TEXT,note_date TEXT,workout_id TEXT,created_at TEXT,updated_at TEXT)",
                             "english_articles" => "CREATE TABLE english_articles(id TEXT PRIMARY KEY,title TEXT,level TEXT,category TEXT,word_count INTEGER,created_time TEXT,published_at TEXT,created_at TEXT,updated_at TEXT)",
                             "english_learning_records" => "CREATE TABLE english_learning_records(id TEXT PRIMARY KEY,article_id TEXT,record_date TEXT,reading_time_seconds INTEGER,summary TEXT,created_at TEXT,updated_at TEXT)",
                             "english_vocabulary" => "CREATE TABLE english_vocabulary(id TEXT PRIMARY KEY,display_word TEXT,normalized_word TEXT,status TEXT,next_review_at TEXT,created_at TEXT,updated_at TEXT)",

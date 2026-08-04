@@ -15,6 +15,8 @@ use serde_json::{json, Value};
 use url::Url;
 use uuid::Uuid;
 
+use crate::database::repositories::{habits, workouts};
+
 use super::AppState;
 
 const MAX_IMAGE_SIZE: usize = 15 * 1024 * 1024;
@@ -439,52 +441,25 @@ fn parse_page(html: &str) -> Option<(Workout, Value, &'static str)> {
 }
 
 fn put_entity(connection: &Connection, table: &str, value: &Value) -> Result<(), String> {
-    let id = value
-        .get("id")
-        .and_then(Value::as_str)
-        .ok_or_else(|| "记录缺少 id".to_owned())?;
-    let updated_at = value
-        .get("updatedAt")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    connection
-        .execute(
-            &format!(
-                "INSERT INTO {table}(id,data_json,updated_at) VALUES(?1,?2,?3)
-                 ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at"
-            ),
-            params![id, value.to_string(), updated_at],
-        )
-        .map(|_| ())
-        .map_err(|value| value.to_string())
+    match table {
+        "workout_import_records" => workouts::save_import(connection, value),
+        "workout_history" => workouts::save_workout(connection, value),
+        "training_notes" => workouts::save_training_note(connection, value),
+        "activities" => habits::save_activity(connection, value),
+        "activity_logs" => habits::save_activity_log(connection, value),
+        _ => Err(format!("未知数据表: {table}")),
+    }
 }
 
 fn read_entities(connection: &Connection, table: &str) -> Result<Vec<Value>, String> {
-    let mut statement = connection
-        .prepare(&format!(
-            "SELECT data_json FROM {table} ORDER BY updated_at DESC"
-        ))
-        .map_err(|value| value.to_string())?;
-    let rows = statement
-        .query_map([], |row| row.get::<_, String>(0))
-        .map_err(|value| value.to_string())?;
-    let mut values = Vec::new();
-    for row in rows {
-        values.push(
-            serde_json::from_str(&row.map_err(|value| value.to_string())?)
-                .map_err(|value| value.to_string())?,
-        );
+    match table {
+        "workout_import_records" => workouts::list_imports(connection),
+        "activities" => habits::list_activities(connection),
+        _ => Err(format!("未知数据表: {table}")),
     }
-    Ok(values)
 }
 
 pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
-    for table in ["workout_import_records", "training_notes"] {
-        connection.execute(
-            &format!("CREATE TABLE IF NOT EXISTS {table}(id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL)"),
-            [],
-        )?;
-    }
     Ok(())
 }
 
@@ -563,21 +538,10 @@ pub async fn update(State(state): State<AppState>, Json(body): Json<ImportAction
         Ok(value) => value,
         Err(_) => return failure(StatusCode::INTERNAL_SERVER_ERROR, "SQLite 锁已损坏"),
     };
-    let raw = match connection
-        .query_row(
-            "SELECT data_json FROM workout_import_records WHERE id=?1",
-            [&body.import_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-    {
+    let mut record = match workouts::get_import(&connection, &body.import_id) {
         Ok(Some(value)) => value,
         Ok(None) => return failure(StatusCode::NOT_FOUND, "导入记录不存在"),
-        Err(value) => return failure(StatusCode::INTERNAL_SERVER_ERROR, value.to_string()),
-    };
-    let mut record: Value = match serde_json::from_str(&raw) {
-        Ok(value) => value,
-        Err(value) => return failure(StatusCode::INTERNAL_SERVER_ERROR, value.to_string()),
+        Err(message) => return failure(StatusCode::INTERNAL_SERVER_ERROR, message),
     };
     if body.action == "cancel" {
         record["status"] = json!("failed");
@@ -624,29 +588,20 @@ pub async fn update(State(state): State<AppState>, Json(body): Json<ImportAction
         .unwrap_or_else(|| body.import_id.clone());
     let history_id = format!("xunji-{source_id}");
     let occurred_at = format!("{workout_date}T12:00:00+08:00");
-    if let Ok(Some(existing_raw)) = connection
-        .query_row(
-            "SELECT data_json FROM workout_history WHERE id=?1",
-            [&history_id],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-    {
-        if let Ok(existing) = serde_json::from_str::<Value>(&existing_raw) {
-            record["workout"] = workout;
-            record["status"] = json!("success");
-            record["workoutRecordId"] = json!(history_id);
-            record["updatedAt"] = json!(stamp());
-            if let Err(message) = put_entity(&connection, "workout_import_records", &record) {
-                return failure(StatusCode::INTERNAL_SERVER_ERROR, message);
-            }
-            return Json(json!({
-                "workoutRecord": existing,
-                "importRecord": record,
-                "duplicate": true
-            }))
-            .into_response();
+    if let Ok(Some(existing)) = workouts::get_workout(&connection, &history_id) {
+        record["workout"] = workout;
+        record["status"] = json!("success");
+        record["workoutRecordId"] = json!(history_id);
+        record["updatedAt"] = json!(stamp());
+        if let Err(message) = put_entity(&connection, "workout_import_records", &record) {
+            return failure(StatusCode::INTERNAL_SERVER_ERROR, message);
         }
+        return Json(json!({
+            "workoutRecord": existing,
+            "importRecord": record,
+            "duplicate": true
+        }))
+        .into_response();
     }
     let history = json!({
         "id": history_id,
