@@ -82,7 +82,7 @@ pub async fn serve(
     translation::ensure_schema(&connection)?;
     english::ensure_schema(&connection)?;
     photo::ensure_schema(&connection)?;
-    match migration::migrate_once(&mut connection, &data_dir) {
+    match crate::database::legacy::d1_import::import_once(&mut connection, &data_dir) {
         Ok(count) if count > 0 => eprintln!("LifeTrace migrated {count} legacy records"),
         Ok(_) => {}
         Err(error) => eprintln!("LifeTrace legacy migration skipped: {error}"),

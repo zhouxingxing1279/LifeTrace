@@ -196,7 +196,10 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let data = body
                 .get("data")
                 .ok_or_else(|| "备份格式错误".to_owned())?;
-                notes_repo::restore_backup(&mut *connection, data)?;
+            // 恢复前必须创建一致性数据库备份。
+            crate::database::backup::create_backup(&connection, &state.data_dir, "before-notes-restore")
+                .map_err(|message| message)?;
+            notes_repo::restore_backup(&mut *connection, data)?;
             Ok(json!({ "ok": true }))
         }
         _ => Err("不支持的笔记操作".to_owned()),

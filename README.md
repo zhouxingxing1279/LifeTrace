@@ -78,3 +78,18 @@ src-tauri/target/release/bundle/nsis/LifeTrace_<version>_x64-setup.exe
 首次启动时会只读扫描旧版 `%APPDATA%\LifeTrace\wrangler-state`、`%APPDATA%\lifetrace\wrangler-state` 和开发目录 `.wrangler/state`，自动迁移核心数据、英语记录与笔记。旧数据库不会被删除或改写。
 
 卸载应用不会主动删除用户数据库、照片或附件。
+
+### 数据层（EPIC-01）
+
+核心业务已从 `(id, data_json, updated_at)` 迁移到真实列表：
+
+- 财务：`finance_accounts`、`transaction_categories`、`transactions`（金额 `amount_cents` 整数分）、`transaction_evidence`
+- 习惯：`activities`、`activity_logs`、`daily_reviews`（同日期唯一约束）
+- 笔记：`notes`、`note_folders`、`note_tags`、`note_tag_relations`、`note_relations`、`note_attachments`、`note_revisions`（FTS5 全文检索）
+- 英语：`english_articles`、`english_learning_records`、`english_highlights`、`english_notes`、`english_vocabulary`、`vocabulary_occurrences`、`vocabulary_review_state`、`english_ai_analysis`
+- 训记：`workout_imports`、`workouts`、`workout_exercises`、`workout_sets`、`training_notes`
+
+所有结构变更通过版本化 Migration 执行（`src-tauri/src/database/`），每次迁移前自动创建
+一致性备份（`backups/database/`），失败自动回滚。旧 JSON 表保留为 `legacy_*_json_v1` 供回溯。
+
+详细文档：`docs/epic-01/`（审计、目标 schema、迁移指南、校验报告、回滚指南）。
