@@ -1,6 +1,7 @@
 #![allow(linker_messages)]
 
 mod desktop;
+pub mod contracts;
 mod database;
 mod server;
 
