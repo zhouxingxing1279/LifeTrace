@@ -77,7 +77,7 @@ pub async fn serve(
     state::ensure_schema(&connection)?;
     assistant::ensure_schema(&connection)?;
     imports::ensure_schema(&connection)?;
-    notes::ensure_schema(&connection)?;
+    crate::database::repositories::notes::seed_default_folders(&connection)?;
     xunji::ensure_schema(&connection)?;
     translation::ensure_schema(&connection)?;
     english::ensure_schema(&connection)?;

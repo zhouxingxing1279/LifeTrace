@@ -169,9 +169,13 @@ fn copy_json_query(
     Ok(copied)
 }
 
-fn migrate_notes(source: &Connection, destination: &Connection) -> Result<usize, String> {
+fn migrate_notes(source: &Connection, destination: &mut Connection) -> Result<usize, String> {
     if !table_exists(source, "notes") {
         return Ok(0);
+    }
+    if has_column(destination, "notes", "content_json") {
+        // 目标已是规范化真实列表：直接导入 D1 真实列数据。
+        return crate::database::legacy::notes_d1::import_d1_notes(source, destination);
     }
     let mut copied = 0;
     copied += copy_json_query(

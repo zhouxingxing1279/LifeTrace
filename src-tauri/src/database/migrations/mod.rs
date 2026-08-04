@@ -6,10 +6,12 @@
 mod m0001_framework;
 mod m0002_finance;
 mod m0003_habits_reviews;
+mod m0004_notes;
 
 pub use m0001_framework::M0001Framework;
 pub use m0002_finance::M0002Finance;
 pub use m0003_habits_reviews::M0003HabitsReviews;
+pub use m0004_notes::M0004Notes;
 
 use crate::database::migration_runner::Migration;
 
@@ -19,5 +21,6 @@ pub fn all() -> Vec<Box<dyn Migration>> {
         Box::new(M0001Framework),
         Box::new(M0002Finance),
         Box::new(M0003HabitsReviews),
+        Box::new(M0004Notes),
     ]
 }
