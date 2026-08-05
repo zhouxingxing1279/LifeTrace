@@ -51,3 +51,45 @@ refresh_replacement = """    // Refresh-token lineage and both expiry boundaries
 if refresh not in text:
     raise SystemExit("insert_refresh helper not found")
 service.write_text(text.replace(refresh, refresh_replacement, 1), encoding="utf-8")
+
+
+api_tests = Path("services/lifetrace-cloud/tests/api.rs")
+text = api_tests.read_text(encoding="utf-8")
+old = """fn test_app_for(token: &str, user: &str, device: &str) -> Router {
+    let mut config = Config::default();
+    config.dev_auth_token = token.to_owned();
+    config.dev_auth_user_id = user.to_owned();
+    config.dev_auth_device_id = device.to_owned();
+    app(AppState::new(config))
+}
+"""
+new = """fn test_app_for(token: &str, user: &str, device: &str) -> Router {
+    let config = Config {
+        dev_auth_token: token.to_owned(),
+        dev_auth_user_id: user.to_owned(),
+        dev_auth_device_id: device.to_owned(),
+        ..Config::default()
+    };
+    app(AppState::new(config))
+}
+"""
+if old not in text:
+    raise SystemExit("test_app_for config initializer not found")
+text = text.replace(old, new, 1)
+old = """async fn expired_cursor_requires_snapshot() {
+    let mut config = Config::default();
+    config.dev_auth_token = TOKEN_A.to_owned();
+    config.retention_entries = 1;
+    let app = app(AppState::new(config));
+"""
+new = """async fn expired_cursor_requires_snapshot() {
+    let config = Config {
+        dev_auth_token: TOKEN_A.to_owned(),
+        retention_entries: 1,
+        ..Config::default()
+    };
+    let app = app(AppState::new(config));
+"""
+if old not in text:
+    raise SystemExit("expired cursor config initializer not found")
+api_tests.write_text(text.replace(old, new, 1), encoding="utf-8")
