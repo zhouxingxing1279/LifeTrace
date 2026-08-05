@@ -195,17 +195,21 @@ mod tests {
 
     #[test]
     fn development_config_accepts_postgres() {
-        let mut config = Config::default();
-        config.database_url = Some("postgres://user:password@localhost/lifetrace".to_owned());
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            ..Config::default()
+        };
         assert!(config.validate().is_ok());
     }
 
     #[test]
     fn invalid_pool_bounds_are_rejected() {
-        let mut config = Config::default();
-        config.database_url = Some("postgres://user:password@localhost/lifetrace".to_owned());
-        config.database_min_connections = 11;
-        config.database_max_connections = 10;
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            database_min_connections: 11,
+            database_max_connections: 10,
+            ..Config::default()
+        };
         assert!(config.validate().is_err());
     }
 }
