@@ -1,5 +1,5 @@
 name: EPIC-04 Frontend Diagnostic
-# diagnostic-revision: 2
+# diagnostic-revision: 3
 
 on:
   push:
@@ -28,6 +28,7 @@ jobs:
           PY
           git apply /tmp/epic04.patch
           python .epic04/apply-fix.py
+          python .epic04/apply-contract-fix.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -55,8 +56,8 @@ jobs:
             echo "exit_status=$status"
             echo "=== TYPESCRIPT / TEST / BUILD ERRORS ==="
             grep -n -A24 -B10 -E 'error TS[0-9]+|ERR!|FAIL|not ok|AssertionError|TypeError|ReferenceError|Build failed|error during build|Could not resolve|is not assignable|Property .* does not exist|Expected .* arguments|Cannot find|has no exported member|Module .* has no exported' /tmp/frontend.log | tail -900 || true
-            echo "=== GENERATED AUTH CONTRACT SYMBOLS ==="
-            grep -n -E 'Auth|Login|Refresh|Session|Device|Grant|Password|Scope' contracts/typescript/index.ts | head -250 || true
+            echo "=== GENERATED AUTH CONTRACT HEADER ==="
+            head -24 contracts/typescript/lifetrace-auth.generated.ts || true
             echo "=== LOG TAIL ==="
             tail -450 /tmp/frontend.log
           } > epic04-frontend-summary.txt
