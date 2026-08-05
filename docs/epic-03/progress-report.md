@@ -1,14 +1,25 @@
-# EPIC-03 执行进度报告
+# EPIC-03 执行进度报告（已对齐实施方案）
 
 > 日期：2026-08-05  
-> 依据：`docs/LifeTrace_Complete_Roadmap_v3.md` 中 EPIC-03 章节 + EPIC-02 文档中
-> 「EPIC-03 云端服务需要实现的接口」边界（四个端点 + 服务端状态机）
+> 依据：`docs/LifeTrace_EPIC03_Agent_Implementation_Plan.md`（用户上传的完整实施方案）
+
+## 已按方案对齐
+
+- 目录：`services/lifetrace-cloud`（方案 §5）
+- 认证边界：AuthProvider + Bearer Token，生产禁用 DEV_AUTH（方案 §11）
+- Canonical JSON + Change Hash 幂等（方案 §10）
+- 签名 Cursor / Page Token（HMAC-SHA256，绑定 user + scope，方案 §18/20）
+- 健康检查 /health/live + /health/ready、/api/v1/meta/version（方案 §12/13）
+- 移除 /devices/register（方案 §12 明确不实现）
+- PostgreSQL Migration SQL 0001-0006（方案 §9）
+- Docker/Compose/Caddy/.env 示例（方案 §24）
+- 9 篇 docs/epic-03 文档（方案 §5）
 
 ## 本轮完成
 
-1. **独立 Rust/Axum 服务**：`crates/lifetrace-sync-server`
-2. **配置管理**：`Config::from_env()`，支持监听地址与全部限制参数
-3. **健康检查**：`GET /healthz`
+1. **独立 Rust/Axum 服务**：`services/lifetrace-cloud`
+2. **配置管理**：`CloudConfig::from_env()` + 生产校验（方案 §7）
+3. **健康检查**：`GET /health/live`、`GET /health/ready` + `GET /api/v1/meta/version`
 4. **优雅关闭**：Ctrl+C / SIGTERM 时正常退出
 5. **请求 ID**：`X-Request-Id` 生成与透传（tower-http）
 6. **同步 API（协议 v1）**：
@@ -25,17 +36,17 @@
    - 冲突（baseServerVersion 不匹配显式返回，不做 LWW）
    - Snapshot（一致视图、分页、完成后从 snapshotCursor 继续 Pull 无缝）
    - 错误码（协议/版本/批量/游标/实体等稳定码）
-8. **设备注册占位**：`POST /api/v1/devices/register`（EPIC-04 接管）
+8. **AuthProvider 边界**：Development / Test 实现，Bearer Token，常量时间比较（EPIC-04 接管）
 9. **业务 CRUD 示例（财务）**：`/api/v1/finance/transactions` 创建/列表/查询/删除，
    所有变更走同一同步状态机（版本化、幂等、可被 pull 拉到）
-10. **测试**：15 个 HTTP 集成测试全部通过（语义与参考 testkit 一致）
+10. **测试**：16 个 API 集成 + 4 个单元测试全部通过（语义与参考 testkit 一致）
 
-## 与 roadmap 清单的差异说明
+## 剩余差异说明
 
 - `pull` / `snapshot` 采用 **POST**（EPIC-02 v1 契约），roadmap 中写的 GET 为旧版描述。
-- PostgreSQL + SQLx：**未实现**。本机 cargo 离线缓存无 sqlx/postgres 依赖且无法联网拉取，
-  因此存储先做内存实现 + 可替换设计；接入 PostgreSQL 时公开方法不变。
-- 正式认证：**未实现**（属 EPIC-04）；当前用 `X-LifeTrace-User` 头占位并保证用户隔离。
+- PostgreSQL + SQLx 运行接线：**未完成**。migration SQL 已就绪；本机 cargo 离线缓存无
+  sqlx/postgres 依赖且无法联网拉取，存储层保持可替换设计，接入后公开方法不变。
+- 正式认证：**未实现**（属 EPIC-04）；当前为 DevelopmentAuthProvider。
 
 ## 验收标准核对
 
