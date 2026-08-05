@@ -67,7 +67,23 @@ jobs:
       - name: Pure sync core tests
         run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
       - name: Desktop database and adapter tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+        id: desktop-tests
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1 2>&1 | tee epic05-desktop-test.log
+      - name: Upload desktop test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic05-desktop-test-log
+          path: epic05-desktop-test.log
+          if-no-files-found: error
+          retention-days: 1
+      - name: Stop after desktop test failure
+        if: steps.desktop-tests.outcome == 'failure'
+        run: exit 1
       - name: Clippy pure sync core
         run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Clippy desktop library
