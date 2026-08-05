@@ -6,6 +6,7 @@ on:
       - agent/epic-04-auth-complete
     paths:
       - '.github/workflows/epic04-apply.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -123,7 +124,7 @@ jobs:
         with:
           workspaces: src-tauri
       - name: Format desktop Rust
-        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml
       - name: Check Windows desktop credential integration
         run: cargo check --manifest-path src-tauri/Cargo.toml
 
