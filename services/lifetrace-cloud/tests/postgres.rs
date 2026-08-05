@@ -93,14 +93,16 @@ async fn postgres_runtime_migrates_persists_and_replays_idempotently() {
         return;
     };
 
-    let mut config = Config::default();
-    config.database_url = Some(url);
-    config.migration_on_startup = true;
-    config.dev_auth_token = "postgres-token".to_owned();
-    config.dev_auth_user_id = "postgres-user".to_owned();
-    config.dev_auth_device_id = "postgres-device".to_owned();
-    config.cursor_signing_key = Some("postgres-cursor-key".to_owned());
-    config.page_token_signing_key = Some("postgres-page-key".to_owned());
+    let config = Config {
+        database_url: Some(url),
+        migration_on_startup: true,
+        dev_auth_token: "postgres-token".to_owned(),
+        dev_auth_user_id: "postgres-user".to_owned(),
+        dev_auth_device_id: "postgres-device".to_owned(),
+        cursor_signing_key: Some("postgres-cursor-key".to_owned()),
+        page_token_signing_key: Some("postgres-page-key".to_owned()),
+        ..Config::default()
+    };
 
     let state = AppState::new(config.clone());
     state.initialize().await.unwrap();
@@ -201,9 +203,12 @@ async fn postgres_runtime_migrates_persists_and_replays_idempotently() {
 
 #[tokio::test]
 async fn readiness_fails_when_postgres_is_unavailable() {
-    let mut config = Config::default();
-    config.database_url =
-        Some("postgres://lifetrace:invalid@127.0.0.1:1/lifetrace_unavailable".to_owned());
+    let config = Config {
+        database_url: Some(
+            "postgres://lifetrace:invalid@127.0.0.1:1/lifetrace_unavailable".to_owned(),
+        ),
+        ..Config::default()
+    };
     let state = AppState::new(config);
     let response = app(state)
         .oneshot(
