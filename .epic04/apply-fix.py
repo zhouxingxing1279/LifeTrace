@@ -78,9 +78,37 @@ text = text.replace(
     "build_session_cookie, clear_session_cookie, cookie_value, PeerAddr, RequestContext,",
     1,
 )
+text = text.replace(
+    "use crate::auth::{AuthCredential, AuthProvider, AuthenticatedPrincipal};",
+    "use crate::auth::{AuthCredential, AuthenticatedPrincipal};",
+    1,
+)
 text = text.replace("peer: Option<ConnectInfo<SocketAddr>>", "peer: PeerAddr")
 text = text.replace("peer.map(|value| value.0)", "peer.0")
 web.write_text(text)
+
+
+error = Path("services/lifetrace-cloud/src/error.rs")
+text = error.read_text()
+text = text.replace(
+    "use axum::http::StatusCode;",
+    "use std::fmt;\n\nuse axum::http::StatusCode;",
+    1,
+)
+error_impl_needle = "impl IntoResponse for ApiError {"
+error_impl = """impl fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.body.code, self.body.message)
+    }
+}
+
+impl std::error::Error for ApiError {}
+
+impl IntoResponse for ApiError {"""
+if error_impl_needle not in text:
+    raise SystemExit("ApiError implementation insertion point not found")
+error.write_text(text.replace(error_impl_needle, error_impl, 1))
+
 
 if "Option<ConnectInfo<SocketAddr>>" in auth.read_text() or "Option<ConnectInfo<SocketAddr>>" in web.read_text():
     raise SystemExit("not all optional ConnectInfo extractors were replaced")
