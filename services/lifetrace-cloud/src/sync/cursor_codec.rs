@@ -36,7 +36,7 @@ pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
     }
     let mut hasher = Sha256::new();
     hasher.update(&outer[..BLOCK]);
-    hasher.update(&inner_hash);
+    hasher.update(inner_hash);
     hasher.finalize().into()
 }
 
@@ -54,7 +54,7 @@ impl CursorCodec {
     }
 
     pub fn encode(&self, user_id: &UserId, scope_hash: &str, position: u64) -> Cursor {
-        let payload = format!("v1|{}|{}|{}", user_id, scope_hash, position);
+        let payload = format!("v1|{user_id}|{scope_hash}|{position}");
         let signature = hex::encode(hmac_sha256(&self.key, payload.as_bytes()));
         let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
         Cursor::new(format!("{encoded}.{signature}"))
@@ -74,8 +74,7 @@ impl CursorCodec {
             .decode(encoded)
             .map_err(|_| cursor_invalid())?;
         let expected_signature = hex::encode(hmac_sha256(&self.key, &payload));
-        let signature_matches =
-            expected_signature.as_bytes().ct_eq(signature.as_bytes());
+        let signature_matches = expected_signature.as_bytes().ct_eq(signature.as_bytes());
         if !bool::from(signature_matches) {
             return Err(cursor_invalid());
         }
@@ -85,7 +84,6 @@ impl CursorCodec {
             return Err(cursor_invalid());
         }
         if parts[1] != user_id.as_str() || parts[2] != scope_hash {
-            // Bound to another user/scope: treat as expired/invalid, never leak.
             return Err(ApiError::new(
                 ErrorCode::CursorExpired,
                 "cursor is not valid for this user/scope",
@@ -118,9 +116,7 @@ mod tests {
 
         let cursor = codec.encode(&user_a, scope, 42);
         assert_eq!(codec.decode(&cursor, &user_a, scope).unwrap(), 42);
-        // Different user must not be able to use it.
         assert!(codec.decode(&cursor, &user_b, scope).is_err());
-        // Tampering fails.
         let tampered = Cursor::new(format!("{}x", cursor.as_str()));
         assert!(codec.decode(&tampered, &user_a, scope).is_err());
     }
