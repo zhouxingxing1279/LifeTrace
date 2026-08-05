@@ -1,2 +1,9 @@
 $ErrorActionPreference = "Stop"
-Write-Host "Production migration job placeholder (EPIC-03): run SQLx migrations against DATABASE_URL"
+
+if (-not $env:DATABASE_URL) {
+    throw "DATABASE_URL is required"
+}
+
+cargo run `
+    --manifest-path services/lifetrace-cloud/Cargo.toml `
+    --bin lifetrace-migrate
