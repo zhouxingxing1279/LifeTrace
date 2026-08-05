@@ -1,5 +1,5 @@
 name: EPIC-04 Repair Patch Part
-# repair-revision: 2
+# repair-revision: 3
 
 on:
   push:
@@ -20,7 +20,7 @@ jobs:
       - name: Rebuild damaged patch part
         run: |
           cat .epic04/fixed-020 .epic04/fixed-021 > .epic04/patch-02
-          test "$(wc -c < .epic04/patch-02)" = "20000"
+          test "$(stat -c%s .epic04/patch-02)" = "20000"
           test "$(sha256sum .epic04/patch-02 | cut -d' ' -f1)" = "6ffd78007b650b6fae786d28679a4d76da33a34bfad5ed46278ba5bd210944c3"
       - name: Commit repaired part
         run: |
