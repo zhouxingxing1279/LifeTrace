@@ -18,7 +18,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Archive source tree
         run: |
-          tar --exclude=.git --exclude='**/target' --exclude=node_modules -czf lifetrace-source.tar.gz .
+          tar --exclude=.git --exclude='**/target' --exclude=node_modules -czf /tmp/lifetrace-source.tar.gz .
+          cp /tmp/lifetrace-source.tar.gz ./lifetrace-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-epic05-source
