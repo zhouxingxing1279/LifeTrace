@@ -1,4 +1,15 @@
+import os
+import subprocess
+import sys
 from pathlib import Path
+
+
+if os.name == "nt" and sys.flags.utf8_mode == 0:
+    completed = subprocess.run(
+        [sys.executable, "-X", "utf8", __file__],
+        check=False,
+    )
+    raise SystemExit(completed.returncode)
 
 
 def replace_once(path: str, old: str, new: str) -> None:
