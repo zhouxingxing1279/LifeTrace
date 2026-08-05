@@ -1,10 +1,8 @@
-//! Axum extractor that authenticates the request via the configured provider.
-
 use axum::extract::FromRequestParts;
 use axum::http::header;
 use axum::http::request::Parts;
 
-use crate::auth::AuthenticatedPrincipal;
+use crate::auth::{AuthCredential, AuthenticatedPrincipal};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -19,6 +17,9 @@ impl FromRequestParts<AppState> for AuthenticatedPrincipal {
             .headers
             .get(header::AUTHORIZATION)
             .and_then(|value| value.to_str().ok());
-        state.auth.authenticate(authorization)
+        state
+            .auth
+            .authenticate(AuthCredential::Bearer(authorization))
+            .await
     }
 }

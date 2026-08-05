@@ -1,0 +1,61 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "Scope": {
+      "description": "One OAuth-style authorization scope.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "appId": {
+      "$ref": "#/$defs/AppId"
+    },
+    "clientVersion": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "deviceId": {
+      "type": "string"
+    },
+    "deviceName": {
+      "type": "string"
+    },
+    "email": {
+      "type": "string"
+    },
+    "password": {
+      "type": "string"
+    },
+    "platform": {
+      "type": "string"
+    },
+    "publicDevice": {
+      "default": false,
+      "type": "boolean"
+    },
+    "requestedScopes": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Scope"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "email",
+    "password",
+    "appId",
+    "deviceId",
+    "deviceName",
+    "platform"
+  ],
+  "title": "LoginRequestV1",
+  "type": "object"
+}

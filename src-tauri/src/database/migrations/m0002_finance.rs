@@ -4,7 +4,9 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::database::legacy::json_parser;
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 use crate::database::repositories::finance;
 
 const LEGACY_ACCOUNTS_TABLE: &str = "legacy_finance_accounts_json_v1";
@@ -89,8 +91,12 @@ impl Migration for M0002Finance {
 
         let mut transaction_count = 0usize;
         for value in &legacy_transactions {
-            let row =
-                finance::transaction_from_legacy_json(transaction, value, Some(context), Some(transaction))?;
+            let row = finance::transaction_from_legacy_json(
+                transaction,
+                value,
+                Some(context),
+                Some(transaction),
+            )?;
             finance::upsert_transaction(transaction, &row, Some(&value.to_string()))?;
             transaction_count += 1;
         }
@@ -108,22 +114,29 @@ impl Migration for M0002Finance {
         report
             .metrics
             .insert("transactions".to_owned(), transaction_count as i64);
-        report.metrics.insert("evidence".to_owned(), transaction_count as i64);
+        report
+            .metrics
+            .insert("evidence".to_owned(), transaction_count as i64);
         Ok(report)
     }
 }
 
 fn rename_legacy_tables(connection: &Connection) -> Result<(), MigrationError> {
-    if table_exists(connection, "finance_accounts") && !table_exists(connection, LEGACY_ACCOUNTS_TABLE)
+    if table_exists(connection, "finance_accounts")
+        && !table_exists(connection, LEGACY_ACCOUNTS_TABLE)
     {
         connection
-            .execute(&format!("ALTER TABLE finance_accounts RENAME TO {LEGACY_ACCOUNTS_TABLE}"), [])
+            .execute(
+                &format!("ALTER TABLE finance_accounts RENAME TO {LEGACY_ACCOUNTS_TABLE}"),
+                [],
+            )
             .map_err(|error| MigrationError {
                 version: 2,
                 message: format!("重命名 finance_accounts 失败: {error}"),
             })?;
     }
-    if table_exists(connection, "transactions") && !table_exists(connection, LEGACY_TRANSACTIONS_TABLE)
+    if table_exists(connection, "transactions")
+        && !table_exists(connection, LEGACY_TRANSACTIONS_TABLE)
     {
         connection
             .execute(
@@ -264,7 +277,10 @@ fn totals_from_legacy(values: &[Value]) -> Result<FinanceTotals, String> {
         let occurred_at = json_parser::string_field(object, "occurredAt")
             .or_else(|| json_parser::string_field(object, "createdAt"))
             .ok_or_else(|| "交易缺少时间".to_owned())?;
-        let month = finance::local_date_of(occurred_at)?.get(0..7).unwrap_or_default().to_owned();
+        let month = finance::local_date_of(occurred_at)?
+            .get(0..7)
+            .unwrap_or_default()
+            .to_owned();
         match transaction_type {
             "expense" => {
                 totals.expense_cents += cents;
@@ -333,10 +349,11 @@ fn validate_finance(
     legacy_accounts: &[Value],
     legacy_transactions: &[Value],
 ) -> Result<(), MigrationError> {
-    let legacy_totals = totals_from_legacy(legacy_transactions).map_err(|message| MigrationError {
-        version: 2,
-        message,
-    })?;
+    let legacy_totals =
+        totals_from_legacy(legacy_transactions).map_err(|message| MigrationError {
+            version: 2,
+            message,
+        })?;
     let new_totals = totals_from_database(connection).map_err(|message| MigrationError {
         version: 2,
         message,
@@ -348,17 +365,28 @@ fn validate_finance(
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 2, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 2,
+            message: error.to_string(),
+        })?;
     let new_accounts: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM finance_accounts WHERE deleted_at IS NULL",
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 2, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 2,
+            message: error.to_string(),
+        })?;
     let new_evidence: i64 = connection
-        .query_row("SELECT COUNT(*) FROM transaction_evidence", [], |row| row.get(0))
-        .map_err(|error| MigrationError { version: 2, message: error.to_string() })?;
+        .query_row("SELECT COUNT(*) FROM transaction_evidence", [], |row| {
+            row.get(0)
+        })
+        .map_err(|error| MigrationError {
+            version: 2,
+            message: error.to_string(),
+        })?;
 
     if new_transactions != legacy_transactions.len() as i64 {
         return Err(MigrationError {
@@ -416,10 +444,10 @@ fn validate_finance(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, all};
     use crate::database::migration_runner::run;
-    use rusqlite::Connection;
+    use crate::database::migrations::{all, M0001Framework};
     use rusqlite::params;
+    use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -513,14 +541,18 @@ mod tests {
         assert_eq!(t1["accountId"], json!("wechat-wallet"));
 
         let count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM transaction_evidence", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM transaction_evidence", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 3);
         let categories: i64 = connection
-            .query_row("SELECT COUNT(*) FROM transaction_categories", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM transaction_categories", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(categories, 3); // 餐饮/工资/未分类
-        // 旧表已重命名保留。
+                                   // 旧表已重命名保留。
         let legacy: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='legacy_transactions_json_v1'",
@@ -613,7 +645,9 @@ mod tests {
             .unwrap();
         assert_eq!(legacy_name, "不存在的账户");
         let issues: i64 = connection
-            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(issues, 1);
         fs::remove_dir_all(&directory).ok();
@@ -691,23 +725,20 @@ mod tests {
         assert_eq!(new_count, legacy_count_total, "交易数量不一致");
         assert_eq!(new_expense, legacy_sums.0, "支出金额不一致（分）");
         assert_eq!(new_income, legacy_sums.1, "收入金额不一致（分）");
-        let activities = crate::database::repositories::habits::list_activities(&connection).unwrap();
+        let activities =
+            crate::database::repositories::habits::list_activities(&connection).unwrap();
         let logs = crate::database::repositories::habits::list_activity_logs(&connection).unwrap();
         let reviews =
             crate::database::repositories::habits::list_daily_reviews(&connection).unwrap();
         let english_articles: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM english_articles",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM english_articles", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let english_vocabulary: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM english_vocabulary",
-                [],
-                |row| row.get(0),
-            )
+            .query_row("SELECT COUNT(*) FROM english_vocabulary", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         eprintln!(
             "真实旧库演练通过: 交易 {new_count} 条，支出 {new_expense} 分，收入 {new_income} 分，\

@@ -1,6 +1,6 @@
 //! 旧 D1 训练 JSON 数据导入规范化表。
-use rusqlite::Connection;
 use crate::database::repositories::workouts;
+use rusqlite::Connection;
 
 /// 从旧 JSON 表导入训练相关实体。
 pub fn import_json_table(

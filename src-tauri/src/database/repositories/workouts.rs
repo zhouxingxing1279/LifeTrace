@@ -1,15 +1,19 @@
 //! 训记与训练摘要 Repository：真实列与前端 DTO 的转换与读写。
+use crate::database::legacy::json_parser;
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde_json::{json, Value};
 use uuid::Uuid;
-use crate::database::legacy::json_parser;
 pub const DEFAULT_USER_ID: &str = "local";
 fn now() -> String {
     Utc::now().to_rfc3339()
 }
 fn text(object: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
-    object.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_owned)
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
 }
 fn int_value(object: &serde_json::Map<String, Value>, key: &str) -> Option<i64> {
     object.get(key).and_then(Value::as_i64)
@@ -119,7 +123,10 @@ pub fn workout_from_legacy_json(
             sets,
         });
     }
-    let set_count: i64 = exercises.iter().map(|exercise| exercise.sets.len() as i64).sum();
+    let set_count: i64 = exercises
+        .iter()
+        .map(|exercise| exercise.sets.len() as i64)
+        .sum();
     let source = json_parser::string_field(object, "source").unwrap_or("manual");
     Ok((
         WorkoutRow {
@@ -152,50 +159,75 @@ pub fn upsert_workout(
     row: &WorkoutRow,
     exercises: &[WorkoutExerciseRow],
 ) -> Result<(), String> {
-    connection.execute(
-        "INSERT OR REPLACE INTO workouts(
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO workouts(
            id, user_id, source, source_id, name, occurred_at, local_date, duration_seconds,
            exercise_count, set_count, planned_set_count, volume_kg, calories_kcal, status,
            raw_json, created_at, updated_at, deleted_at, version, modified_by_device
          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
-        params![
-            row.id,
-            row.user_id,
-            row.source,
-            row.source_id,
-            row.name,
-            row.occurred_at,
-            row.local_date,
-            row.duration_seconds,
-            row.exercise_count,
-            row.set_count,
-            row.planned_set_count,
-            row.volume_kg,
-            row.calories_kcal,
-            row.status,
-            row.raw_json,
-            row.created_at,
-            row.updated_at,
-            row.deleted_at,
-            row.version,
-            row.modified_by_device
-        ],
-    ).map_err(|error| error.to_string())?;
-    connection.execute("DELETE FROM workout_exercises WHERE workout_id = ?1", [&row.id]).map_err(|error| error.to_string())?;
+            params![
+                row.id,
+                row.user_id,
+                row.source,
+                row.source_id,
+                row.name,
+                row.occurred_at,
+                row.local_date,
+                row.duration_seconds,
+                row.exercise_count,
+                row.set_count,
+                row.planned_set_count,
+                row.volume_kg,
+                row.calories_kcal,
+                row.status,
+                row.raw_json,
+                row.created_at,
+                row.updated_at,
+                row.deleted_at,
+                row.version,
+                row.modified_by_device
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+    connection
+        .execute(
+            "DELETE FROM workout_exercises WHERE workout_id = ?1",
+            [&row.id],
+        )
+        .map_err(|error| error.to_string())?;
     for exercise in exercises {
-        connection.execute(
-            "INSERT OR REPLACE INTO workout_exercises(
+        connection
+            .execute(
+                "INSERT OR REPLACE INTO workout_exercises(
                id, workout_id, name, sort_order, planned_sets, completed_sets
              ) VALUES(?1,?2,?3,?4,?5,?6)",
-            params![exercise.id, exercise.workout_id, exercise.name, exercise.sort_order, exercise.planned_sets, exercise.completed_sets],
-        ).map_err(|error| error.to_string())?;
+                params![
+                    exercise.id,
+                    exercise.workout_id,
+                    exercise.name,
+                    exercise.sort_order,
+                    exercise.planned_sets,
+                    exercise.completed_sets
+                ],
+            )
+            .map_err(|error| error.to_string())?;
         for set in &exercise.sets {
-            connection.execute(
-                "INSERT OR REPLACE INTO workout_sets(
+            connection
+                .execute(
+                    "INSERT OR REPLACE INTO workout_sets(
                    id, exercise_id, set_number, weight_kg, reps, completed
                  ) VALUES(?1,?2,?3,?4,?5,?6)",
-                params![set.id, exercise.id, set.set_number, set.weight_kg, set.reps, set.completed],
-            ).map_err(|error| error.to_string())?;
+                    params![
+                        set.id,
+                        exercise.id,
+                        set.set_number,
+                        set.weight_kg,
+                        set.reps,
+                        set.completed
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
         }
     }
     Ok(())
@@ -313,11 +345,9 @@ pub fn save_workout(connection: &Connection, dto: &Value) -> Result<(), String> 
     }
     let (mut row, exercises) = workout_from_legacy_json(connection, &value, None, None)?;
     let existing_version: Option<i64> = connection
-        .query_row(
-            "SELECT version FROM workouts WHERE id=?1",
-            [&id],
-            |row| row.get(0),
-        )
+        .query_row("SELECT version FROM workouts WHERE id=?1", [&id], |row| {
+            row.get(0)
+        })
         .optional()
         .map_err(|error| error.to_string())?;
     row.version = existing_version.unwrap_or(0) + 1;
@@ -392,13 +422,21 @@ pub fn import_from_legacy_json(
     Ok(WorkoutImportRow {
         id: id.to_owned(),
         user_id: user_id(object),
-        source: json_parser::string_field(object, "source").unwrap_or("xunji").to_owned(),
+        source: json_parser::string_field(object, "source")
+            .unwrap_or("xunji")
+            .to_owned(),
         share_url: text(object, "shareUrl"),
-        status: json_parser::string_field(object, "status").unwrap_or("pending").to_owned(),
+        status: json_parser::string_field(object, "status")
+            .unwrap_or("pending")
+            .to_owned(),
         parser: text(object, "parser"),
         parser_version: text(object, "parserVersion"),
         error: text(object, "error"),
-        raw_json: if raw.is_null() { None } else { Some(raw.to_string()) },
+        raw_json: if raw.is_null() {
+            None
+        } else {
+            Some(raw.to_string())
+        },
         workout_id: workout_id.filter(|id| {
             connection
                 .query_row("SELECT 1 FROM workouts WHERE id=?1", [id], |_| Ok(()))
@@ -415,29 +453,32 @@ pub fn import_from_legacy_json(
     })
 }
 pub fn upsert_import(connection: &Connection, row: &WorkoutImportRow) -> Result<(), String> {
-    connection.execute(
-        "INSERT OR REPLACE INTO workout_imports(
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO workout_imports(
            id, user_id, source, share_url, status, parser, parser_version, error, raw_json,
            workout_id, created_at, updated_at, deleted_at, version, modified_by_device
          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15)",
-        params![
-            row.id,
-            row.user_id,
-            row.source,
-            row.share_url,
-            row.status,
-            row.parser,
-            row.parser_version,
-            row.error,
-            row.raw_json,
-            row.workout_id,
-            row.created_at,
-            row.updated_at,
-            row.deleted_at,
-            row.version,
-            row.modified_by_device
-        ],
-    ).map(|_| ()).map_err(|error| error.to_string())
+            params![
+                row.id,
+                row.user_id,
+                row.source,
+                row.share_url,
+                row.status,
+                row.parser,
+                row.parser_version,
+                row.error,
+                row.raw_json,
+                row.workout_id,
+                row.created_at,
+                row.updated_at,
+                row.deleted_at,
+                row.version,
+                row.modified_by_device
+            ],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 fn import_dto(connection: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     let raw_json: Option<String> = row.get(8)?;
@@ -556,7 +597,9 @@ pub fn training_note_from_legacy_json(
                 .flatten()
                 .is_some()
         }),
-        source: json_parser::string_field(object, "source").unwrap_or("xunji").to_owned(),
+        source: json_parser::string_field(object, "source")
+            .unwrap_or("xunji")
+            .to_owned(),
         note_date: text(object, "noteDate").unwrap_or_else(now),
         created_at: text(object, "createdAt").unwrap_or_else(now),
         updated_at: text(object, "updatedAt").unwrap_or_else(now),
@@ -566,36 +609,36 @@ pub fn training_note_from_legacy_json(
     })
 }
 pub fn upsert_training_note(connection: &Connection, row: &TrainingNoteRow) -> Result<(), String> {
-    connection.execute(
-        "INSERT OR REPLACE INTO training_notes(
+    connection
+        .execute(
+            "INSERT OR REPLACE INTO training_notes(
            id, user_id, title, content, workout_id, source, note_date, created_at, updated_at,
            deleted_at, version, modified_by_device
          ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-        params![
-            row.id,
-            row.user_id,
-            row.title,
-            row.content,
-            row.workout_id,
-            row.source,
-            row.note_date,
-            row.created_at,
-            row.updated_at,
-            row.deleted_at,
-            row.version,
-            row.modified_by_device
-        ],
-    ).map(|_| ()).map_err(|error| error.to_string())
+            params![
+                row.id,
+                row.user_id,
+                row.title,
+                row.content,
+                row.workout_id,
+                row.source,
+                row.note_date,
+                row.created_at,
+                row.updated_at,
+                row.deleted_at,
+                row.version,
+                row.modified_by_device
+            ],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 pub fn save_training_note(connection: &Connection, dto: &Value) -> Result<(), String> {
     let row = training_note_from_legacy_json(connection, dto, None, None)?;
     upsert_training_note(connection, &row)
 }
 /// 恢复：事务内重建训练数据。
-pub fn replace_all(
-    transaction: &rusqlite::Transaction,
-    items: &[Value],
-) -> Result<(), String> {
+pub fn replace_all(transaction: &rusqlite::Transaction, items: &[Value]) -> Result<(), String> {
     transaction
         .execute("DELETE FROM workout_sets", [])
         .map_err(|error| error.to_string())?;
@@ -622,8 +665,9 @@ mod tests {
     #[test]
     fn workout_dto_roundtrip() {
         let connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch(
-            "CREATE TABLE workouts(
+        connection
+            .execute_batch(
+                "CREATE TABLE workouts(
                id TEXT PRIMARY KEY, user_id TEXT, source TEXT, source_id TEXT, name TEXT,
                occurred_at TEXT, local_date TEXT, duration_seconds INTEGER, exercise_count INTEGER,
                set_count INTEGER, planned_set_count INTEGER, volume_kg REAL, calories_kcal REAL,
@@ -649,7 +693,8 @@ mod tests {
                source TEXT, note_date TEXT, created_at TEXT, updated_at TEXT, deleted_at TEXT,
                version INTEGER, modified_by_device TEXT
              );",
-        ).unwrap();
+            )
+            .unwrap();
         let stamp = "2026-07-24T04:00:00+08:00";
         let dto = json!({
             "id": "w1", "userId": "local-user", "name": "练腿", "occurredAt": stamp,
@@ -665,7 +710,10 @@ mod tests {
         let items = list_workouts(&connection).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0]["local_date"], json!("2026-07-24"));
-        assert_eq!(items[0]["exercises"][0]["sets"].as_array().map(Vec::len), Some(2));
+        assert_eq!(
+            items[0]["exercises"][0]["sets"].as_array().map(Vec::len),
+            Some(2)
+        );
         assert_eq!(items[0]["setCount"], json!(2));
     }
 }

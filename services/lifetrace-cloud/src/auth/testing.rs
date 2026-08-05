@@ -1,44 +1,27 @@
-//! Fixed test auth provider (used by integration tests).
-
-use crate::auth::{AuthenticatedPrincipal, AuthProvider};
+use crate::auth::{AuthCredential, AuthProvider, AuthenticatedPrincipal};
 use crate::error::ApiError;
-use lifetrace_contracts::sync::v1::AppId;
-use lifetrace_contracts::{DeviceId, UserId};
+use async_trait::async_trait;
+use std::collections::BTreeSet;
 
-/// Always authenticates to the configured principal. Not for production.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct TestAuthProvider {
     principal: AuthenticatedPrincipal,
 }
-
 impl TestAuthProvider {
-    pub fn new(user_id: &str, device_id: &str) -> Self {
-        Self {
-            principal: AuthenticatedPrincipal {
-                user_id: UserId::new(user_id),
-                device_id: DeviceId::new(device_id),
-                app_id: AppId::new(AppId::DESKTOP),
-            },
-        }
-    }
-
-    pub fn principal(&self) -> &AuthenticatedPrincipal {
-        &self.principal
+    pub fn new(principal: AuthenticatedPrincipal) -> Self {
+        Self { principal }
     }
 }
 
+#[async_trait]
 impl AuthProvider for TestAuthProvider {
-    fn authenticate(
+    async fn authenticate(
         &self,
-        authorization: Option<&str>,
+        _credential: AuthCredential<'_>,
     ) -> Result<AuthenticatedPrincipal, ApiError> {
-        match authorization {
-            Some(value) if value.starts_with("Bearer ") => Ok(self.principal.clone()),
-            _ => Err(ApiError::new(
-                lifetrace_contracts::ErrorCode::AuthRequired,
-                "authentication required",
-                axum::http::StatusCode::UNAUTHORIZED,
-            )),
-        }
+        Ok(self.principal.clone())
     }
 }
+
+#[allow(dead_code)]
+fn _assert_scopes_send_sync(_: BTreeSet<String>) {}

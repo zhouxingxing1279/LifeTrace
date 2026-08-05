@@ -11,8 +11,14 @@ use uuid::Uuid;
 use crate::database::legacy::json_parser;
 
 const NOTE_TYPES: [&str; 8] = [
-    "quick", "document", "daily", "habit_log", "workout_review", "expense_note",
-    "weekly_review", "monthly_review",
+    "quick",
+    "document",
+    "daily",
+    "habit_log",
+    "workout_review",
+    "expense_note",
+    "weekly_review",
+    "monthly_review",
 ];
 
 fn now() -> String {
@@ -270,7 +276,10 @@ fn note_full_from_row(connection: &Connection, row: &Row<'_>) -> rusqlite::Resul
             serde_json::from_str::<Value>(&content_json).unwrap_or(Value::Null),
         );
         object.insert("contentHtml".to_owned(), Value::String(content_html));
-        object.insert("contentMarkdown".to_owned(), Value::String(content_markdown));
+        object.insert(
+            "contentMarkdown".to_owned(),
+            Value::String(content_markdown),
+        );
     }
     Ok(note)
 }
@@ -549,8 +558,12 @@ fn save_revision(connection: &Connection, note: &Value) -> Result<(), String> {
                     .cloned()
                     .unwrap_or_else(|| json!({}))
                     .to_string(),
-                note.get("contentHtml").and_then(Value::as_str).unwrap_or_default(),
-                note.get("contentMarkdown").and_then(Value::as_str).unwrap_or_default(),
+                note.get("contentHtml")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                note.get("contentMarkdown")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
                 now()
             ],
         )
@@ -564,7 +577,10 @@ fn replace_tag_relations(
     tag_ids: &[Value],
 ) -> Result<(), String> {
     connection
-        .execute("DELETE FROM note_tag_relations WHERE note_id = ?1", [note_id])
+        .execute(
+            "DELETE FROM note_tag_relations WHERE note_id = ?1",
+            [note_id],
+        )
         .map_err(|error| error.to_string())?;
     let stamp = now();
     for tag_id in tag_ids.iter().filter_map(Value::as_str) {
@@ -597,10 +613,22 @@ fn replace_relations(
                 params![
                     relation_id,
                     note_id,
-                    relation.get("entityType").and_then(Value::as_str).unwrap_or("project"),
-                    relation.get("entityId").and_then(Value::as_str).unwrap_or_default(),
-                    relation.get("relationType").and_then(Value::as_str).unwrap_or("reference"),
-                    relation.get("createdAt").and_then(Value::as_str).unwrap_or(&stamp)
+                    relation
+                        .get("entityType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("project"),
+                    relation
+                        .get("entityId")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    relation
+                        .get("relationType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("reference"),
+                    relation
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&stamp)
                 ],
             )
             .map_err(|error| error.to_string())?;
@@ -810,12 +838,27 @@ pub fn duplicate_note(connection: &Connection, note_id: &str) -> Result<Value, S
                     params![
                         attachment_id,
                         new_id,
-                        attachment.get("fileName").and_then(Value::as_str).unwrap_or("file"),
-                        attachment.get("originalName").and_then(Value::as_str).unwrap_or("file"),
-                        attachment.get("mimeType").and_then(Value::as_str).unwrap_or("application/octet-stream"),
-                        attachment.get("fileSize").and_then(Value::as_i64).unwrap_or(0),
+                        attachment
+                            .get("fileName")
+                            .and_then(Value::as_str)
+                            .unwrap_or("file"),
+                        attachment
+                            .get("originalName")
+                            .and_then(Value::as_str)
+                            .unwrap_or("file"),
+                        attachment
+                            .get("mimeType")
+                            .and_then(Value::as_str)
+                            .unwrap_or("application/octet-stream"),
+                        attachment
+                            .get("fileSize")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0),
                         attachment.get("storagePath").and_then(Value::as_str),
-                        attachment.get("createdAt").and_then(Value::as_str).unwrap_or(&now())
+                        attachment
+                            .get("createdAt")
+                            .and_then(Value::as_str)
+                            .unwrap_or(&now())
                     ],
                 )
                 .map_err(|error| error.to_string())?;
@@ -988,7 +1031,10 @@ pub fn record_attachment(
 /// 删除附件元数据。
 pub fn delete_attachment(connection: &Connection, attachment_id: &str) -> Result<(), String> {
     connection
-        .execute("DELETE FROM note_attachments WHERE id = ?1", [attachment_id])
+        .execute(
+            "DELETE FROM note_attachments WHERE id = ?1",
+            [attachment_id],
+        )
         .map(|_| ())
         .map_err(|error| error.to_string())
 }
@@ -999,7 +1045,9 @@ pub fn restore_backup(connection: &mut Connection, data: &Value) -> Result<(), S
     if object.get("format").and_then(Value::as_str) != Some("lifetrace-notes") {
         return Err("不支持的笔记备份格式".to_owned());
     }
-    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
     if table_exists(&transaction, "notes_fts") {
         let _ = transaction.execute("DELETE FROM notes_fts", []);
     }
@@ -1046,7 +1094,10 @@ pub fn restore_backup(connection: &mut Connection, data: &Value) -> Result<(), S
         .cloned()
         .unwrap_or_default()
     {
-        let note_id = revision.get("noteId").and_then(Value::as_str).unwrap_or_default();
+        let note_id = revision
+            .get("noteId")
+            .and_then(Value::as_str)
+            .unwrap_or_default();
         let version = revision.get("version").and_then(Value::as_i64).unwrap_or(1);
         transaction
             .execute(
@@ -1055,7 +1106,10 @@ pub fn restore_backup(connection: &mut Connection, data: &Value) -> Result<(), S
                    content_markdown, created_at
                  ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
                 params![
-                    revision.get("id").and_then(Value::as_str).unwrap_or_default(),
+                    revision
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
                     note_id,
                     version,
                     revision.get("title").and_then(Value::as_str),
@@ -1064,9 +1118,18 @@ pub fn restore_backup(connection: &mut Connection, data: &Value) -> Result<(), S
                         .cloned()
                         .unwrap_or_else(|| json!({}))
                         .to_string(),
-                    revision.get("contentHtml").and_then(Value::as_str).unwrap_or_default(),
-                    revision.get("contentMarkdown").and_then(Value::as_str).unwrap_or_default(),
-                    revision.get("createdAt").and_then(Value::as_str).unwrap_or(&now())
+                    revision
+                        .get("contentHtml")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    revision
+                        .get("contentMarkdown")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
+                    revision
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&now())
                 ],
             )
             .map_err(|error| error.to_string())?;

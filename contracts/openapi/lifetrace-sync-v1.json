@@ -1,6 +1,17 @@
 {
   "components": {
     "schemas": {
+      "AcceptedResponseV1": {
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "accepted"
+        ],
+        "type": "object"
+      },
       "AccountType": {
         "description": "Finance account type. Known values: cash, bank, wechat, alipay, investment, other. Unknown values are preserved (forward compatible).",
         "type": "string"
@@ -245,8 +256,73 @@
         ],
         "type": "object"
       },
+      "AppGrantId": {
+        "description": "User-to-application grant identifier.",
+        "type": "string"
+      },
+      "AppGrantListV1": {
+        "properties": {
+          "grants": {
+            "items": {
+              "$ref": "#/components/schemas/AppGrantV1"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "grants"
+        ],
+        "type": "object"
+      },
+      "AppGrantV1": {
+        "properties": {
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "grantedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AppGrantId"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "appId",
+          "scopes",
+          "status",
+          "grantedAt",
+          "updatedAt"
+        ],
+        "type": "object"
+      },
       "AppId": {
         "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+        "type": "string"
+      },
+      "AppInstallationId": {
+        "description": "Application installation/device identifier.",
         "type": "string"
       },
       "ArticleVocabularyItem": {
@@ -280,6 +356,175 @@
       "AtomicGroupId": {
         "description": "Groups changes that must be applied all-or-nothing in one push request.",
         "type": "string"
+      },
+      "AuthCapabilitiesV1": {
+        "properties": {
+          "accessTokenTtlSeconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "passwordMaxBytes": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "passwordMinLength": {
+            "format": "uint32",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refreshAbsoluteTtlSeconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refreshIdleTtlSeconds": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "registrationMode": {
+            "type": "string"
+          },
+          "supportedApps": {
+            "items": {
+              "$ref": "#/components/schemas/AppId"
+            },
+            "type": "array"
+          },
+          "webSessionEnabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "registrationMode",
+          "passwordMinLength",
+          "passwordMaxBytes",
+          "accessTokenTtlSeconds",
+          "refreshIdleTtlSeconds",
+          "refreshAbsoluteTtlSeconds",
+          "webSessionEnabled",
+          "supportedApps"
+        ],
+        "type": "object"
+      },
+      "AuthSessionId": {
+        "description": "Server-side authentication session identifier.",
+        "type": "string"
+      },
+      "AuthSessionV1": {
+        "properties": {
+          "absoluteExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "deviceId": {
+            "$ref": "#/components/schemas/AppInstallationId"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AuthSessionId"
+          },
+          "idleExpiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "publicDevice": {
+            "type": "boolean"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          },
+          "sessionType": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "appId",
+          "deviceId",
+          "sessionType",
+          "status",
+          "scopes",
+          "publicDevice",
+          "createdAt",
+          "lastSeenAt",
+          "idleExpiresAt",
+          "absoluteExpiresAt",
+          "current"
+        ],
+        "type": "object"
+      },
+      "AuthUserV1": {
+        "properties": {
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "emailVerifiedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/UserId"
+          },
+          "passwordChangedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "state",
+          "createdAt"
+        ],
+        "type": "object"
       },
       "CapabilitiesResponseV1": {
         "description": "`GET /api/v1/sync/capabilities` response.",
@@ -379,6 +624,21 @@
         "description": "Change operation. Known values: upsert, delete. Unknown values are preserved.",
         "type": "string"
       },
+      "ChangePasswordRequestV1": {
+        "properties": {
+          "currentPassword": {
+            "type": "string"
+          },
+          "newPassword": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ],
+        "type": "object"
+      },
       "ClientPlatform": {
         "description": "Client platform. Known values: windows, android, web. Unknown values are preserved.",
         "type": "string"
@@ -459,6 +719,17 @@
           "currentServerVersion",
           "serverDeleted",
           "reason"
+        ],
+        "type": "object"
+      },
+      "CsrfResponseV1": {
+        "properties": {
+          "csrfToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "csrfToken"
         ],
         "type": "object"
       },
@@ -571,6 +842,98 @@
       "DeviceId": {
         "description": "Stable device identifier (string, usually UUID v4).",
         "type": "string"
+      },
+      "DeviceInstallationV1": {
+        "properties": {
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "clientVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "current": {
+            "type": "boolean"
+          },
+          "deviceGroupId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "externalDeviceId": {
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/AppInstallationId"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "lastSeenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "lastSyncAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "platform": {
+            "type": "string"
+          },
+          "revokedAt": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "externalDeviceId",
+          "deviceName",
+          "appId",
+          "platform",
+          "status",
+          "firstSeenAt",
+          "lastSeenAt",
+          "current"
+        ],
+        "type": "object"
+      },
+      "DeviceListV1": {
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceInstallationV1"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "devices"
+        ],
+        "type": "object"
       },
       "EnglishArticle": {
         "description": "`english.article` (shared catalog; server to client).",
@@ -1383,6 +1746,23 @@
           "LIFETRACE_APP_ID_UNSUPPORTED",
           "LIFETRACE_AUTH_REQUIRED",
           "LIFETRACE_AUTH_INVALID",
+          "LIFETRACE_AUTH_PASSWORD_INVALID",
+          "LIFETRACE_AUTH_USER_DISABLED",
+          "LIFETRACE_AUTH_USER_LOCKED",
+          "LIFETRACE_AUTH_ACCESS_TOKEN_EXPIRED",
+          "LIFETRACE_AUTH_REFRESH_TOKEN_EXPIRED",
+          "LIFETRACE_AUTH_REFRESH_TOKEN_REUSED",
+          "LIFETRACE_AUTH_SESSION_REVOKED",
+          "LIFETRACE_AUTH_DEVICE_REVOKED",
+          "LIFETRACE_AUTH_APP_REVOKED",
+          "LIFETRACE_AUTH_SCOPE_DENIED",
+          "LIFETRACE_AUTH_PASSWORD_POLICY_FAILED",
+          "LIFETRACE_AUTH_PASSWORD_RESET_INVALID",
+          "LIFETRACE_AUTH_PASSWORD_RESET_EXPIRED",
+          "LIFETRACE_AUTH_RATE_LIMITED",
+          "LIFETRACE_AUTH_CSRF_INVALID",
+          "LIFETRACE_AUTH_REGISTRATION_DISABLED",
+          "LIFETRACE_AUTH_INVITE_INVALID",
           "LIFETRACE_DEVICE_NOT_REGISTERED",
           "LIFETRACE_DEVICE_REVOKED",
           "LIFETRACE_INVALID_REQUEST",
@@ -1530,6 +1910,17 @@
         ],
         "type": "object"
       },
+      "ForgotPasswordRequestV1": {
+        "properties": {
+          "email": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "type": "object"
+      },
       "HighlightColor": {
         "description": "English highlight color. Known values: yellow, green, blue. Unknown values are preserved (forward compatible).",
         "type": "string"
@@ -1542,6 +1933,54 @@
       "LocalDate": {
         "description": "A natural calendar day in `YYYY-MM-DD` (wire format).",
         "type": "string"
+      },
+      "LoginRequestV1": {
+        "properties": {
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "clientVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "publicDevice": {
+            "default": false,
+            "type": "boolean"
+          },
+          "requestedScopes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "appId",
+          "deviceId",
+          "deviceName",
+          "platform"
+        ],
+        "type": "object"
       },
       "MinimumClientVersion": {
         "description": "Minimum required client version for one app id.",
@@ -2110,8 +2549,102 @@
         ],
         "type": "object"
       },
+      "RefreshRequestV1": {
+        "properties": {
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "refreshToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "refreshToken",
+          "appId",
+          "deviceId"
+        ],
+        "type": "object"
+      },
+      "RegisterRequestV1": {
+        "properties": {
+          "appId": {
+            "$ref": "#/components/schemas/AppId"
+          },
+          "clientVersion": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "deviceId": {
+            "type": "string"
+          },
+          "deviceName": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "email": {
+            "type": "string"
+          },
+          "inviteToken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "password": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "requestedScopes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "appId",
+          "deviceId",
+          "deviceName",
+          "platform"
+        ],
+        "type": "object"
+      },
       "RequestId": {
         "description": "Request tracing id. It never replaces changeId for idempotency.",
+        "type": "string"
+      },
+      "ResetPasswordRequestV1": {
+        "properties": {
+          "newPassword": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "newPassword"
+        ],
+        "type": "object"
+      },
+      "Scope": {
+        "description": "One OAuth-style authorization scope.",
         "type": "string"
       },
       "ServerChangeV1": {
@@ -2182,6 +2715,20 @@
       "ServerVersion": {
         "description": "Server-authoritative entity version. Wire format: decimal string\n(for example `\"42\"`) to avoid JavaScript safe-integer issues.",
         "type": "string"
+      },
+      "SessionListV1": {
+        "properties": {
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/AuthSessionV1"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "sessions"
+        ],
+        "type": "object"
       },
       "SnapshotId": {
         "description": "Stable id assigned by the server to a snapshot; all pages share one consistent view.",
@@ -2394,6 +2941,60 @@
           "not_synced"
         ],
         "type": "string"
+      },
+      "TokenFamilyId": {
+        "description": "Refresh-token family identifier.",
+        "type": "string"
+      },
+      "TokenResponseV1": {
+        "properties": {
+          "accessToken": {
+            "type": "string"
+          },
+          "expiresIn": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "refreshExpiresIn": {
+            "format": "uint64",
+            "minimum": 0,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "refreshToken": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSessionV1"
+          },
+          "tokenType": {
+            "type": "string"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthUserV1"
+          }
+        },
+        "required": [
+          "accessToken",
+          "tokenType",
+          "expiresIn",
+          "user",
+          "session",
+          "scopes"
+        ],
+        "type": "object"
       },
       "TombstoneV1": {
         "description": "Server-generated record of a deleted entity.\n\nRe-creating a deleted entity requires a NEW entity id. Restoring a soft\ndelete must explicitly submit based on the tombstone's latest\n`server_version`.",
@@ -2669,6 +3270,31 @@
         "description": "Financial transaction type. Known values: expense, income, transfer, refund, fee. Unknown values are preserved (forward compatible).",
         "type": "string"
       },
+      "UpdateAppGrantRequestV1": {
+        "properties": {
+          "scopes": {
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "scopes"
+        ],
+        "type": "object"
+      },
+      "UpdateDeviceRequestV1": {
+        "properties": {
+          "deviceName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviceName"
+        ],
+        "type": "object"
+      },
       "User": {
         "description": "`identity.user`",
         "properties": {
@@ -2824,6 +3450,51 @@
       "VocabularyStatus": {
         "description": "Vocabulary status. Known values: LEARNING, REVIEWING, MASTERED, ARCHIVED. Unknown values are preserved (forward compatible).",
         "type": "string"
+      },
+      "WebLoginRequestV1": {
+        "properties": {
+          "email": {
+            "type": "string"
+          },
+          "password": {
+            "type": "string"
+          },
+          "publicDevice": {
+            "default": false,
+            "type": "boolean"
+          },
+          "requestedScopes": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/Scope"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "type": "object"
+      },
+      "WebSessionResponseV1": {
+        "properties": {
+          "csrfToken": {
+            "type": "string"
+          },
+          "session": {
+            "$ref": "#/components/schemas/AuthSessionV1"
+          },
+          "user": {
+            "$ref": "#/components/schemas/AuthUserV1"
+          }
+        },
+        "required": [
+          "user",
+          "session",
+          "csrfToken"
+        ],
+        "type": "object"
       },
       "Workout": {
         "description": "`workout.workout` (summary; exercises and sets are separate entities).",

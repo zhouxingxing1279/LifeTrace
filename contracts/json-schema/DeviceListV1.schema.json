@@ -1,0 +1,105 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "AppInstallationId": {
+      "description": "Application installation/device identifier.",
+      "type": "string"
+    },
+    "DeviceInstallationV1": {
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "clientVersion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "current": {
+          "type": "boolean"
+        },
+        "deviceGroupId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deviceName": {
+          "type": "string"
+        },
+        "externalDeviceId": {
+          "type": "string"
+        },
+        "firstSeenAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/AppInstallationId"
+        },
+        "lastLoginAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "lastSeenAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "lastSyncAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "platform": {
+          "type": "string"
+        },
+        "revokedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "externalDeviceId",
+        "deviceName",
+        "appId",
+        "platform",
+        "status",
+        "firstSeenAt",
+        "lastSeenAt",
+        "current"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "devices": {
+      "items": {
+        "$ref": "#/$defs/DeviceInstallationV1"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "devices"
+  ],
+  "title": "DeviceListV1",
+  "type": "object"
+}

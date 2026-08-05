@@ -2,7 +2,9 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value};
 
 use crate::database::legacy::json_parser;
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 
 const LEGACY_ARTICLES_TABLE: &str = "legacy_english_articles_json_v1";
 const LEGACY_RECORDS_TABLE: &str = "legacy_english_learning_records_json_v1";
@@ -123,10 +125,15 @@ impl Migration for M0005English {
         )?;
 
         let mut report = MigrationReport::default();
-        report.migrated = article_count + record_count + highlight_count + english_note_count
+        report.migrated = article_count
+            + record_count
+            + highlight_count
+            + english_note_count
             + analysis_count
             + vocabulary_count;
-        report.metrics.insert("english_articles".to_owned(), article_count as i64);
+        report
+            .metrics
+            .insert("english_articles".to_owned(), article_count as i64);
         report
             .metrics
             .insert("english_learning_records".to_owned(), record_count as i64);
@@ -145,9 +152,10 @@ impl Migration for M0005English {
         report
             .metrics
             .insert("vocabulary_occurrences".to_owned(), occurrence_count as i64);
-        report
-            .metrics
-            .insert("vocabulary_review_state".to_owned(), vocabulary_count as i64);
+        report.metrics.insert(
+            "vocabulary_review_state".to_owned(),
+            vocabulary_count as i64,
+        );
         Ok(report)
     }
 }
@@ -389,10 +397,14 @@ fn insert_article(connection: &Connection, value: &Value) -> Result<(), Migratio
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("文章缺少 id: {}", value) })?;
-    let title = json_parser::string_field(object, "title")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("文章 {id} 缺少 title") })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("文章缺少 id: {}", value),
+    })?;
+    let title = json_parser::string_field(object, "title").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("文章 {id} 缺少 title"),
+    })?;
     let stamp = now();
     connection
         .execute(
@@ -457,16 +469,17 @@ fn insert_article(connection: &Connection, value: &Value) -> Result<(), Migratio
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })
 }
 
 fn article_exists(connection: &Connection, id: &str) -> bool {
     connection
-        .query_row(
-            "SELECT 1 FROM english_articles WHERE id=?1",
-            [id],
-            |_| Ok(()),
-        )
+        .query_row("SELECT 1 FROM english_articles WHERE id=?1", [id], |_| {
+            Ok(())
+        })
         .optional()
         .ok()
         .flatten()
@@ -482,8 +495,10 @@ fn insert_record(
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("学习记录缺少 id: {}", value) })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("学习记录缺少 id: {}", value),
+    })?;
     let article_id = json_parser::string_field(object, "articleId");
     if let Some(article_id) = article_id {
         if !article_exists(connection, article_id) {
@@ -532,7 +547,10 @@ fn insert_record(
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })
 }
 
 fn insert_highlight(connection: &Connection, value: &Value) -> Result<(), MigrationError> {
@@ -540,8 +558,10 @@ fn insert_highlight(connection: &Connection, value: &Value) -> Result<(), Migrat
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("高亮缺少 id: {}", value) })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("高亮缺少 id: {}", value),
+    })?;
     let stamp = now();
     connection
         .execute(
@@ -574,7 +594,10 @@ fn insert_highlight(connection: &Connection, value: &Value) -> Result<(), Migrat
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })
 }
 
 fn insert_english_note(connection: &Connection, value: &Value) -> Result<(), MigrationError> {
@@ -582,8 +605,10 @@ fn insert_english_note(connection: &Connection, value: &Value) -> Result<(), Mig
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("英语笔记缺少 id: {}", value) })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("英语笔记缺少 id: {}", value),
+    })?;
     let stamp = now();
     connection
         .execute(
@@ -617,7 +642,10 @@ fn insert_english_note(connection: &Connection, value: &Value) -> Result<(), Mig
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })
 }
 
 fn insert_analysis(
@@ -629,8 +657,10 @@ fn insert_analysis(
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("分析缺少 id: {}", value) })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("分析缺少 id: {}", value),
+    })?;
     let record_id = json_parser::string_field(object, "recordId");
     if let Some(record_id) = record_id {
         let record_exists: bool = connection
@@ -702,7 +732,10 @@ fn insert_analysis(
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })
 }
 
 fn insert_vocabulary(
@@ -714,12 +747,17 @@ fn insert_vocabulary(
         version: 5,
         message,
     })?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 5, message: format!("生词缺少 id: {}", value) })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 5,
+        message: format!("生词缺少 id: {}", value),
+    })?;
     let normalized = json_parser::string_field(object, "normalizedWord")
         .or_else(|| json_parser::string_field(object, "word"))
         .map(str::to_lowercase)
-        .ok_or_else(|| MigrationError { version: 5, message: format!("生词 {id} 缺少 word") })?;
+        .ok_or_else(|| MigrationError {
+            version: 5,
+            message: format!("生词 {id} 缺少 word"),
+        })?;
     let stamp = now();
     let selected_meanings = object
         .get("selectedMeanings")
@@ -813,15 +851,30 @@ fn insert_vocabulary(
                 rusqlite::params![
                     occurrence_id,
                     id,
-                    text(occurrence.as_object().unwrap_or(&serde_json::Map::new()), "articleId"),
-                    text(occurrence.as_object().unwrap_or(&serde_json::Map::new()), "articleTitle"),
-                    text(occurrence.as_object().unwrap_or(&serde_json::Map::new()), "sourceSentence")
-                        .unwrap_or_default(),
-                    text(occurrence.as_object().unwrap_or(&serde_json::Map::new()), "createdAt")
-                        .unwrap_or_else(now)
+                    text(
+                        occurrence.as_object().unwrap_or(&serde_json::Map::new()),
+                        "articleId"
+                    ),
+                    text(
+                        occurrence.as_object().unwrap_or(&serde_json::Map::new()),
+                        "articleTitle"
+                    ),
+                    text(
+                        occurrence.as_object().unwrap_or(&serde_json::Map::new()),
+                        "sourceSentence"
+                    )
+                    .unwrap_or_default(),
+                    text(
+                        occurrence.as_object().unwrap_or(&serde_json::Map::new()),
+                        "createdAt"
+                    )
+                    .unwrap_or_else(now)
                 ],
             )
-            .map_err(|error| MigrationError { version: 5, message: error.to_string() })?;
+            .map_err(|error| MigrationError {
+                version: 5,
+                message: error.to_string(),
+            })?;
         occurrence_count += 1;
     }
 
@@ -840,7 +893,10 @@ fn insert_vocabulary(
                 stamp
             ],
         )
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })?;
 
     // 去重检查：同名不同 id 时记录 issue。
     let duplicate: bool = connection
@@ -908,24 +964,69 @@ fn validate_english(
                 ))
             },
         )
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })?;
     if counts.0 != legacy_articles.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("文章数量不一致: 旧 {}，新 {}", legacy_articles.len(), counts.0) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "文章数量不一致: 旧 {}，新 {}",
+                legacy_articles.len(),
+                counts.0
+            ),
+        });
     }
     if counts.1 != legacy_records.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("学习记录数量不一致: 旧 {}，新 {}", legacy_records.len(), counts.1) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "学习记录数量不一致: 旧 {}，新 {}",
+                legacy_records.len(),
+                counts.1
+            ),
+        });
     }
     if counts.2 != legacy_highlights.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("高亮数量不一致: 旧 {}，新 {}", legacy_highlights.len(), counts.2) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "高亮数量不一致: 旧 {}，新 {}",
+                legacy_highlights.len(),
+                counts.2
+            ),
+        });
     }
     if counts.3 != legacy_english_notes.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("英语笔记数量不一致: 旧 {}，新 {}", legacy_english_notes.len(), counts.3) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "英语笔记数量不一致: 旧 {}，新 {}",
+                legacy_english_notes.len(),
+                counts.3
+            ),
+        });
     }
     if counts.4 != legacy_analysis.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("分析数量不一致: 旧 {}，新 {}", legacy_analysis.len(), counts.4) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "分析数量不一致: 旧 {}，新 {}",
+                legacy_analysis.len(),
+                counts.4
+            ),
+        });
     }
     if counts.5 != legacy_vocabulary.len() as i64 {
-        return Err(MigrationError { version: 5, message: format!("生词数量不一致: 旧 {}，新 {}", legacy_vocabulary.len(), counts.5) });
+        return Err(MigrationError {
+            version: 5,
+            message: format!(
+                "生词数量不一致: 旧 {}，新 {}",
+                legacy_vocabulary.len(),
+                counts.5
+            ),
+        });
     }
     // 生词唯一约束生效检查。
     let unique_violations: i64 = connection
@@ -938,7 +1039,10 @@ fn validate_english(
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 5, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 5,
+            message: error.to_string(),
+        })?;
     if unique_violations > 0 {
         return Err(MigrationError {
             version: 5,
@@ -951,8 +1055,10 @@ fn validate_english(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, M0002Finance, M0003HabitsReviews, M0004Notes};
     use crate::database::migration_runner::run;
+    use crate::database::migrations::{
+        M0001Framework, M0002Finance, M0003HabitsReviews, M0004Notes,
+    };
     use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
@@ -1076,19 +1182,29 @@ mod tests {
         ];
         run(&mut connection, &context, &migrations).unwrap();
         let articles: i64 = connection
-            .query_row("SELECT COUNT(*) FROM english_articles", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM english_articles", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let records: i64 = connection
-            .query_row("SELECT COUNT(*) FROM english_learning_records", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM english_learning_records", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let vocabulary: i64 = connection
-            .query_row("SELECT COUNT(*) FROM english_vocabulary", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM english_vocabulary", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let occurrences: i64 = connection
-            .query_row("SELECT COUNT(*) FROM vocabulary_occurrences", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM vocabulary_occurrences", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let review_state: i64 = connection
-            .query_row("SELECT COUNT(*) FROM vocabulary_review_state", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM vocabulary_review_state", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(articles, 1);
         assert_eq!(records, 1);

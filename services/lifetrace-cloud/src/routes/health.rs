@@ -29,7 +29,10 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
     if !state.database_enabled {
         checks.insert("storage".to_owned(), json!("memory"));
         return if config_valid {
-            (StatusCode::OK, Json(json!({ "status": "ready", "checks": checks })))
+            (
+                StatusCode::OK,
+                Json(json!({ "status": "ready", "checks": checks })),
+            )
         } else {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
@@ -50,7 +53,10 @@ async fn ready(State(state): State<AppState>) -> (StatusCode, Json<Value>) {
     checks.insert("postgresql".to_owned(), json!(database_ready));
 
     if config_valid && database_ready {
-        (StatusCode::OK, Json(json!({ "status": "ready", "checks": checks })))
+        (
+            StatusCode::OK,
+            Json(json!({ "status": "ready", "checks": checks })),
+        )
     } else {
         (
             StatusCode::SERVICE_UNAVAILABLE,

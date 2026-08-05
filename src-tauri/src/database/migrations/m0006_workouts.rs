@@ -2,7 +2,9 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde_json::Value;
 
 use crate::database::legacy::json_parser;
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 use crate::database::repositories::workouts;
 
 const LEGACY_HISTORY_TABLE: &str = "legacy_workout_history_json_v1";
@@ -54,9 +56,16 @@ impl Migration for M0006Workouts {
         let mut exercise_count = 0usize;
         let mut set_count = 0usize;
         for value in &legacy_history {
-            let (row, exercises) =
-                workouts::workout_from_legacy_json(transaction, value, Some(context), Some(transaction))?;
-            set_count += exercises.iter().map(|exercise| exercise.sets.len()).sum::<usize>();
+            let (row, exercises) = workouts::workout_from_legacy_json(
+                transaction,
+                value,
+                Some(context),
+                Some(transaction),
+            )?;
+            set_count += exercises
+                .iter()
+                .map(|exercise| exercise.sets.len())
+                .sum::<usize>();
             exercise_count += exercises.len();
             workouts::upsert_workout(transaction, &row, &exercises)?;
             workout_count += 1;
@@ -64,7 +73,12 @@ impl Migration for M0006Workouts {
 
         let mut import_count = 0usize;
         for value in &legacy_imports {
-            let row = workouts::import_from_legacy_json(transaction, value, Some(context), Some(transaction))?;
+            let row = workouts::import_from_legacy_json(
+                transaction,
+                value,
+                Some(context),
+                Some(transaction),
+            )?;
             workouts::upsert_import(transaction, &row)?;
             import_count += 1;
         }
@@ -90,11 +104,15 @@ impl Migration for M0006Workouts {
 
         let mut report = MigrationReport::default();
         report.migrated = workout_count + import_count + training_note_count;
-        report.metrics.insert("workouts".to_owned(), workout_count as i64);
+        report
+            .metrics
+            .insert("workouts".to_owned(), workout_count as i64);
         report
             .metrics
             .insert("workout_exercises".to_owned(), exercise_count as i64);
-        report.metrics.insert("workout_sets".to_owned(), set_count as i64);
+        report
+            .metrics
+            .insert("workout_sets".to_owned(), set_count as i64);
         report
             .metrics
             .insert("workout_imports".to_owned(), import_count as i64);
@@ -246,22 +264,54 @@ fn validate_workouts(
                 ))
             },
         )
-        .map_err(|error| MigrationError { version: 6, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 6,
+            message: error.to_string(),
+        })?;
     if counts.0 != legacy_history.len() as i64 {
-        return Err(MigrationError { version: 6, message: format!("训练数量不一致: 旧 {}，新 {}", legacy_history.len(), counts.0) });
+        return Err(MigrationError {
+            version: 6,
+            message: format!(
+                "训练数量不一致: 旧 {}，新 {}",
+                legacy_history.len(),
+                counts.0
+            ),
+        });
     }
     if counts.1 != legacy_imports.len() as i64 {
-        return Err(MigrationError { version: 6, message: format!("导入记录数量不一致: 旧 {}，新 {}", legacy_imports.len(), counts.1) });
+        return Err(MigrationError {
+            version: 6,
+            message: format!(
+                "导入记录数量不一致: 旧 {}，新 {}",
+                legacy_imports.len(),
+                counts.1
+            ),
+        });
     }
     if counts.2 != legacy_training_notes.len() as i64 {
-        return Err(MigrationError { version: 6, message: format!("训练笔记数量不一致: 旧 {}，新 {}", legacy_training_notes.len(), counts.2) });
+        return Err(MigrationError {
+            version: 6,
+            message: format!(
+                "训练笔记数量不一致: 旧 {}，新 {}",
+                legacy_training_notes.len(),
+                counts.2
+            ),
+        });
     }
     let legacy_exercises = legacy_history
         .iter()
-        .filter_map(|value| value.get("exercises").and_then(Value::as_array).map(Vec::len))
+        .filter_map(|value| {
+            value
+                .get("exercises")
+                .and_then(Value::as_array)
+                .map(Vec::len)
+        })
         .sum::<usize>();
     if counts.3 != legacy_exercises as i64 {
-        return Err(MigrationError { version: 6, message: format!("动作数量不一致: 旧 {legacy_exercises}，新 {}", counts.3) });
+        return Err(MigrationError {
+            version: 6,
+            message: format!("动作数量不一致: 旧 {legacy_exercises}，新 {}", counts.3),
+        });
     }
     Ok(())
 }
@@ -269,8 +319,10 @@ fn validate_workouts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, M0002Finance, M0003HabitsReviews, M0004Notes, M0005English};
     use crate::database::migration_runner::run;
+    use crate::database::migrations::{
+        M0001Framework, M0002Finance, M0003HabitsReviews, M0004Notes, M0005English,
+    };
     use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
@@ -376,7 +428,9 @@ mod tests {
             .unwrap();
         assert_eq!(training_note_count, 1);
         let exercise_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM workout_exercises", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM workout_exercises", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         let set_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM workout_sets", [], |row| row.get(0))

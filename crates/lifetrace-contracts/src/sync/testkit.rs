@@ -103,6 +103,10 @@ impl Default for SyncServer {
     }
 }
 
+// The reference server intentionally returns the complete structured API
+// error used by protocol tests. Boxing it would make this test-only API less
+// ergonomic without affecting production request handling.
+#[allow(clippy::result_large_err)]
 impl SyncServer {
     pub fn new(user_id: UserId) -> Self {
         Self {
@@ -154,7 +158,8 @@ impl SyncServer {
 
     /// Current stored state for a key (test helper).
     pub fn entity(&self, entity_type: &str, entity_id: &str) -> Option<&StoredEntity> {
-        self.entities.get(&(entity_type.to_owned(), EntityId::new(entity_id)))
+        self.entities
+            .get(&(entity_type.to_owned(), EntityId::new(entity_id)))
     }
 
     /// Recorded result for a changeId (test helper).
@@ -217,9 +222,7 @@ impl SyncServer {
             ));
         }
         let wire_size = serde_json::to_vec(request)
-            .map_err(|error| {
-                TestKitError::new(ErrorCode::InternalError, error.to_string(), 500)
-            })?
+            .map_err(|error| TestKitError::new(ErrorCode::InternalError, error.to_string(), 500))?
             .len();
         if wire_size > self.max_request_bytes {
             return Err(TestKitError::new(
@@ -232,7 +235,9 @@ impl SyncServer {
         // Atomic groups must fit within the maximum group size.
         let mut group_sizes: HashMap<Option<&AtomicGroupId>, usize> = HashMap::new();
         for change in &request.changes {
-            *group_sizes.entry(change.atomic_group_id.as_ref()).or_insert(0) += 1;
+            *group_sizes
+                .entry(change.atomic_group_id.as_ref())
+                .or_insert(0) += 1;
         }
         for (group, size) in &group_sizes {
             if let Some(group_id) = group {
@@ -318,7 +323,11 @@ impl SyncServer {
                 } else {
                     for (index, outcome) in indices.iter().zip(outcomes) {
                         let change = &request.changes[*index];
-                        results.push(self.apply_outcome(change, outcome, request.client.device_id.clone()));
+                        results.push(self.apply_outcome(
+                            change,
+                            outcome,
+                            request.client.device_id.clone(),
+                        ));
                     }
                 }
             }
@@ -337,14 +346,23 @@ impl SyncServer {
     fn evaluate_change(&self, change: &SyncChangeV1) -> Result<ApplyOutcome, TestKitError> {
         // Idempotency first: same changeId + same payload replays the first
         // result; same changeId + different payload is LIFETRACE_CHANGE_ID_REUSE.
-        if let Some(stored) = self.processed.get(&(self.user_id.clone(), change.change_id.clone())) {
-            let incoming_payload = change.payload.as_ref().map(|value| serde_json::to_string(&value.0).unwrap_or_default());
+        if let Some(stored) = self
+            .processed
+            .get(&(self.user_id.clone(), change.change_id.clone()))
+        {
+            let incoming_payload = change
+                .payload
+                .as_ref()
+                .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
             return if stored.payload_json == incoming_payload {
                 Ok(ApplyOutcome::Duplicate(stored.result.clone()))
             } else {
                 Ok(ApplyOutcome::Rejected {
                     code: ErrorCode::ChangeIdReuse,
-                    message: format!("changeId {} was already used with a different payload", change.change_id),
+                    message: format!(
+                        "changeId {} was already used with a different payload",
+                        change.change_id
+                    ),
                     field_errors: vec![],
                 })
             };
@@ -373,7 +391,10 @@ impl SyncServer {
         for dependency in &change.dependencies {
             let exists = self
                 .entities
-                .get(&Self::entity_key(dependency.entity_type.as_str(), &dependency.entity_id))
+                .get(&Self::entity_key(
+                    dependency.entity_type.as_str(),
+                    &dependency.entity_id,
+                ))
                 .is_some_and(|entity| !entity.deleted);
             if !exists {
                 return Ok(ApplyOutcome::Rejected {
@@ -438,7 +459,9 @@ impl SyncServer {
                     Some(entity) if entity.deleted => {
                         if entity.server_version != base {
                             Ok(ApplyOutcome::Conflict {
-                                reason: ConflictReason::new(ConflictReason::CLIENT_MODIFIED_SERVER_DELETED),
+                                reason: ConflictReason::new(
+                                    ConflictReason::CLIENT_MODIFIED_SERVER_DELETED,
+                                ),
                                 server_entity: None,
                                 server_deleted: true,
                                 current_server_version: entity.server_version,
@@ -476,7 +499,9 @@ impl SyncServer {
                     Some(entity) if !entity.deleted => {
                         if entity.server_version != base {
                             Ok(ApplyOutcome::Conflict {
-                                reason: ConflictReason::new(ConflictReason::CLIENT_DELETED_SERVER_MODIFIED),
+                                reason: ConflictReason::new(
+                                    ConflictReason::CLIENT_DELETED_SERVER_MODIFIED,
+                                ),
                                 server_entity: Some(entity.payload.clone()),
                                 server_deleted: false,
                                 current_server_version: entity.server_version,
@@ -559,7 +584,11 @@ impl SyncServer {
                 },
                 other => other,
             },
-            ApplyOutcome::Rejected { code, message, field_errors } => PushChangeResultV1::Rejected {
+            ApplyOutcome::Rejected {
+                code,
+                message,
+                field_errors,
+            } => PushChangeResultV1::Rejected {
                 change_id: change.change_id.clone(),
                 entity_type: change.entity_type.clone(),
                 entity_id: change.entity_id.clone(),
@@ -585,9 +614,10 @@ impl SyncServer {
                     server_deleted,
                     reason,
                 };
-                let payload_json = change.payload.as_ref().map(|value| {
-                    serde_json::to_string(&value.0).unwrap_or_default()
-                });
+                let payload_json = change
+                    .payload
+                    .as_ref()
+                    .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
                 self.processed.insert(
                     (self.user_id.clone(), change.change_id.clone()),
                     StoredChangeResult {
@@ -611,9 +641,10 @@ impl SyncServer {
                         (self.user_id.clone(), change.change_id.clone()),
                         StoredChangeResult {
                             result: result.clone(),
-                            payload_json: change.payload.as_ref().map(|value| {
-                                serde_json::to_string(&value.0).unwrap_or_default()
-                            }),
+                            payload_json: change
+                                .payload
+                                .as_ref()
+                                .map(|value| serde_json::to_string(&value.0).unwrap_or_default()),
                         },
                     );
                     return result;
@@ -697,9 +728,10 @@ impl SyncServer {
                     cursor: Cursor::new(cursor.to_string()),
                     server_modified_at: now,
                 };
-                let payload_json = change.payload.as_ref().map(|value| {
-                    serde_json::to_string(&value.0).unwrap_or_default()
-                });
+                let payload_json = change
+                    .payload
+                    .as_ref()
+                    .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
                 self.processed.insert(
                     (self.user_id.clone(), change.change_id.clone()),
                     StoredChangeResult {
@@ -757,16 +789,27 @@ impl SyncServer {
             None => self.min_valid_cursor().saturating_sub(1),
         };
 
-        let filters: Option<Vec<String>> = request
-            .entity_types
-            .as_ref()
-            .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect());
-        let limit = (request.limit as usize).min(self.max_pull_batch_size).max(1);
+        let filters: Option<Vec<String>> = request.entity_types.as_ref().map(|types| {
+            types
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect()
+        });
+        let limit = (request.limit as usize)
+            .min(self.max_pull_batch_size)
+            .max(1);
         let mut changes = Vec::new();
         let mut has_more = false;
-        for record in self.change_log.iter().filter(|record| record.cursor > after) {
+        for record in self
+            .change_log
+            .iter()
+            .filter(|record| record.cursor > after)
+        {
             if let Some(filters) = &filters {
-                if !filters.iter().any(|value| value == record.entity_type.as_str()) {
+                if !filters
+                    .iter()
+                    .any(|value| value == record.entity_type.as_str())
+                {
                     continue;
                 }
             }
@@ -805,7 +848,10 @@ impl SyncServer {
     // Snapshot
     // ------------------------------------------------------------------
 
-    pub fn snapshot(&mut self, request: &SnapshotRequestV1) -> Result<SnapshotResponseV1, TestKitError> {
+    pub fn snapshot(
+        &mut self,
+        request: &SnapshotRequestV1,
+    ) -> Result<SnapshotResponseV1, TestKitError> {
         let first_page = request.snapshot_id.is_none();
         let snapshot_id = match &request.snapshot_id {
             Some(id) => id.clone(),
@@ -817,10 +863,12 @@ impl SyncServer {
 
         let view_cursor = if first_page {
             // Capture a consistent view at this instant.
-            let filters: Option<Vec<String>> = request
-                .entity_types
-                .as_ref()
-                .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect());
+            let filters: Option<Vec<String>> = request.entity_types.as_ref().map(|types| {
+                types
+                    .iter()
+                    .map(|value| value.as_str().to_owned())
+                    .collect()
+            });
             let mut items: Vec<EntitySnapshotV1> = self
                 .entities
                 .iter()
@@ -828,7 +876,11 @@ impl SyncServer {
                 .filter(|(_, entity)| {
                     filters
                         .as_ref()
-                        .map(|filters| filters.iter().any(|value| value == entity.entity_type.as_str()))
+                        .map(|filters| {
+                            filters
+                                .iter()
+                                .any(|value| value == entity.entity_type.as_str())
+                        })
                         .unwrap_or(true)
                 })
                 .map(|(_, entity)| EntitySnapshotV1 {
@@ -845,13 +897,8 @@ impl SyncServer {
                     .then(left.entity_id.as_str().cmp(right.entity_id.as_str()))
             });
             let cursor = self.next_cursor;
-            self.snapshots.insert(
-                snapshot_id.clone(),
-                StoredSnapshot {
-                    cursor,
-                    items,
-                },
-            );
+            self.snapshots
+                .insert(snapshot_id.clone(), StoredSnapshot { cursor, items });
             cursor
         } else {
             let stored = self.snapshots.get(&snapshot_id).ok_or_else(|| {
@@ -871,11 +918,7 @@ impl SyncServer {
                 .strip_prefix("page-")
                 .and_then(|value| value.parse::<usize>().ok())
                 .ok_or_else(|| {
-                    TestKitError::new(
-                        ErrorCode::CursorInvalid,
-                        "invalid page token",
-                        400,
-                    )
+                    TestKitError::new(ErrorCode::CursorInvalid, "invalid page token", 400)
                 })?,
         };
         let page_size = request.page_size.max(1) as usize;
@@ -925,8 +968,8 @@ enum ApplyOutcome {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::*;
     use crate::domain::*;
+    use crate::*;
 
     fn stamp() -> UtcTimestamp {
         "2026-08-04T15:30:00Z".parse().unwrap()
@@ -1031,10 +1074,16 @@ mod tests {
     #[test]
     fn create() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        let response = server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        let response = server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         assert_eq!(response.results.len(), 1);
         assert_eq!(accepted_version(&response.results[0]), 1);
-        let entity = server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap();
+        let entity = server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+            .unwrap();
         assert!(!entity.deleted);
         assert_eq!(entity.server_version, 1);
     }
@@ -1042,12 +1091,20 @@ mod tests {
     #[test]
     fn update() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         let response = server
-            .push(&push_request(vec![upsert_change("c2", "tx-1", 200, 1, None)]))
+            .push(&push_request(vec![upsert_change(
+                "c2", "tx-1", 200, 1, None,
+            )]))
             .unwrap();
         assert_eq!(accepted_version(&response.results[0]), 2);
-        let entity = server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap();
+        let entity = server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+            .unwrap();
         assert_eq!(entity.server_version, 2);
         let payload: Transaction = serde_json::from_value(entity.payload.0.clone()).unwrap();
         assert_eq!(payload.amount_cents, 200);
@@ -1056,10 +1113,20 @@ mod tests {
     #[test]
     fn base_version_conflict() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
-        server.push(&push_request(vec![upsert_change("c2", "tx-1", 200, 1, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c2", "tx-1", 200, 1, None,
+            )]))
+            .unwrap();
         let response = server
-            .push(&push_request(vec![upsert_change("c3", "tx-1", 300, 1, None)]))
+            .push(&push_request(vec![upsert_change(
+                "c3", "tx-1", 300, 1, None,
+            )]))
             .unwrap();
         match &response.results[0] {
             PushChangeResultV1::Conflict {
@@ -1079,7 +1146,9 @@ mod tests {
             other => panic!("expected conflict, got {other:?}"),
         }
         // Nothing was written.
-        let entity = server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap();
+        let entity = server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+            .unwrap();
         assert_eq!(entity.server_version, 2);
     }
 
@@ -1087,19 +1156,29 @@ mod tests {
     fn duplicate_change_id() {
         let mut server = SyncServer::new(UserId::new("test-user"));
         let first = server
-            .push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)]))
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
             .unwrap();
         let second = server
-            .push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)]))
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
             .unwrap();
-        assert!(matches!(second.results[0], PushChangeResultV1::Duplicate { .. }));
+        assert!(matches!(
+            second.results[0],
+            PushChangeResultV1::Duplicate { .. }
+        ));
         assert_eq!(
             accepted_version(&second.results[0]),
             accepted_version(&first.results[0])
         );
         assert_eq!(server.change_count(), 1);
         assert_eq!(
-            server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap().server_version,
+            server
+                .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+                .unwrap()
+                .server_version,
             1
         );
     }
@@ -1107,9 +1186,15 @@ mod tests {
     #[test]
     fn change_id_reuse_with_different_payload_is_rejected() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         let response = server
-            .push(&push_request(vec![upsert_change("c1", "tx-1", 999, 0, None)]))
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 999, 0, None,
+            )]))
             .unwrap();
         match &response.results[0] {
             PushChangeResultV1::Rejected { code, .. } => {
@@ -1123,12 +1208,18 @@ mod tests {
     #[test]
     fn delete_generates_tombstone() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         let response = server
             .push(&push_request(vec![delete_change("c2", "tx-1", 1)]))
             .unwrap();
         assert_eq!(accepted_version(&response.results[0]), 2);
-        let entity = server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap();
+        let entity = server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+            .unwrap();
         assert!(entity.deleted);
         assert!(entity.deleted_at.is_some());
         let pull = server
@@ -1144,26 +1235,43 @@ mod tests {
         let delete = &pull.changes[1];
         assert_eq!(delete.operation.as_str(), ChangeOperation::DELETE);
         assert!(delete.tombstone.is_some());
-        assert_eq!(delete.tombstone.as_ref().unwrap().server_version.to_u64(), Some(2));
+        assert_eq!(
+            delete.tombstone.as_ref().unwrap().server_version.to_u64(),
+            Some(2)
+        );
     }
 
     #[test]
     fn both_delete_is_idempotent() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
-        server.push(&push_request(vec![delete_change("c2", "tx-1", 1)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
+        server
+            .push(&push_request(vec![delete_change("c2", "tx-1", 1)]))
+            .unwrap();
         // Second delete with the tombstone version: idempotent success.
         let second = server
             .push(&push_request(vec![delete_change("c3", "tx-1", 2)]))
             .unwrap();
         assert_eq!(accepted_version(&second.results[0]), 2);
-        assert_eq!(server.change_count(), 2, "no new change log entry for both-delete");
+        assert_eq!(
+            server.change_count(),
+            2,
+            "no new change log entry for both-delete"
+        );
         // Second delete with a stale version: explicit both_deleted conflict.
         let stale = server
             .push(&push_request(vec![delete_change("c4", "tx-1", 1)]))
             .unwrap();
         match &stale.results[0] {
-            PushChangeResultV1::Conflict { reason, server_deleted, .. } => {
+            PushChangeResultV1::Conflict {
+                reason,
+                server_deleted,
+                ..
+            } => {
                 assert_eq!(reason.as_str(), ConflictReason::BOTH_DELETED);
                 assert!(*server_deleted);
             }
@@ -1241,8 +1349,14 @@ mod tests {
             }
         }
         assert_eq!(seen.len(), 7);
-        let cursors: Vec<u64> = seen.iter().map(|value| value.as_str().parse().unwrap()).collect();
-        assert!(cursors.windows(2).all(|pair| pair[0] < pair[1]), "strictly ascending");
+        let cursors: Vec<u64> = seen
+            .iter()
+            .map(|value| value.as_str().parse().unwrap())
+            .collect();
+        assert!(
+            cursors.windows(2).all(|pair| pair[0] < pair[1]),
+            "strictly ascending"
+        );
     }
 
     #[test]
@@ -1299,7 +1413,11 @@ mod tests {
     #[test]
     fn snapshot_then_pull_has_no_gaps_for_concurrent_changes() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         let snapshot = server
             .snapshot(&SnapshotRequestV1 {
                 request_id: RequestId::new("req-snap"),
@@ -1315,7 +1433,11 @@ mod tests {
         assert_eq!(snapshot.snapshot_cursor.as_str(), "1");
 
         // A concurrent change lands after the snapshot cursor.
-        server.push(&push_request(vec![upsert_change("c2", "tx-2", 200, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c2", "tx-2", 200, 0, None,
+            )]))
+            .unwrap();
         let pull = server
             .pull(&PullRequestV1 {
                 request_id: RequestId::new("req-pull"),
@@ -1336,7 +1458,11 @@ mod tests {
     #[test]
     fn atomic_group_fails_together() {
         let mut server = SyncServer::new(UserId::new("test-user"));
-        server.push(&push_request(vec![upsert_change("c1", "tx-1", 100, 0, None)])).unwrap();
+        server
+            .push(&push_request(vec![upsert_change(
+                "c1", "tx-1", 100, 0, None,
+            )]))
+            .unwrap();
         // Group: tx-2 create + tx-1 update with a stale base -> whole group fails.
         let group = vec![
             upsert_change("c2", "tx-2", 200, 0, Some("group-1")),
@@ -1351,9 +1477,14 @@ mod tests {
                 other => panic!("expected group failure, got {other:?}"),
             }
         }
-        assert!(server.entity(EntityType::FINANCE_TRANSACTION, "tx-2").is_none());
+        assert!(server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-2")
+            .is_none());
         assert_eq!(
-            server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").unwrap().server_version,
+            server
+                .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+                .unwrap()
+                .server_version,
             1
         );
     }
@@ -1366,11 +1497,16 @@ mod tests {
             upsert_change("c2", "tx-2", 200, 0, Some("group-1")),
         ];
         let response = server.push(&push_request(group)).unwrap();
-        assert!(response.results.iter().all(|result| {
-            matches!(result, PushChangeResultV1::Accepted { .. })
-        }));
-        assert!(server.entity(EntityType::FINANCE_TRANSACTION, "tx-1").is_some());
-        assert!(server.entity(EntityType::FINANCE_TRANSACTION, "tx-2").is_some());
+        assert!(response
+            .results
+            .iter()
+            .all(|result| { matches!(result, PushChangeResultV1::Accepted { .. }) }));
+        assert!(server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-1")
+            .is_some());
+        assert!(server
+            .entity(EntityType::FINANCE_TRANSACTION, "tx-2")
+            .is_some());
     }
 
     #[test]

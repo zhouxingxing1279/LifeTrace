@@ -31,8 +31,8 @@ pub fn validate(connection: &Connection) -> Result<(), String> {
     if !ok {
         return Err("PRAGMA integrity_check 未通过".to_owned());
     }
-    let violations =
-        foreign_key_violations(connection).map_err(|error| format!("foreign_key_check 失败: {error}"))?;
+    let violations = foreign_key_violations(connection)
+        .map_err(|error| format!("foreign_key_check 失败: {error}"))?;
     if !violations.is_empty() {
         let first = violations.first().cloned().unwrap_or_default();
         return Err(format!(

@@ -690,7 +690,8 @@ mod tests {
                  );",
             )
             .unwrap();
-        let value = json!({"id": "t1", "userId": "local-user", "type": "expense", "category": "餐饮"});
+        let value =
+            json!({"id": "t1", "userId": "local-user", "type": "expense", "category": "餐饮"});
         assert!(transaction_from_legacy_json(&connection, &value, None, None).is_err());
     }
 }

@@ -15,7 +15,9 @@ use ts_rs::{TypeVisitor, TS};
 use crate::ids::EntityId;
 
 /// Entity ownership class.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
+)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum EntityOwnership {
@@ -32,7 +34,9 @@ pub enum EntityOwnership {
 }
 
 /// Entity sync mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
+)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum SyncMode {
@@ -43,7 +47,9 @@ pub enum SyncMode {
 }
 
 /// Entity conflict handling mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
+)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum ConflictMode {
@@ -328,8 +334,7 @@ pub fn describe(entity_type: &str) -> Option<&'static EntityDescriptor> {
 
 /// Whether an entity type is registered and allowed to sync.
 pub fn is_syncable(entity_type: &str) -> bool {
-    describe(entity_type)
-        .is_some_and(|descriptor| descriptor.sync_mode != SyncMode::NotSynced)
+    describe(entity_type).is_some_and(|descriptor| descriptor.sync_mode != SyncMode::NotSynced)
 }
 
 /// Stable entity type name used in sync changes and cross-entity links.
@@ -582,7 +587,11 @@ mod tests {
 
     #[test]
     fn file_reference_flags_are_set_where_expected() {
-        assert!(describe(EntityType::NOTE_NOTE).unwrap().contains_file_references);
+        assert!(
+            describe(EntityType::NOTE_NOTE)
+                .unwrap()
+                .contains_file_references
+        );
         assert!(
             describe(EntityType::FILE_METADATA)
                 .unwrap()

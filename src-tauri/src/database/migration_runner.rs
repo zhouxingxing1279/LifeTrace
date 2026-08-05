@@ -70,7 +70,10 @@ impl From<rusqlite::Error> for MigrationError {
 
 impl From<String> for MigrationError {
     fn from(message: String) -> Self {
-        Self { version: 0, message }
+        Self {
+            version: 0,
+            message,
+        }
     }
 }
 
@@ -190,12 +193,11 @@ pub fn bootstrap(connection: &Connection) -> rusqlite::Result<()> {
 }
 
 fn current_version(connection: &Connection) -> rusqlite::Result<i64> {
-    connection
-        .query_row(
-            "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
-            [],
-            |row| row.get(0),
-        )
+    connection.query_row(
+        "SELECT COALESCE(MAX(version), 0) FROM schema_migrations",
+        [],
+        |row| row.get(0),
+    )
 }
 
 fn recorded_migration(
@@ -278,8 +280,8 @@ pub fn run(
 
     // 先校验全部已记录版本的 checksum，防止代码回改已应用 Migration。
     for migration in &pending {
-        if let Some((name, checksum)) =
-            recorded_migration(connection, migration.version()).map_err(|error| MigrationError {
+        if let Some((name, checksum)) = recorded_migration(connection, migration.version())
+            .map_err(|error| MigrationError {
                 version: migration.version(),
                 message: format!("读取已记录 Migration 失败: {error}"),
             })?
@@ -314,10 +316,7 @@ pub fn run(
         if !backup_record.integrity_ok {
             return Err(MigrationError {
                 version: migration.version(),
-                message: format!(
-                    "迁移前备份完整性校验失败: {}",
-                    backup_record.path.display()
-                ),
+                message: format!("迁移前备份完整性校验失败: {}", backup_record.path.display()),
             });
         }
         eprintln!(
@@ -501,7 +500,9 @@ mod tests {
         assert_eq!(second.applied.len(), 0);
         assert_eq!(second.skipped, 1);
         let count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1);
 
@@ -533,7 +534,9 @@ mod tests {
         assert_eq!(scratch_count, 0);
         // 不写入成功版本。
         let versions: i64 = connection
-            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(versions, 0);
         // 运行记录标记为 failed。
@@ -613,7 +616,9 @@ mod tests {
         .unwrap();
         tx.commit().unwrap();
         let count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(count, 1);
         fs::remove_dir_all(&directory).ok();

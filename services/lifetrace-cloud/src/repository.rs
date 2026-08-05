@@ -77,7 +77,11 @@ pub struct MemoryRepository {
 }
 
 impl MemoryRepository {
-    pub fn new(config: Config, cursor_codec: CursorCodec, page_token_codec: PageTokenCodec) -> Self {
+    pub fn new(
+        config: Config,
+        cursor_codec: CursorCodec,
+        page_token_codec: PageTokenCodec,
+    ) -> Self {
         Self {
             store: RwLock::new(Store::new(config, cursor_codec, page_token_codec)),
         }

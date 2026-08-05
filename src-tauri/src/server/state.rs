@@ -256,7 +256,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             if key == "accounts" {
                 let existing = finance::list_accounts(&connection)
                     .ok()
-                    .and_then(|items| items.into_iter().find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
+                    .and_then(|items| {
+                        items
+                            .into_iter()
+                            .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
+                    })
                     .ok_or_else(|| "项目不存在".to_owned());
                 return match existing {
                     Ok(mut value) => {
@@ -275,7 +279,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             if key == "activities" {
                 let existing = habits::list_activities(&connection)
                     .ok()
-                    .and_then(|items| items.into_iter().find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
+                    .and_then(|items| {
+                        items
+                            .into_iter()
+                            .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
+                    })
                     .ok_or_else(|| "项目不存在".to_owned());
                 return match existing {
                     Ok(mut value) => {

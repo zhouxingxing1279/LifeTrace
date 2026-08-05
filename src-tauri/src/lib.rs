@@ -1,8 +1,9 @@
 #![allow(linker_messages)]
 
-mod desktop;
+mod cloud_auth;
 pub mod contracts;
 mod database;
+mod desktop;
 mod server;
 
 use tauri::Manager;
@@ -13,6 +14,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            cloud_auth::cloud_credential_set,
+            cloud_auth::cloud_credential_get,
+            cloud_auth::cloud_credential_clear,
             desktop::photo_status,
             desktop::mobile_upload_status,
             desktop::mobile_upload_start,

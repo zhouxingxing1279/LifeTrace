@@ -6,7 +6,7 @@ use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
-use crate::auth::{AuthProvider, DevelopmentAuthProvider};
+use crate::auth::{AuthProvider, AuthService, DatabaseAuthProvider, DevelopmentAuthProvider};
 use crate::config::Config;
 use crate::postgres_repository::PostgresRepository;
 use crate::repository::{MemoryRepository, SyncRepository};
@@ -25,13 +25,14 @@ pub enum StartupError {
 #[derive(Clone)]
 pub struct AppState {
     /// A real SQLx pool is always present. Production and configured cloud
-    /// environments use it for every sync operation; the memory repository is
-    /// retained only for legacy protocol tests when DATABASE_URL is absent.
+    /// environments use it for every sync and authentication operation; the
+    /// memory repository is retained only for in-process protocol tests.
     pub pool: PgPool,
     pub database_enabled: bool,
     pub store: Arc<dyn SyncRepository>,
     pub config: Arc<Config>,
     pub auth: Arc<dyn AuthProvider>,
+    pub auth_service: Arc<AuthService>,
     pub cursor_codec: Arc<CursorCodec>,
     pub page_token_codec: Arc<PageTokenCodec>,
 }
@@ -53,11 +54,7 @@ impl AppState {
 
         let database_enabled = config.database_url.is_some();
         let database_url = config.database_url.clone().unwrap_or_else(|| {
-            // This pool is never queried by the memory adapter. Keeping a pool
-            // in AppState makes the production state shape uniform and avoids
-            // optional database plumbing throughout readiness and startup.
-            "postgres://lifetrace:lifetrace_test_password@127.0.0.1:5433/lifetrace_test"
-                .to_owned()
+            "postgres://lifetrace:lifetrace_test_password@127.0.0.1:5433/lifetrace_test".to_owned()
         });
         let pool = PgPoolOptions::new()
             .min_connections(if database_enabled {
@@ -85,18 +82,28 @@ impl AppState {
             ))
         };
 
-        let auth = DevelopmentAuthProvider::new(
-            config.dev_auth_enabled,
-            config.dev_auth_token.clone(),
-            lifetrace_contracts::UserId::new(config.dev_auth_user_id.clone()),
-            lifetrace_contracts::DeviceId::new(config.dev_auth_device_id.clone()),
-        );
+        let auth_service = Arc::new(AuthService::new(pool.clone(), config.clone()));
+        let auth: Arc<dyn AuthProvider> = if database_enabled {
+            Arc::new(DatabaseAuthProvider::new(
+                pool.clone(),
+                auth_service.token_manager(),
+            ))
+        } else {
+            Arc::new(DevelopmentAuthProvider::new(
+                config.dev_auth_enabled,
+                config.dev_auth_token.clone(),
+                lifetrace_contracts::UserId::new(config.dev_auth_user_id.clone()),
+                config.dev_auth_device_id.clone(),
+            ))
+        };
+
         Self {
             pool,
             database_enabled,
             store,
             config: Arc::new(config),
-            auth: Arc::new(auth),
+            auth,
+            auth_service,
             cursor_codec: Arc::new(cursor_codec),
             page_token_codec: Arc::new(page_token_codec),
         }

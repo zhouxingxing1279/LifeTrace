@@ -180,7 +180,10 @@ fn pull_response_with_tombstone_round_trips() {
     let json = serde_json::to_value(&response).unwrap();
     assert_eq!(json["changes"][0]["operation"], "delete");
     assert_eq!(json["changes"][0]["tombstone"]["serverVersion"], "9");
-    assert_eq!(json["changes"][0]["tombstone"]["deletedByDevice"], "device-2");
+    assert_eq!(
+        json["changes"][0]["tombstone"]["deletedByDevice"],
+        "device-2"
+    );
     let back: PullResponseV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, response);
 }

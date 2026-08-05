@@ -49,7 +49,10 @@ pub fn import_json_table(
 }
 
 /// D1 `english_user_vocabulary` 为真实列，映射为 DTO 后写入。
-fn import_d1_vocabulary(source: &Connection, destination: &mut Connection) -> Result<usize, String> {
+fn import_d1_vocabulary(
+    source: &Connection,
+    destination: &mut Connection,
+) -> Result<usize, String> {
     if !table_exists(source, "english_user_vocabulary") {
         return Ok(0);
     }

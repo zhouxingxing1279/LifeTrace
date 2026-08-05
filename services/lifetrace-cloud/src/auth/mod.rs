@@ -1,16 +1,20 @@
-//! Authentication boundary (EPIC-03 scope).
-//!
-//! EPIC-03 only defines the boundary: an `AuthProvider` trait, an
-//! `AuthenticatedPrincipal` and development/test implementations. Real
-//! registration, password hashing and tokens belong to EPIC-04.
+//! EPIC-04 authentication, authorization and security boundary.
 
+pub mod database;
 pub mod development;
 pub mod extract;
+pub mod password;
 pub mod principal;
 pub mod provider;
+pub mod scope;
+pub mod security;
+pub mod service;
 pub mod testing;
+pub mod token;
 
+pub use database::DatabaseAuthProvider;
 pub use development::DevelopmentAuthProvider;
-pub use principal::AuthenticatedPrincipal;
-pub use provider::AuthProvider;
+pub use principal::{AuthMethod, AuthenticatedPrincipal};
+pub use provider::{AuthCredential, AuthProvider};
+pub use service::AuthService;
 pub use testing::TestAuthProvider;

@@ -1,5 +1,7 @@
 //! Uniform API error type mapped to the contract `ApiErrorV1`.
 
+use std::fmt;
+
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -28,6 +30,14 @@ impl ApiError {
         self
     }
 }
+
+impl fmt::Display for ApiError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.body.code, self.body.message)
+    }
+}
+
+impl std::error::Error for ApiError {}
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
