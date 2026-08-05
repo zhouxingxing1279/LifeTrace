@@ -1,0 +1,33 @@
+name: EPIC-04 Verify Patch Parts
+
+on:
+  push:
+    branches:
+      - agent/epic-04-auth-complete
+    paths:
+      - '.github/workflows/epic04-verify-parts.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify transport hashes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import base64, gzip, hashlib
+          parts = sorted(Path('.epic04').glob('patch-*'))
+          payload = ''
+          for path in parts:
+              data = path.read_text()
+              payload += data
+              print(path.name, len(data), hashlib.sha256(data.encode()).hexdigest())
+          print('total', len(payload), hashlib.sha256(payload.encode()).hexdigest())
+          raw = gzip.decompress(base64.b64decode(payload))
+          print('patch', len(raw), hashlib.sha256(raw).hexdigest())
+          PY
