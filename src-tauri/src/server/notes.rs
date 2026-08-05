@@ -100,15 +100,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
     };
     let result: Result<Value, String> = (|| match action {
         "create" => {
-            let note = body
-                .get("note")
-                .ok_or_else(|| "缺少笔记内容".to_owned())?;
+            let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
             notes_repo::save_note(&connection, note, false, false)
         }
         "update" => {
-            let note = body
-                .get("note")
-                .ok_or_else(|| "缺少笔记内容".to_owned())?;
+            let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
             let create_revision = body
                 .get("createRevision")
                 .and_then(Value::as_bool)
@@ -139,10 +135,12 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             notes_repo::duplicate_note(&connection, note_id)
         }
         "folder.save" | "tag.save" => {
-            let key = if action == "folder.save" { "folder" } else { "tag" };
-            let input = body
-                .get(key)
-                .ok_or_else(|| format!("缺少{key}数据"))?;
+            let key = if action == "folder.save" {
+                "folder"
+            } else {
+                "tag"
+            };
+            let input = body.get(key).ok_or_else(|| format!("缺少{key}数据"))?;
             let entity_id = if action == "folder.save" {
                 notes_repo::save_folder(&connection, input)?
             } else {
@@ -174,9 +172,7 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             notes_repo::restore_revision(&connection, revision_id)
         }
         "attachment.record" => {
-            let file = body
-                .get("file")
-                .ok_or_else(|| "缺少附件数据".to_owned())?;
+            let file = body.get("file").ok_or_else(|| "缺少附件数据".to_owned())?;
             let note_id = file
                 .get("noteId")
                 .and_then(Value::as_str)
@@ -193,12 +189,14 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             Ok(json!({ "ok": true }))
         }
         "backup.restore" => {
-            let data = body
-                .get("data")
-                .ok_or_else(|| "备份格式错误".to_owned())?;
+            let data = body.get("data").ok_or_else(|| "备份格式错误".to_owned())?;
             // 恢复前必须创建一致性数据库备份。
-            crate::database::backup::create_backup(&connection, &state.data_dir, "before-notes-restore")
-                .map_err(|message| message)?;
+            crate::database::backup::create_backup(
+                &connection,
+                &state.data_dir,
+                "before-notes-restore",
+            )
+            .map_err(|message| message)?;
             notes_repo::restore_backup(&mut *connection, data)?;
             Ok(json!({ "ok": true }))
         }

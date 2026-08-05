@@ -37,6 +37,11 @@ export function installTauriApiBridge() {
     return nativeFetch(target, init);
   }) as typeof window.fetch;
 
+  window.cloudCredentialApi = {
+    set: (refreshToken) => invoke<void>("cloud_credential_set", { refreshToken }),
+    get: () => invoke<string | null>("cloud_credential_get"),
+    clear: () => invoke<void>("cloud_credential_clear"),
+  };
   const photoStatus = () => invoke<PhotoSyncDesktopResponse>("photo_status");
   window.mobileUploadApi = {
     status: () => invoke<MobileUploadResponse>("mobile_upload_status"),

@@ -40,10 +40,10 @@ pub fn import_json_table(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, M0002Finance};
     use crate::database::migration_runner::{run, Migration, MigrationContext};
-    use rusqlite::Connection;
+    use crate::database::migrations::{M0001Framework, M0002Finance};
     use rusqlite::params;
+    use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -104,11 +104,16 @@ mod tests {
             )
             .unwrap();
 
-        let imported = import_json_table(&source, &mut destination, "finance_accounts", "finance_accounts")
-            .unwrap();
+        let imported = import_json_table(
+            &source,
+            &mut destination,
+            "finance_accounts",
+            "finance_accounts",
+        )
+        .unwrap();
         assert_eq!(imported, 1);
-        let imported = import_json_table(&source, &mut destination, "transactions", "transactions")
-            .unwrap();
+        let imported =
+            import_json_table(&source, &mut destination, "transactions", "transactions").unwrap();
         assert_eq!(imported, 1);
 
         let cents: i64 = destination
@@ -120,7 +125,11 @@ mod tests {
             .unwrap();
         assert_eq!(cents, 1234);
         let account_id: Option<String> = destination
-            .query_row("SELECT account_id FROM transactions WHERE id='t1'", [], |row| row.get(0))
+            .query_row(
+                "SELECT account_id FROM transactions WHERE id='t1'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
         assert_eq!(account_id.as_deref(), Some("a1"));
 

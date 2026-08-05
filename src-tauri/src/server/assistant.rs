@@ -577,7 +577,10 @@ fn json_records(
     };
     let normalized_expression = normalized_json_expression(source.key);
     let (select_expression, date_expression) = if let Some(expression) = normalized_expression {
-        (expression.to_owned(), normalized_date_expression(source.key).to_owned())
+        (
+            expression.to_owned(),
+            normalized_date_expression(source.key).to_owned(),
+        )
     } else {
         let date_expression = match source.key {
             "activity_logs" => "json_extract(data_json,'$.createdAt')",
@@ -664,7 +667,9 @@ fn normalized_date_expression(key: &str) -> &'static str {
         "note_revisions" => "created_at",
         "english_articles" => "COALESCE(published_at, created_time, created_at)",
         "english_learning_records" => "record_date",
-        "english_vocabulary" | "english_highlights" | "english_notes" | "english_analysis" => "created_at",
+        "english_vocabulary" | "english_highlights" | "english_notes" | "english_analysis" => {
+            "created_at"
+        }
         _ => "updated_at",
     }
 }

@@ -43,9 +43,7 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> bool {
     };
     statement
         .query_map([], |row| row.get::<_, String>(1))
-        .map(|rows| {
-            rows.flatten().any(|name| name == column)
-        })
+        .map(|rows| rows.flatten().any(|name| name == column))
         .unwrap_or(false)
 }
 
@@ -120,14 +118,12 @@ fn copy_json_table(
             | "english_highlights"
             | "english_notes"
             | "english_ai_analysis"
-            | "english_vocabulary" => {
-                crate::database::legacy::english_d1::import_json_table(
-                    source,
-                    destination,
-                    source_table,
-                    destination_table,
-                )
-            }
+            | "english_vocabulary" => crate::database::legacy::english_d1::import_json_table(
+                source,
+                destination,
+                source_table,
+                destination_table,
+            ),
             "workouts" | "workout_imports" | "training_notes" => {
                 crate::database::legacy::workouts_d1::import_json_table(
                     source,
@@ -282,7 +278,7 @@ pub fn migrate_once(destination: &mut Connection, data_dir: &Path) -> Result<usi
             if source_table == "finance_accounts" || source_table == "transactions" {
                 continue;
             }
-        copied += copy_json_table(&source, destination, source_table, destination_table)?;
+            copied += copy_json_table(&source, destination, source_table, destination_table)?;
         }
         // 财务：账户必须先于交易导入。
         copied += copy_json_table(&source, destination, "finance_accounts", "finance_accounts")?;

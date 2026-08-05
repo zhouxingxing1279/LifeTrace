@@ -31,10 +31,10 @@ impl CurrencyCode {
     /// Build a currency code; must be 3 uppercase ASCII letters.
     pub fn new(value: impl Into<String>) -> Result<Self, String> {
         let raw = value.into();
-        if raw.len() != 3
-            || !raw.chars().all(|character| character.is_ascii_uppercase())
-        {
-            return Err(format!("invalid currency code (expected 3 uppercase letters): {raw}"));
+        if raw.len() != 3 || !raw.chars().all(|character| character.is_ascii_uppercase()) {
+            return Err(format!(
+                "invalid currency code (expected 3 uppercase letters): {raw}"
+            ));
         }
         Ok(Self(raw))
     }

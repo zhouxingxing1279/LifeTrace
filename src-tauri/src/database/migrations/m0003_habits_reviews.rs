@@ -3,7 +3,9 @@ use std::collections::HashSet;
 use rusqlite::{Connection, OptionalExtension, Transaction};
 
 use crate::database::legacy::json_parser;
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 use crate::database::repositories::habits;
 
 const LEGACY_ACTIVITIES_TABLE: &str = "legacy_activities_json_v1";
@@ -72,7 +74,12 @@ impl Migration for M0003HabitsReviews {
 
         let mut log_count = 0usize;
         for value in &legacy_logs {
-            let row = habits::activity_log_from_legacy_json(transaction, value, Some(context), Some(transaction))?;
+            let row = habits::activity_log_from_legacy_json(
+                transaction,
+                value,
+                Some(context),
+                Some(transaction),
+            )?;
             habits::upsert_activity_log(transaction, &row)?;
             log_count += 1;
         }
@@ -93,7 +100,8 @@ impl Migration for M0003HabitsReviews {
         let mut seen_dates = HashSet::<(String, String)>::new();
         let mut review_count = 0usize;
         for value in &reviews {
-            let mut row = habits::daily_review_from_legacy_json(value, Some(context), Some(transaction))?;
+            let mut row =
+                habits::daily_review_from_legacy_json(value, Some(context), Some(transaction))?;
             let key = (row.user_id.clone(), row.review_date.clone());
             if !seen_dates.insert(key.clone()) {
                 // 重复：保留原始数据，标记软删除。
@@ -116,14 +124,21 @@ impl Migration for M0003HabitsReviews {
             review_count += 1;
         }
 
-        validate_habits(transaction, &legacy_activities, &legacy_logs, &legacy_reviews)?;
+        validate_habits(
+            transaction,
+            &legacy_activities,
+            &legacy_logs,
+            &legacy_reviews,
+        )?;
 
         let mut report = MigrationReport::default();
         report.migrated = activity_count + log_count + review_count;
         report
             .metrics
             .insert("activities".to_owned(), activity_count as i64);
-        report.metrics.insert("activity_logs".to_owned(), log_count as i64);
+        report
+            .metrics
+            .insert("activity_logs".to_owned(), log_count as i64);
         report
             .metrics
             .insert("daily_reviews".to_owned(), review_count as i64);
@@ -236,21 +251,26 @@ fn validate_habits(
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 3, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 3,
+            message: error.to_string(),
+        })?;
     let new_logs: i64 = connection
         .query_row(
             "SELECT COUNT(*) FROM activity_logs WHERE deleted_at IS NULL",
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 3, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 3,
+            message: error.to_string(),
+        })?;
     let new_reviews: i64 = connection
-        .query_row(
-            "SELECT COUNT(*) FROM daily_reviews",
-            [],
-            |row| row.get(0),
-        )
-        .map_err(|error| MigrationError { version: 3, message: error.to_string() })?;
+        .query_row("SELECT COUNT(*) FROM daily_reviews", [], |row| row.get(0))
+        .map_err(|error| MigrationError {
+            version: 3,
+            message: error.to_string(),
+        })?;
     if new_activities != legacy_activities.len() as i64 {
         return Err(MigrationError {
             version: 3,
@@ -286,7 +306,10 @@ fn validate_habits(
             [],
             |row| row.get(0),
         )
-        .map_err(|error| MigrationError { version: 3, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 3,
+            message: error.to_string(),
+        })?;
     let activity_ids: HashSet<String> = legacy_activities
         .iter()
         .filter_map(|value| {
@@ -317,8 +340,8 @@ fn validate_habits(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, M0002Finance};
     use crate::database::migration_runner::run;
+    use crate::database::migrations::{M0001Framework, M0002Finance};
     use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
@@ -436,7 +459,9 @@ mod tests {
         assert_eq!(orphan, None);
         // issue 至少两条：孤立打卡 + 重复复盘。
         let issues: i64 = connection
-            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM migration_issues", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert!(issues >= 2, "issues = {issues}");
         // 重复复盘原始数据仍保留（软删除）。

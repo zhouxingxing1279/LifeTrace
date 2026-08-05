@@ -1,4 +1,4 @@
-﻿//! HTTP integration tests for the EPIC-03 sync server.
+//! HTTP integration tests for the EPIC-03 sync server.
 //!
 //! These mirror the protocol semantics validated by the reference testkit
 //! (`lifetrace-contracts`), but through the real Axum HTTP layer.
@@ -6,11 +6,11 @@
 use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use axum::Router;
+use lifetrace_cloud::{app, AppState, Config};
 use lifetrace_contracts::domain::finance::Transaction;
 use lifetrace_contracts::domain::{TransactionStatus, TransactionType};
 use lifetrace_contracts::time::{LocalDate, UtcTimestamp};
-use lifetrace_contracts::{CurrencyCode, EntityMeta, EntityId, UserId};
-use lifetrace_cloud::{app, AppState, Config};
+use lifetrace_contracts::{CurrencyCode, EntityId, EntityMeta, UserId};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -121,7 +121,9 @@ async fn send(
         .await
         .unwrap();
     let status = response.status();
-    let bytes = to_bytes(response.into_body(), 8 * 1024 * 1024).await.unwrap();
+    let bytes = to_bytes(response.into_body(), 8 * 1024 * 1024)
+        .await
+        .unwrap();
     let body = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
     (status, body)
 }
@@ -131,16 +133,25 @@ fn test_app() -> Router {
 }
 
 fn test_app_for(token: &str, user: &str, device: &str) -> Router {
-    let mut config = Config::default();
-    config.dev_auth_token = token.to_owned();
-    config.dev_auth_user_id = user.to_owned();
-    config.dev_auth_device_id = device.to_owned();
+    let config = Config {
+        dev_auth_token: token.to_owned(),
+        dev_auth_user_id: user.to_owned(),
+        dev_auth_device_id: device.to_owned(),
+        ..Config::default()
+    };
     app(AppState::new(config))
 }
 
 #[tokio::test]
 async fn health_live_ok() {
-    let (status, body) = send(test_app(), Method::GET, "/health/live", TOKEN_A, Value::Null).await;
+    let (status, body) = send(
+        test_app(),
+        Method::GET,
+        "/health/live",
+        TOKEN_A,
+        Value::Null,
+    )
+    .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
 }
@@ -461,7 +472,10 @@ async fn pull_pagination_has_no_gaps_or_duplicates() {
         .chain(page2["changes"].as_array().unwrap().iter())
         .map(|change| change["cursor"].as_str().unwrap().parse().unwrap())
         .collect();
-    assert!(cursors.windows(2).all(|pair| pair[0] < pair[1]), "strictly ordered");
+    assert!(
+        cursors.windows(2).all(|pair| pair[0] < pair[1]),
+        "strictly ordered"
+    );
 }
 
 #[tokio::test]
@@ -559,9 +573,11 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
 
 #[tokio::test]
 async fn expired_cursor_requires_snapshot() {
-    let mut config = Config::default();
-    config.dev_auth_token = TOKEN_A.to_owned();
-    config.retention_entries = 1;
+    let config = Config {
+        dev_auth_token: TOKEN_A.to_owned(),
+        retention_entries: 1,
+        ..Config::default()
+    };
     let app = app(AppState::new(config));
     let (_, first) = send(
         app.clone(),

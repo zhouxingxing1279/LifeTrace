@@ -32,13 +32,12 @@ pub fn create_backup(
     label: &str,
 ) -> Result<BackupRecord, String> {
     let directory = backup_directory(data_dir);
-    fs::create_dir_all(&directory)
-        .map_err(|error| format!("创建备份目录失败: {error}"))?;
+    fs::create_dir_all(&directory).map_err(|error| format!("创建备份目录失败: {error}"))?;
     let stamp = Utc::now().format("%Y%m%d-%H%M%S%.3f");
     let path = directory.join(format!("lifetrace-{label}-{stamp}.db"));
 
-    let mut destination = Connection::open(&path)
-        .map_err(|error| format!("打开备份目标失败: {error}"))?;
+    let mut destination =
+        Connection::open(&path).map_err(|error| format!("打开备份目标失败: {error}"))?;
     let backup = rusqlite::backup::Backup::new(connection, &mut destination)
         .map_err(|error| format!("创建备份失败: {error}"))?;
     let progress: Option<fn(rusqlite::backup::Progress)> = None;
@@ -124,7 +123,9 @@ mod tests {
 
         let reopened = Connection::open(&record.path).unwrap();
         let value: String = reopened
-            .query_row("SELECT value FROM sample WHERE id='a'", [], |row| row.get(0))
+            .query_row("SELECT value FROM sample WHERE id='a'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(value, "hello");
 

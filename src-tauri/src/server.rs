@@ -64,7 +64,7 @@ pub async fn serve(
         let migrations = database::migrations::all();
         database::migration_runner::run(&mut connection, &migration_context, &migrations).map_err(
             |error| {
-            Box::<dyn std::error::Error + Send + Sync>::from(format!("数据库迁移失败: {error}"))
+                Box::<dyn std::error::Error + Send + Sync>::from(format!("数据库迁移失败: {error}"))
             },
         )
     }?;

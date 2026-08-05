@@ -4,7 +4,9 @@ use rusqlite::{Connection, OptionalExtension, Transaction};
 use serde_json::{json, Value};
 
 use crate::database::legacy::json_parser;
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 
 const LEGACY_NOTES_TABLE: &str = "legacy_notes_v2_json_v1";
 const LEGACY_FOLDERS_TABLE: &str = "legacy_note_folders_v2_json_v1";
@@ -12,8 +14,14 @@ const LEGACY_TAGS_TABLE: &str = "legacy_note_tags_v2_json_v1";
 const LEGACY_REVISIONS_TABLE: &str = "legacy_note_revisions_v2_json_v1";
 
 const NOTE_TYPES: [&str; 8] = [
-    "quick", "document", "daily", "habit_log", "workout_review", "expense_note",
-    "weekly_review", "monthly_review",
+    "quick",
+    "document",
+    "daily",
+    "habit_log",
+    "workout_review",
+    "expense_note",
+    "weekly_review",
+    "monthly_review",
 ];
 
 fn table_exists(connection: &Connection, table: &str) -> bool {
@@ -104,14 +112,14 @@ impl Migration for M0004Notes {
             let id = json_parser::string_field(object, "id")
                 .filter(|id| !id.is_empty())
                 .ok_or_else(|| format!("标签缺少 id: {}", value))?;
-            let name = text(object, "name")
-                .ok_or_else(|| format!("标签 {id} 缺少 name"))?;
+            let name = text(object, "name").ok_or_else(|| format!("标签 {id} 缺少 name"))?;
             let user = json_parser::string_field(object, "userId")
                 .filter(|value| !value.is_empty())
                 .unwrap_or("local");
             let key = (user.to_owned(), name.clone());
             if let Some(existing) = tag_ids.get(&key) {
-                let message = format!("标签「{name}」重复（{existing} 与 {id}），统一使用 {existing}");
+                let message =
+                    format!("标签「{name}」重复（{existing} 与 {id}），统一使用 {existing}");
                 crate::database::migration_runner::record_issue(
                     transaction,
                     context,
@@ -133,8 +141,7 @@ impl Migration for M0004Notes {
         let mut attachment_count = 0usize;
         let mut tag_relation_count = 0usize;
         for value in &legacy_notes {
-            let (relations, attachments) =
-                insert_note(transaction, value, context, &tag_ids)?;
+            let (relations, attachments) = insert_note(transaction, value, context, &tag_ids)?;
             relation_count += relations;
             attachment_count += attachments;
             tag_relation_count += value
@@ -176,8 +183,12 @@ impl Migration for M0004Notes {
 
         let mut report = MigrationReport::default();
         report.migrated = folder_count + tag_count + note_count + revision_count;
-        report.metrics.insert("note_folders".to_owned(), folder_count as i64);
-        report.metrics.insert("note_tags".to_owned(), tag_count as i64);
+        report
+            .metrics
+            .insert("note_folders".to_owned(), folder_count as i64);
+        report
+            .metrics
+            .insert("note_tags".to_owned(), tag_count as i64);
         report.metrics.insert("notes".to_owned(), note_count as i64);
         report
             .metrics
@@ -349,8 +360,8 @@ fn insert_folder(connection: &Connection, value: &Value) -> Result<(), String> {
 
 fn insert_tag(connection: &Connection, value: &Value) -> Result<(), String> {
     let object = json_parser::as_object(value, "标签记录")?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| format!("标签缺少 id: {}", value))?;
+    let id =
+        json_parser::string_field(object, "id").ok_or_else(|| format!("标签缺少 id: {}", value))?;
     let name = text(object, "name").ok_or_else(|| format!("标签 {id} 缺少 name"))?;
     let stamp = now();
     connection
@@ -380,10 +391,11 @@ fn insert_note(
     tag_ids: &HashMap<(String, String), String>,
 ) -> Result<(usize, usize), MigrationError> {
     let object = json_parser::as_object(value, "笔记记录")?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 4, message: format!("笔记缺少 id: {}", value) })?;
-    let note_type = json_parser::string_field(object, "noteType")
-        .unwrap_or("document");
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 4,
+        message: format!("笔记缺少 id: {}", value),
+    })?;
+    let note_type = json_parser::string_field(object, "noteType").unwrap_or("document");
     if !NOTE_TYPES.contains(&note_type) {
         return Err(MigrationError {
             version: 4,
@@ -420,7 +432,11 @@ fn insert_note(
         .get("contentJson")
         .cloned()
         .unwrap_or_else(|| json!({ "type": "doc", "content": [] }));
-    let version = object.get("version").and_then(Value::as_i64).unwrap_or(1).max(1);
+    let version = object
+        .get("version")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .max(1);
     let stamp = now();
     connection
         .execute(
@@ -471,96 +487,143 @@ fn insert_note(
         )
         .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
 
-        // 标签关系（按规范 tag id）。
-        let tags = object.get("tags").and_then(Value::as_array).cloned().unwrap_or_default();
-        for tag in tags {
-            let Some(tag_id) = tag.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            let tag_name = tag.get("name").and_then(Value::as_str).unwrap_or_default();
-            let canonical = tag_ids
-                .iter()
-                .find(|((_, name), _)| name == tag_name)
-                .map(|(_, id)| id.clone())
-                .unwrap_or_else(|| tag_id.to_owned());
-            connection
-                .execute(
-                    "INSERT OR IGNORE INTO note_tag_relations(note_id, tag_id, created_at)
+    // 标签关系（按规范 tag id）。
+    let tags = object
+        .get("tags")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for tag in tags {
+        let Some(tag_id) = tag.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let tag_name = tag.get("name").and_then(Value::as_str).unwrap_or_default();
+        let canonical = tag_ids
+            .iter()
+            .find(|((_, name), _)| name == tag_name)
+            .map(|(_, id)| id.clone())
+            .unwrap_or_else(|| tag_id.to_owned());
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO note_tag_relations(note_id, tag_id, created_at)
                      VALUES(?1,?2,?3)",
-                    rusqlite::params![id, canonical, now()],
-                )
-                .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
-        }
+                rusqlite::params![id, canonical, now()],
+            )
+            .map_err(|error| MigrationError {
+                version: 4,
+                message: error.to_string(),
+            })?;
+    }
 
-        // 业务关系。
-        let relations = object.get("relations").and_then(Value::as_array).cloned().unwrap_or_default();
-        for relation in &relations {
-            let Some(relation_id) = relation.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            connection
-                .execute(
-                    "INSERT OR IGNORE INTO note_relations(
+    // 业务关系。
+    let relations = object
+        .get("relations")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for relation in &relations {
+        let Some(relation_id) = relation.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO note_relations(
                        id, note_id, entity_type, entity_id, relation_type, created_at
                      ) VALUES(?1,?2,?3,?4,?5,?6)",
-                    rusqlite::params![
-                        relation_id,
-                        id,
-                        relation.get("entityType").and_then(Value::as_str).unwrap_or("project"),
-                        relation.get("entityId").and_then(Value::as_str).unwrap_or(""),
-                        relation.get("relationType").and_then(Value::as_str).unwrap_or("reference"),
-                        relation.get("createdAt").and_then(Value::as_str).unwrap_or(&now())
-                    ],
-                )
-                .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
-        }
+                rusqlite::params![
+                    relation_id,
+                    id,
+                    relation
+                        .get("entityType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("project"),
+                    relation
+                        .get("entityId")
+                        .and_then(Value::as_str)
+                        .unwrap_or(""),
+                    relation
+                        .get("relationType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("reference"),
+                    relation
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&now())
+                ],
+            )
+            .map_err(|error| MigrationError {
+                version: 4,
+                message: error.to_string(),
+            })?;
+    }
 
-        // 附件元数据（当前内嵌在笔记 JSON，独立成表以保留数据）。
-        let attachments = object
-            .get("attachments")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        for attachment in &attachments {
-            let Some(attachment_id) = attachment.get("id").and_then(Value::as_str) else {
-                continue;
-            };
-            connection
-                .execute(
-                    "INSERT OR IGNORE INTO note_attachments(
+    // 附件元数据（当前内嵌在笔记 JSON，独立成表以保留数据）。
+    let attachments = object
+        .get("attachments")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    for attachment in &attachments {
+        let Some(attachment_id) = attachment.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        connection
+            .execute(
+                "INSERT OR IGNORE INTO note_attachments(
                        id, note_id, file_name, original_name, mime_type, file_size,
                        storage_path, created_at
                      ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8)",
-                    rusqlite::params![
-                        attachment_id,
-                        id,
-                        attachment.get("fileName").and_then(Value::as_str).unwrap_or("file"),
-                        attachment.get("originalName").and_then(Value::as_str).unwrap_or("file"),
-                        attachment.get("mimeType").and_then(Value::as_str).unwrap_or("application/octet-stream"),
-                        attachment.get("fileSize").and_then(Value::as_i64).unwrap_or(0),
-                        attachment.get("storagePath").and_then(Value::as_str),
-                        attachment.get("createdAt").and_then(Value::as_str).unwrap_or(&now())
-                    ],
-                )
-                .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
-        }
-        Ok((relations.len(), attachments.len()))
+                rusqlite::params![
+                    attachment_id,
+                    id,
+                    attachment
+                        .get("fileName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("file"),
+                    attachment
+                        .get("originalName")
+                        .and_then(Value::as_str)
+                        .unwrap_or("file"),
+                    attachment
+                        .get("mimeType")
+                        .and_then(Value::as_str)
+                        .unwrap_or("application/octet-stream"),
+                    attachment
+                        .get("fileSize")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0),
+                    attachment.get("storagePath").and_then(Value::as_str),
+                    attachment
+                        .get("createdAt")
+                        .and_then(Value::as_str)
+                        .unwrap_or(&now())
+                ],
+            )
+            .map_err(|error| MigrationError {
+                version: 4,
+                message: error.to_string(),
+            })?;
+    }
+    Ok((relations.len(), attachments.len()))
 }
 
 fn insert_revision(connection: &Connection, value: &Value) -> Result<(), MigrationError> {
     let object = json_parser::as_object(value, "版本记录")?;
-    let id = json_parser::string_field(object, "id")
-        .ok_or_else(|| MigrationError { version: 4, message: format!("版本缺少 id: {}", value) })?;
-    let note_id = json_parser::string_field(object, "noteId")
-        .ok_or_else(|| MigrationError { version: 4, message: format!("版本 {id} 缺少 noteId") })?;
+    let id = json_parser::string_field(object, "id").ok_or_else(|| MigrationError {
+        version: 4,
+        message: format!("版本缺少 id: {}", value),
+    })?;
+    let note_id = json_parser::string_field(object, "noteId").ok_or_else(|| MigrationError {
+        version: 4,
+        message: format!("版本 {id} 缺少 noteId"),
+    })?;
     let parent_exists: bool = connection
-        .query_row(
-            "SELECT 1 FROM notes WHERE id=?1",
-            [note_id],
-            |_| Ok(()),
-        )
+        .query_row("SELECT 1 FROM notes WHERE id=?1", [note_id], |_| Ok(()))
         .optional()
-        .map_err(|error| MigrationError { version: 4, message: error.to_string() })?
+        .map_err(|error| MigrationError {
+            version: 4,
+            message: error.to_string(),
+        })?
         .is_some();
     if !parent_exists {
         return Err(MigrationError {
@@ -571,7 +634,10 @@ fn insert_revision(connection: &Connection, value: &Value) -> Result<(), Migrati
     let revision_version = object
         .get("version")
         .and_then(Value::as_i64)
-        .ok_or_else(|| MigrationError { version: 4, message: format!("版本 {id} 缺少 version") })?;
+        .ok_or_else(|| MigrationError {
+            version: 4,
+            message: format!("版本 {id} 缺少 version"),
+        })?;
     connection
         .execute(
             "INSERT OR IGNORE INTO note_revisions(
@@ -594,7 +660,10 @@ fn insert_revision(connection: &Connection, value: &Value) -> Result<(), Migrati
             ],
         )
         .map(|_| ())
-        .map_err(|error| MigrationError { version: 4, message: error.to_string() })
+        .map_err(|error| MigrationError {
+            version: 4,
+            message: error.to_string(),
+        })
 }
 
 /// FTS5 尽力构建；不可用时返回 false。
@@ -642,29 +711,54 @@ fn validate_notes(
                 ))
             },
         )
-        .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
+        .map_err(|error| MigrationError {
+            version: 4,
+            message: error.to_string(),
+        })?;
     if counts.0 != legacy_folders.len() as i64 {
-        return Err(MigrationError { version: 4, message: format!("文件夹数量不一致: 旧 {}，新 {}", legacy_folders.len(), counts.0) });
+        return Err(MigrationError {
+            version: 4,
+            message: format!(
+                "文件夹数量不一致: 旧 {}，新 {}",
+                legacy_folders.len(),
+                counts.0
+            ),
+        });
     }
     if counts.1 != legacy_tags.len() as i64 {
-        return Err(MigrationError { version: 4, message: format!("标签数量不一致: 旧 {}，新 {}", legacy_tags.len(), counts.1) });
+        return Err(MigrationError {
+            version: 4,
+            message: format!("标签数量不一致: 旧 {}，新 {}", legacy_tags.len(), counts.1),
+        });
     }
     if counts.2 != legacy_notes.len() as i64 {
-        return Err(MigrationError { version: 4, message: format!("笔记数量不一致: 旧 {}，新 {}", legacy_notes.len(), counts.2) });
+        return Err(MigrationError {
+            version: 4,
+            message: format!("笔记数量不一致: 旧 {}，新 {}", legacy_notes.len(), counts.2),
+        });
     }
     if counts.3 != legacy_revisions.len() as i64 {
-        return Err(MigrationError { version: 4, message: format!("版本数量不一致: 旧 {}，新 {}", legacy_revisions.len(), counts.3) });
+        return Err(MigrationError {
+            version: 4,
+            message: format!(
+                "版本数量不一致: 旧 {}，新 {}",
+                legacy_revisions.len(),
+                counts.3
+            ),
+        });
     }
     if fts_ok {
         let fts_count: i64 = connection
-            .query_row(
-                "SELECT COUNT(*) FROM notes_fts",
-                [],
-                |row| row.get(0),
-            )
-            .map_err(|error| MigrationError { version: 4, message: error.to_string() })?;
+            .query_row("SELECT COUNT(*) FROM notes_fts", [], |row| row.get(0))
+            .map_err(|error| MigrationError {
+                version: 4,
+                message: error.to_string(),
+            })?;
         if fts_count != counts.2 {
-            return Err(MigrationError { version: 4, message: format!("FTS 数量不一致: 笔记 {}，FTS {fts_count}", counts.2) });
+            return Err(MigrationError {
+                version: 4,
+                message: format!("FTS 数量不一致: 笔记 {}，FTS {fts_count}", counts.2),
+            });
         }
     }
     Ok(())
@@ -673,8 +767,8 @@ fn validate_notes(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migrations::{M0001Framework, M0002Finance, M0003HabitsReviews};
     use crate::database::migration_runner::run;
+    use crate::database::migrations::{M0001Framework, M0002Finance, M0003HabitsReviews};
     use rusqlite::Connection;
     use serde_json::json;
     use std::fs;
@@ -786,15 +880,21 @@ mod tests {
             .unwrap();
         assert_eq!(relation_count, 1);
         let attachment_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM note_attachments", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM note_attachments", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(attachment_count, 1);
         let tag_relation_count: i64 = connection
-            .query_row("SELECT COUNT(*) FROM note_tag_relations", [], |row| row.get(0))
+            .query_row("SELECT COUNT(*) FROM note_tag_relations", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(tag_relation_count, 1);
         let version: i64 = connection
-            .query_row("SELECT version FROM notes WHERE id='n1'", [], |row| row.get(0))
+            .query_row("SELECT version FROM notes WHERE id='n1'", [], |row| {
+                row.get(0)
+            })
             .unwrap();
         assert_eq!(version, 2);
 

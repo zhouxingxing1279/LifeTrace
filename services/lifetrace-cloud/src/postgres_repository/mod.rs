@@ -60,13 +60,19 @@ impl PostgresRepository {
     }
 
     fn user_uuid(user_id: &UserId) -> Uuid {
-        Self::stable_uuid("users", user_id.as_str())
+        Uuid::parse_str(user_id.as_str())
+            .unwrap_or_else(|_| Self::stable_uuid("users", user_id.as_str()))
     }
 
     fn device_uuid(user_id: &UserId, device_id: &DeviceId, app_id: &AppId) -> Uuid {
         Self::stable_uuid(
             "devices",
-            &format!("{}:{}:{}", user_id.as_str(), app_id.as_str(), device_id.as_str()),
+            &format!(
+                "{}:{}:{}",
+                user_id.as_str(),
+                app_id.as_str(),
+                device_id.as_str()
+            ),
         )
     }
 
@@ -107,7 +113,10 @@ impl PostgresRepository {
         if client.protocol_version != 1 {
             return Err(ApiError::new(
                 ErrorCode::ProtocolUnsupported,
-                format!("protocol version {} is not supported", client.protocol_version),
+                format!(
+                    "protocol version {} is not supported",
+                    client.protocol_version
+                ),
                 StatusCode::UPGRADE_REQUIRED,
             ));
         }

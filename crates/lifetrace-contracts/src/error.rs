@@ -22,6 +22,23 @@ pub enum ErrorCode {
     AppIdUnsupported,
     AuthRequired,
     AuthInvalid,
+    AuthPasswordInvalid,
+    AuthUserDisabled,
+    AuthUserLocked,
+    AuthAccessTokenExpired,
+    AuthRefreshTokenExpired,
+    AuthRefreshTokenReused,
+    AuthSessionRevoked,
+    AuthDeviceRevoked,
+    AuthAppRevoked,
+    AuthScopeDenied,
+    AuthPasswordPolicyFailed,
+    AuthPasswordResetInvalid,
+    AuthPasswordResetExpired,
+    AuthRateLimited,
+    AuthCsrfInvalid,
+    AuthRegistrationDisabled,
+    AuthInviteInvalid,
     DeviceNotRegistered,
     DeviceRevoked,
     InvalidRequest,
@@ -53,6 +70,23 @@ impl ErrorCode {
             ErrorCode::AppIdUnsupported => "LIFETRACE_APP_ID_UNSUPPORTED",
             ErrorCode::AuthRequired => "LIFETRACE_AUTH_REQUIRED",
             ErrorCode::AuthInvalid => "LIFETRACE_AUTH_INVALID",
+            ErrorCode::AuthPasswordInvalid => "LIFETRACE_AUTH_PASSWORD_INVALID",
+            ErrorCode::AuthUserDisabled => "LIFETRACE_AUTH_USER_DISABLED",
+            ErrorCode::AuthUserLocked => "LIFETRACE_AUTH_USER_LOCKED",
+            ErrorCode::AuthAccessTokenExpired => "LIFETRACE_AUTH_ACCESS_TOKEN_EXPIRED",
+            ErrorCode::AuthRefreshTokenExpired => "LIFETRACE_AUTH_REFRESH_TOKEN_EXPIRED",
+            ErrorCode::AuthRefreshTokenReused => "LIFETRACE_AUTH_REFRESH_TOKEN_REUSED",
+            ErrorCode::AuthSessionRevoked => "LIFETRACE_AUTH_SESSION_REVOKED",
+            ErrorCode::AuthDeviceRevoked => "LIFETRACE_AUTH_DEVICE_REVOKED",
+            ErrorCode::AuthAppRevoked => "LIFETRACE_AUTH_APP_REVOKED",
+            ErrorCode::AuthScopeDenied => "LIFETRACE_AUTH_SCOPE_DENIED",
+            ErrorCode::AuthPasswordPolicyFailed => "LIFETRACE_AUTH_PASSWORD_POLICY_FAILED",
+            ErrorCode::AuthPasswordResetInvalid => "LIFETRACE_AUTH_PASSWORD_RESET_INVALID",
+            ErrorCode::AuthPasswordResetExpired => "LIFETRACE_AUTH_PASSWORD_RESET_EXPIRED",
+            ErrorCode::AuthRateLimited => "LIFETRACE_AUTH_RATE_LIMITED",
+            ErrorCode::AuthCsrfInvalid => "LIFETRACE_AUTH_CSRF_INVALID",
+            ErrorCode::AuthRegistrationDisabled => "LIFETRACE_AUTH_REGISTRATION_DISABLED",
+            ErrorCode::AuthInviteInvalid => "LIFETRACE_AUTH_INVITE_INVALID",
             ErrorCode::DeviceNotRegistered => "LIFETRACE_DEVICE_NOT_REGISTERED",
             ErrorCode::DeviceRevoked => "LIFETRACE_DEVICE_REVOKED",
             ErrorCode::InvalidRequest => "LIFETRACE_INVALID_REQUEST",
@@ -83,6 +117,23 @@ impl ErrorCode {
             "LIFETRACE_APP_ID_UNSUPPORTED" => ErrorCode::AppIdUnsupported,
             "LIFETRACE_AUTH_REQUIRED" => ErrorCode::AuthRequired,
             "LIFETRACE_AUTH_INVALID" => ErrorCode::AuthInvalid,
+            "LIFETRACE_AUTH_PASSWORD_INVALID" => ErrorCode::AuthPasswordInvalid,
+            "LIFETRACE_AUTH_USER_DISABLED" => ErrorCode::AuthUserDisabled,
+            "LIFETRACE_AUTH_USER_LOCKED" => ErrorCode::AuthUserLocked,
+            "LIFETRACE_AUTH_ACCESS_TOKEN_EXPIRED" => ErrorCode::AuthAccessTokenExpired,
+            "LIFETRACE_AUTH_REFRESH_TOKEN_EXPIRED" => ErrorCode::AuthRefreshTokenExpired,
+            "LIFETRACE_AUTH_REFRESH_TOKEN_REUSED" => ErrorCode::AuthRefreshTokenReused,
+            "LIFETRACE_AUTH_SESSION_REVOKED" => ErrorCode::AuthSessionRevoked,
+            "LIFETRACE_AUTH_DEVICE_REVOKED" => ErrorCode::AuthDeviceRevoked,
+            "LIFETRACE_AUTH_APP_REVOKED" => ErrorCode::AuthAppRevoked,
+            "LIFETRACE_AUTH_SCOPE_DENIED" => ErrorCode::AuthScopeDenied,
+            "LIFETRACE_AUTH_PASSWORD_POLICY_FAILED" => ErrorCode::AuthPasswordPolicyFailed,
+            "LIFETRACE_AUTH_PASSWORD_RESET_INVALID" => ErrorCode::AuthPasswordResetInvalid,
+            "LIFETRACE_AUTH_PASSWORD_RESET_EXPIRED" => ErrorCode::AuthPasswordResetExpired,
+            "LIFETRACE_AUTH_RATE_LIMITED" => ErrorCode::AuthRateLimited,
+            "LIFETRACE_AUTH_CSRF_INVALID" => ErrorCode::AuthCsrfInvalid,
+            "LIFETRACE_AUTH_REGISTRATION_DISABLED" => ErrorCode::AuthRegistrationDisabled,
+            "LIFETRACE_AUTH_INVITE_INVALID" => ErrorCode::AuthInviteInvalid,
             "LIFETRACE_DEVICE_NOT_REGISTERED" => ErrorCode::DeviceNotRegistered,
             "LIFETRACE_DEVICE_REVOKED" => ErrorCode::DeviceRevoked,
             "LIFETRACE_INVALID_REQUEST" => ErrorCode::InvalidRequest,
@@ -155,9 +206,7 @@ impl JsonSchema for ErrorCode {
         Cow::Borrowed("ErrorCode")
     }
 
-    fn json_schema(
-        generator: &mut schemars::SchemaGenerator,
-    ) -> schemars::Schema {
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = String::json_schema(generator);
         if let Some(object) = schema.as_object_mut() {
             object.insert(
@@ -177,6 +226,23 @@ impl JsonSchema for ErrorCode {
                         "LIFETRACE_APP_ID_UNSUPPORTED",
                         "LIFETRACE_AUTH_REQUIRED",
                         "LIFETRACE_AUTH_INVALID",
+                        "LIFETRACE_AUTH_PASSWORD_INVALID",
+                        "LIFETRACE_AUTH_USER_DISABLED",
+                        "LIFETRACE_AUTH_USER_LOCKED",
+                        "LIFETRACE_AUTH_ACCESS_TOKEN_EXPIRED",
+                        "LIFETRACE_AUTH_REFRESH_TOKEN_EXPIRED",
+                        "LIFETRACE_AUTH_REFRESH_TOKEN_REUSED",
+                        "LIFETRACE_AUTH_SESSION_REVOKED",
+                        "LIFETRACE_AUTH_DEVICE_REVOKED",
+                        "LIFETRACE_AUTH_APP_REVOKED",
+                        "LIFETRACE_AUTH_SCOPE_DENIED",
+                        "LIFETRACE_AUTH_PASSWORD_POLICY_FAILED",
+                        "LIFETRACE_AUTH_PASSWORD_RESET_INVALID",
+                        "LIFETRACE_AUTH_PASSWORD_RESET_EXPIRED",
+                        "LIFETRACE_AUTH_RATE_LIMITED",
+                        "LIFETRACE_AUTH_CSRF_INVALID",
+                        "LIFETRACE_AUTH_REGISTRATION_DISABLED",
+                        "LIFETRACE_AUTH_INVITE_INVALID",
                         "LIFETRACE_DEVICE_NOT_REGISTERED",
                         "LIFETRACE_DEVICE_REVOKED",
                         "LIFETRACE_INVALID_REQUEST",
@@ -296,7 +362,10 @@ mod tests {
         for wire in required {
             let code = ErrorCode::from_wire(wire);
             assert_eq!(code.wire_name(), wire, "wire name must round trip");
-            assert!(!matches!(code, ErrorCode::Unknown(_)), "must be a known code");
+            assert!(
+                !matches!(code, ErrorCode::Unknown(_)),
+                "must be a known code"
+            );
         }
     }
 

@@ -200,7 +200,9 @@ pub fn activity_log_from_legacy_json(
         .filter(|id| !id.is_empty())
         .ok_or_else(|| format!("打卡缺少 id: {}", value))?;
     let activity_id = json_parser::string_field(object, "activityId").map(str::to_owned);
-    let resolved = activity_id.as_deref().filter(|id| activity_exists(connection, id));
+    let resolved = activity_id
+        .as_deref()
+        .filter(|id| activity_exists(connection, id));
     if activity_id.is_some() && resolved.is_none() {
         let message = format!(
             "打卡 {id} 引用的习惯 {activity_id:?} 不存在，activity_id 置空（原始数据保留在 raw_json 与 JSON 表）"
@@ -287,7 +289,9 @@ pub fn daily_review_from_legacy_json(
         .ok_or_else(|| format!("复盘缺少 id: {}", value))?;
     let review_date = json_parser::string_field(object, "reviewDate")
         .ok_or_else(|| format!("复盘 {id} 缺少 reviewDate"))?;
-    if !review_date.chars().all(|character| character.is_ascii_digit() || character == '-')
+    if !review_date
+        .chars()
+        .all(|character| character.is_ascii_digit() || character == '-')
         || finance::local_date_of(review_date).is_err()
     {
         return Err(format!("复盘 {id} 日期不合法: {review_date}"));

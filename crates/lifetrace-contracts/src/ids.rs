@@ -70,7 +70,10 @@ macro_rules! string_id {
 }
 
 string_id!(UserId, "Stable user identifier (string, usually UUID v4).");
-string_id!(DeviceId, "Stable device identifier (string, usually UUID v4).");
+string_id!(
+    DeviceId,
+    "Stable device identifier (string, usually UUID v4)."
+);
 string_id!(
     EntityId,
     "Entity identifier. New IDs are UUID v4; legacy non-UUID IDs are preserved verbatim."

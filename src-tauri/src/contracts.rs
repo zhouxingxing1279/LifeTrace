@@ -33,11 +33,7 @@ pub fn transaction_row_to_contract(row: &TransactionRow) -> Result<Transaction, 
     let created_at = parse_timestamp(&row.created_at)?;
     let updated_at = parse_timestamp(&row.updated_at)?;
     let occurred_at = parse_timestamp(&row.occurred_at)?;
-    let deleted_at = row
-        .deleted_at
-        .as_deref()
-        .map(parse_timestamp)
-        .transpose()?;
+    let deleted_at = row.deleted_at.as_deref().map(parse_timestamp).transpose()?;
 
     Ok(Transaction {
         meta: EntityMeta {
@@ -94,7 +90,7 @@ pub fn transaction_to_change(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::database::migration_runner::{MigrationContext, run};
+    use crate::database::migration_runner::{run, MigrationContext};
     use crate::database::migrations::all;
     use lifetrace_contracts::ids::UserId;
     use rusqlite::Connection;
@@ -103,7 +99,9 @@ mod tests {
     fn in_memory_db_with_schema() -> Connection {
         let mut connection = Connection::open_in_memory().unwrap();
         connection
-            .execute_batch("PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;")
+            .execute_batch(
+                "PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;",
+            )
             .unwrap();
         let context = MigrationContext::new(std::env::temp_dir());
         run(&mut connection, &context, &all()).expect("migrations should apply");
@@ -180,7 +178,10 @@ mod tests {
         assert_eq!(contract.currency.as_str(), "CNY");
         assert_eq!(contract.local_date.as_str(), "2026-08-04");
         assert_eq!(contract.meta.local_version, 1);
-        assert_eq!(contract.meta.server_version, None, "local version is not a server version");
+        assert_eq!(
+            contract.meta.server_version, None,
+            "local version is not a server version"
+        );
 
         // Contract DTO -> SyncChangeV1 -> JSON -> deserialize.
         let change = transaction_to_change(
@@ -192,7 +193,10 @@ mod tests {
         assert_eq!(wire["entityType"], "finance.transaction");
         assert_eq!(wire["operation"], "upsert");
         assert_eq!(wire["baseServerVersion"], "0");
-        assert!(wire["payload"].get("amount").is_none(), "no float amount on the wire");
+        assert!(
+            wire["payload"].get("amount").is_none(),
+            "no float amount on the wire"
+        );
         assert_eq!(wire["payload"]["amountCents"], 12525);
 
         let back: SyncChangeV1 = serde_json::from_value(wire).unwrap();

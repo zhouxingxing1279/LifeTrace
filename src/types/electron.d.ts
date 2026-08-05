@@ -2,6 +2,11 @@ export {};
 
 declare global {
   interface Window {
+    cloudCredentialApi?: {
+      set(refreshToken:string):Promise<void>;
+      get():Promise<string|null>;
+      clear():Promise<void>;
+    };
     noteApi?: {
       selectAttachment(noteId:string):Promise<{ok:boolean;canceled?:boolean;error?:string;file?:Record<string,unknown>}>;
       openAttachment(noteId:string,fileName:string):Promise<{ok:boolean;error?:string}>;

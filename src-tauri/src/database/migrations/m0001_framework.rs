@@ -1,6 +1,8 @@
 use rusqlite::Transaction;
 
-use crate::database::migration_runner::{Migration, MigrationContext, MigrationError, MigrationReport};
+use crate::database::migration_runner::{
+    Migration, MigrationContext, MigrationError, MigrationReport,
+};
 
 /// m0001：Migration 与备份框架落表。
 ///

@@ -94,7 +94,11 @@ pub struct Store {
 }
 
 impl Store {
-    pub fn new(config: Config, cursor_codec: CursorCodec, page_token_codec: PageTokenCodec) -> Self {
+    pub fn new(
+        config: Config,
+        cursor_codec: CursorCodec,
+        page_token_codec: PageTokenCodec,
+    ) -> Self {
         Self {
             users: HashMap::new(),
             snapshot_counter: 0,
@@ -151,11 +155,17 @@ impl Store {
             .get(user_id)
             .map(|user| user.next_cursor)
             .unwrap_or(0);
-        self.cursor_codec.encode(user_id, &empty_scope(), next_cursor)
+        self.cursor_codec
+            .encode(user_id, &empty_scope(), next_cursor)
     }
 
     /// Current stored state for a key (test helper).
-    pub fn entity(&self, user_id: &UserId, entity_type: &str, entity_id: &str) -> Option<&StoredEntity> {
+    pub fn entity(
+        &self,
+        user_id: &UserId,
+        entity_type: &str,
+        entity_id: &str,
+    ) -> Option<&StoredEntity> {
         self.users
             .get(user_id)?
             .entities
@@ -249,7 +259,11 @@ impl Store {
         }
         let wire_size = serde_json::to_vec(request)
             .map_err(|error| {
-                ApiError::new(ErrorCode::InternalError, error.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
+                ApiError::new(
+                    ErrorCode::InternalError,
+                    error.to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )
             })?
             .len();
         if wire_size > self.config.request_body_limit_bytes {
@@ -263,7 +277,9 @@ impl Store {
         // Atomic groups must fit within the maximum group size.
         let mut group_sizes: HashMap<Option<&AtomicGroupId>, usize> = HashMap::new();
         for change in &request.changes {
-            *group_sizes.entry(change.atomic_group_id.as_ref()).or_insert(0) += 1;
+            *group_sizes
+                .entry(change.atomic_group_id.as_ref())
+                .or_insert(0) += 1;
         }
         for (group, size) in &group_sizes {
             if let Some(group_id) = group {
@@ -525,7 +541,9 @@ impl Store {
                 Some(entity) if !entity.deleted => {
                     if entity.server_version != base {
                         Ok(ApplyOutcome::Conflict {
-                            reason: ConflictReason::new(ConflictReason::CLIENT_DELETED_SERVER_MODIFIED),
+                            reason: ConflictReason::new(
+                                ConflictReason::CLIENT_DELETED_SERVER_MODIFIED,
+                            ),
                             server_entity: Some(entity.payload.clone()),
                             server_deleted: false,
                             current_server_version: entity.server_version,
@@ -713,10 +731,7 @@ impl Store {
                         });
                     }
                     ChangeOperation::DELETE => {
-                        let entity = user
-                            .entities
-                            .get_mut(&key)
-                            .expect("delete target exists");
+                        let entity = user.entities.get_mut(&key).expect("delete target exists");
                         entity.server_version = server_version;
                         entity.deleted = true;
                         entity.deleted_at = Some(now);
@@ -817,10 +832,12 @@ impl Store {
             None => self.min_valid_cursor(user_id).saturating_sub(1),
         };
 
-        let filters: Option<Vec<String>> = request
-            .entity_types
-            .as_ref()
-            .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect());
+        let filters: Option<Vec<String>> = request.entity_types.as_ref().map(|types| {
+            types
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect()
+        });
         let limit = (request.limit as usize)
             .min(self.config.pull_max_changes)
             .max(1);
@@ -832,7 +849,10 @@ impl Store {
             .filter(|record| record.cursor > after)
         {
             if let Some(filters) = &filters {
-                if !filters.iter().any(|value| value == record.entity_type.as_str()) {
+                if !filters
+                    .iter()
+                    .any(|value| value == record.entity_type.as_str())
+                {
                     continue;
                 }
             }
@@ -855,13 +875,7 @@ impl Store {
 
         let next_position = changes
             .last()
-            .map(|change| {
-                change
-                    .cursor
-                    .as_str()
-                    .parse::<u64>()
-                    .unwrap_or(after)
-            })
+            .map(|change| change.cursor.as_str().parse::<u64>().unwrap_or(after))
             .unwrap_or(after);
         let next_cursor = self.cursor_codec.encode(user_id, &scope, next_position);
         Ok(PullResponseV1 {
@@ -892,10 +906,12 @@ impl Store {
         };
 
         let view_cursor = if first_page {
-            let filters: Option<Vec<String>> = request
-                .entity_types
-                .as_ref()
-                .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect());
+            let filters: Option<Vec<String>> = request.entity_types.as_ref().map(|types| {
+                types
+                    .iter()
+                    .map(|value| value.as_str().to_owned())
+                    .collect()
+            });
             let mut items: Vec<EntitySnapshotV1> = self
                 .users
                 .get(user_id)
@@ -904,9 +920,14 @@ impl Store {
                         .iter()
                         .filter(|(_, entity)| !entity.deleted)
                         .filter(|(_, entity)| {
-                            filters.as_ref().map(|filters| {
-                                filters.iter().any(|value| value == entity.entity_type.as_str())
-                            }).unwrap_or(true)
+                            filters
+                                .as_ref()
+                                .map(|filters| {
+                                    filters
+                                        .iter()
+                                        .any(|value| value == entity.entity_type.as_str())
+                                })
+                                .unwrap_or(true)
                         })
                         .map(|(_, entity)| EntitySnapshotV1 {
                             entity_type: entity.entity_type.clone(),
@@ -928,10 +949,9 @@ impl Store {
                 .get(user_id)
                 .map(|user| user.next_cursor)
                 .unwrap_or(0);
-            self.user_mut(user_id).snapshots.insert(
-                snapshot_id.clone(),
-                StoredSnapshot { cursor, items },
-            );
+            self.user_mut(user_id)
+                .snapshots
+                .insert(snapshot_id.clone(), StoredSnapshot { cursor, items });
             cursor
         } else {
             let stored = self
@@ -955,9 +975,7 @@ impl Store {
             .expect("snapshot exists");
         let offset = match &request.page_token {
             None => 0,
-            Some(token) => self
-                .page_token_codec
-                .decode(token, user_id, &snapshot_id)?,
+            Some(token) => self.page_token_codec.decode(token, user_id, &snapshot_id)?,
         };
         let page_size = request.page_size.max(1) as usize;
         let end = (offset + page_size).min(stored.items.len());
@@ -972,7 +990,9 @@ impl Store {
         Ok(SnapshotResponseV1 {
             request_id: request.request_id.clone(),
             snapshot_id,
-            snapshot_cursor: self.cursor_codec.encode(user_id, &empty_scope(), view_cursor),
+            snapshot_cursor: self
+                .cursor_codec
+                .encode(user_id, &empty_scope(), view_cursor),
             items,
             next_page_token,
             completed,

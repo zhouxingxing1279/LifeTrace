@@ -1,18 +1,18 @@
-//! Auth provider trait.
+use async_trait::async_trait;
 
 use crate::auth::AuthenticatedPrincipal;
 use crate::error::ApiError;
 
-/// Extracts an authenticated principal from an `Authorization` header value.
-///
-/// Implementations are synchronous for the development/test scope of
-/// EPIC-03; EPIC-04's token provider can switch this to async without
-/// touching the sync business layer.
+#[derive(Debug, Clone, Copy)]
+pub enum AuthCredential<'a> {
+    Bearer(Option<&'a str>),
+    WebSession(Option<&'a str>),
+}
+
+#[async_trait]
 pub trait AuthProvider: Send + Sync {
-    /// Returns the principal or a `LIFETRACE_AUTH_REQUIRED` /
-    /// `LIFETRACE_AUTH_INVALID` error.
-    fn authenticate(
+    async fn authenticate(
         &self,
-        authorization: Option<&str>,
+        credential: AuthCredential<'_>,
     ) -> Result<AuthenticatedPrincipal, ApiError>;
 }

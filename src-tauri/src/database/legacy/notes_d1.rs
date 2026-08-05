@@ -17,7 +17,9 @@ fn table_exists(connection: &Connection, table: &str) -> bool {
 
 /// 从旧 D1 库导入笔记相关真实列表，返回导入条数。
 pub fn import_d1_notes(source: &Connection, destination: &mut Connection) -> Result<usize, String> {
-    let transaction = destination.transaction().map_err(|error| error.to_string())?;
+    let transaction = destination
+        .transaction()
+        .map_err(|error| error.to_string())?;
     let mut imported = 0usize;
 
     if table_exists(source, "note_folders") {
@@ -72,7 +74,8 @@ pub fn import_d1_notes(source: &Connection, destination: &mut Connection) -> Res
             })
             .map_err(|error| error.to_string())?;
         for row in rows {
-            let (id, name, color, created_at, updated_at) = row.map_err(|error| error.to_string())?;
+            let (id, name, color, created_at, updated_at) =
+                row.map_err(|error| error.to_string())?;
             transaction
                 .execute(
                     "INSERT OR IGNORE INTO note_tags(
@@ -222,7 +225,14 @@ pub fn import_d1_notes(source: &Connection, destination: &mut Connection) -> Res
                             "INSERT OR IGNORE INTO note_relations(
                                id, note_id, entity_type, entity_id, relation_type, created_at
                              ) VALUES(?1,?2,?3,?4,?5,?6)",
-                            params![id, note_id, entity_type, entity_id, relation_type, created_at],
+                            params![
+                                id,
+                                note_id,
+                                entity_type,
+                                entity_id,
+                                relation_type,
+                                created_at
+                            ],
                         )
                         .map_err(|error| error.to_string())?;
                     imported += 1;
@@ -253,8 +263,16 @@ pub fn import_d1_notes(source: &Connection, destination: &mut Connection) -> Res
                 })
                 .map_err(|error| error.to_string())?;
             for row in rows {
-                let (id, note_id, file_name, original_name, mime_type, file_size, storage_path, created_at) =
-                    row.map_err(|error| error.to_string())?;
+                let (
+                    id,
+                    note_id,
+                    file_name,
+                    original_name,
+                    mime_type,
+                    file_size,
+                    storage_path,
+                    created_at,
+                ) = row.map_err(|error| error.to_string())?;
                 if note_ids.contains(&note_id) {
                     transaction
                         .execute(
@@ -302,8 +320,16 @@ pub fn import_d1_notes(source: &Connection, destination: &mut Connection) -> Res
                 })
                 .map_err(|error| error.to_string())?;
             for row in rows {
-                let (id, note_id, version, title, content_json, content_html, content_markdown, created_at) =
-                    row.map_err(|error| error.to_string())?;
+                let (
+                    id,
+                    note_id,
+                    version,
+                    title,
+                    content_json,
+                    content_html,
+                    content_markdown,
+                    created_at,
+                ) = row.map_err(|error| error.to_string())?;
                 if note_ids.contains(&note_id) {
                     transaction
                         .execute(

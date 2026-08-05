@@ -54,7 +54,12 @@ impl PostgresRepository {
             let filters: Vec<String> = request
                 .entity_types
                 .as_ref()
-                .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect())
+                .map(|types| {
+                    types
+                        .iter()
+                        .map(|value| value.as_str().to_owned())
+                        .collect()
+                })
                 .unwrap_or_default();
             let inserted = if request.entity_types.is_some() {
                 sqlx::query(

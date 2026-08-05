@@ -72,7 +72,12 @@ impl PostgresRepository {
         let filters: Vec<String> = request
             .entity_types
             .as_ref()
-            .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect())
+            .map(|types| {
+                types
+                    .iter()
+                    .map(|value| value.as_str().to_owned())
+                    .collect()
+            })
             .unwrap_or_default();
 
         let rows = if request.entity_types.is_some() {
@@ -111,7 +116,8 @@ impl PostgresRepository {
         for row in rows.into_iter().take(limit) {
             let raw_cursor: i64 = row.try_get("cursor").map_err(Self::internal_error)?;
             let payload: Option<Value> = row.try_get("payload").map_err(Self::internal_error)?;
-            let tombstone: Option<Value> = row.try_get("tombstone").map_err(Self::internal_error)?;
+            let tombstone: Option<Value> =
+                row.try_get("tombstone").map_err(Self::internal_error)?;
             changes.push(ServerChangeV1 {
                 cursor: Cursor::new(raw_cursor.to_string()),
                 entity_type: EntityType::new(
@@ -153,9 +159,7 @@ impl PostgresRepository {
             request_id: request.request_id.clone(),
             server_time: Self::now(),
             changes,
-            next_cursor: self
-                .cursor_codec
-                .encode(user_id, &scope, next_position),
+            next_cursor: self.cursor_codec.encode(user_id, &scope, next_position),
             has_more,
         })
     }

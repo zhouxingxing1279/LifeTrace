@@ -1,0 +1,53 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "UserId": {
+      "description": "Stable user identifier (string, usually UUID v4).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "createdAt": {
+      "format": "date-time",
+      "type": "string"
+    },
+    "displayName": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "email": {
+      "type": "string"
+    },
+    "emailVerifiedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "id": {
+      "$ref": "#/$defs/UserId"
+    },
+    "passwordChangedAt": {
+      "format": "date-time",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "state": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "email",
+    "state",
+    "createdAt"
+  ],
+  "title": "AuthUserV1",
+  "type": "object"
+}

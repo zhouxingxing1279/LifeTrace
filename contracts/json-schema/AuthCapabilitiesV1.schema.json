@@ -1,0 +1,61 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "accessTokenTtlSeconds": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "passwordMaxBytes": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "passwordMinLength": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "refreshAbsoluteTtlSeconds": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "refreshIdleTtlSeconds": {
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "registrationMode": {
+      "type": "string"
+    },
+    "supportedApps": {
+      "items": {
+        "$ref": "#/$defs/AppId"
+      },
+      "type": "array"
+    },
+    "webSessionEnabled": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "registrationMode",
+    "passwordMinLength",
+    "passwordMaxBytes",
+    "accessTokenTtlSeconds",
+    "refreshIdleTtlSeconds",
+    "refreshAbsoluteTtlSeconds",
+    "webSessionEnabled",
+    "supportedApps"
+  ],
+  "title": "AuthCapabilitiesV1",
+  "type": "object"
+}

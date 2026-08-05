@@ -33,6 +33,7 @@ async fn list(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
 ) -> Result<Json<Value>, ApiError> {
+    principal.require_scope("finance:read")?;
     let items: Vec<Value> = state
         .store
         .list_entities(&principal.user_id, ENTITY_TYPE)
@@ -54,6 +55,7 @@ async fn get_one(
     principal: AuthenticatedPrincipal,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    principal.require_scope("finance:read")?;
     let entity_id = EntityId::new(id);
     match state
         .store
@@ -78,6 +80,7 @@ async fn create(
     principal: AuthenticatedPrincipal,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
+    principal.require_scope("finance:write")?;
     let entity_id = payload
         .get("meta")
         .and_then(|meta| meta.get("id"))
@@ -105,18 +108,18 @@ async fn create(
     };
     let request = lifetrace_contracts::sync::v1::PushRequestV1 {
         request_id: RequestId::new(Uuid::new_v4().to_string()),
-        client: client_info(&principal.device_id),
+        client: client_info(principal.device_id.as_str(), &principal.app_id),
         changes: vec![change],
     };
 
     let response = state.store.push(&principal.user_id, &request).await?;
     match &response.results[0] {
-        lifetrace_contracts::sync::v1::PushChangeResultV1::Accepted {
-            server_version, ..
-        } => Ok(Json(json!({
-            "id": entity_id,
-            "serverVersion": server_version,
-        }))),
+        lifetrace_contracts::sync::v1::PushChangeResultV1::Accepted { server_version, .. } => {
+            Ok(Json(json!({
+                "id": entity_id,
+                "serverVersion": server_version,
+            })))
+        }
         lifetrace_contracts::sync::v1::PushChangeResultV1::Conflict { reason, .. } => {
             Err(ApiError::new(
                 ErrorCode::BaseVersionMismatch,
@@ -124,9 +127,9 @@ async fn create(
                 StatusCode::CONFLICT,
             ))
         }
-        lifetrace_contracts::sync::v1::PushChangeResultV1::Rejected { code, message, .. } => {
-            Err(ApiError::new(code.clone(), message, StatusCode::BAD_REQUEST))
-        }
+        lifetrace_contracts::sync::v1::PushChangeResultV1::Rejected { code, message, .. } => Err(
+            ApiError::new(code.clone(), message, StatusCode::BAD_REQUEST),
+        ),
         lifetrace_contracts::sync::v1::PushChangeResultV1::Duplicate { .. } => Err(ApiError::new(
             ErrorCode::InvalidRequest,
             "duplicate change id",
@@ -140,6 +143,7 @@ async fn delete_one(
     principal: AuthenticatedPrincipal,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
+    principal.require_scope("finance:write")?;
     let entity_id = EntityId::new(id);
     let base = state
         .store
@@ -167,7 +171,7 @@ async fn delete_one(
     };
     let request = lifetrace_contracts::sync::v1::PushRequestV1 {
         request_id: RequestId::new(Uuid::new_v4().to_string()),
-        client: client_info(&principal.device_id),
+        client: client_info(principal.device_id.as_str(), &principal.app_id),
         changes: vec![change],
     };
 
@@ -184,13 +188,13 @@ async fn delete_one(
     }
 }
 
-fn client_info(device_id: &DeviceId) -> SyncClientInfo {
+fn client_info(device_id: &str, app_id: &AppId) -> SyncClientInfo {
     SyncClientInfo {
-        app_id: AppId::new(AppId::DESKTOP),
+        app_id: app_id.clone(),
         client_version: "0.2.1".to_owned(),
         platform: ClientPlatform::new(ClientPlatform::WINDOWS),
         protocol_version: PROTOCOL_VERSION,
         schema_version: SCHEMA_VERSION,
-        device_id: device_id.clone(),
+        device_id: DeviceId::new(device_id),
     }
 }

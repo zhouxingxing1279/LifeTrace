@@ -17,6 +17,7 @@
 //! - `Cursor`, `serverVersion` and `baseServerVersion` are strings on the
 //!   wire to avoid JavaScript safe-integer issues.
 
+pub mod auth;
 pub mod common;
 pub mod domain;
 pub mod error;
@@ -27,6 +28,7 @@ pub mod registry;
 pub mod sync;
 pub mod time;
 
+pub use auth::v1::*;
 pub use common::EntityMeta;
 pub use error::{ApiErrorV1, ErrorCode, FieldError};
 pub use ids::{
@@ -35,7 +37,7 @@ pub use ids::{
 };
 pub use json_value::JsonValue;
 pub use money::{CurrencyCode, MoneyAmount};
-pub use registry::{EntityOwnership, EntityRef, EntityType, SyncMode, ConflictMode};
+pub use registry::{ConflictMode, EntityOwnership, EntityRef, EntityType, SyncMode};
 pub use time::{LocalDate, UtcTimestamp};
 
 /// Current protocol version implemented by this crate.

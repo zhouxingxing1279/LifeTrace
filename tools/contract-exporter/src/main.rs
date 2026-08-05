@@ -11,11 +11,12 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use lifetrace_contracts::auth::v1::*;
 use lifetrace_contracts::domain::*;
 use lifetrace_contracts::sync::v1::*;
 use lifetrace_contracts::*;
 use schemars::schema_for;
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 const GENERATED_NOTICE: &str = "GENERATED FILE - DO NOT EDIT MANUALLY";
 
@@ -116,6 +117,33 @@ macro_rules! public_types {
             FileMetadata::type_name(),
             EntityLink::type_name(),
             UserPreference::type_name(),
+            // auth v1
+            AuthSessionId::type_name(),
+            AppGrantId::type_name(),
+            AppInstallationId::type_name(),
+            TokenFamilyId::type_name(),
+            Scope::type_name(),
+            AuthUserV1::type_name(),
+            RegisterRequestV1::type_name(),
+            AuthCapabilitiesV1::type_name(),
+            LoginRequestV1::type_name(),
+            AuthSessionV1::type_name(),
+            SessionListV1::type_name(),
+            DeviceInstallationV1::type_name(),
+            DeviceListV1::type_name(),
+            UpdateDeviceRequestV1::type_name(),
+            AppGrantV1::type_name(),
+            AppGrantListV1::type_name(),
+            UpdateAppGrantRequestV1::type_name(),
+            TokenResponseV1::type_name(),
+            RefreshRequestV1::type_name(),
+            ChangePasswordRequestV1::type_name(),
+            ForgotPasswordRequestV1::type_name(),
+            ResetPasswordRequestV1::type_name(),
+            AcceptedResponseV1::type_name(),
+            WebLoginRequestV1::type_name(),
+            WebSessionResponseV1::type_name(),
+            CsrfResponseV1::type_name(),
             // sync v1
             AppId::type_name(),
             ClientPlatform::type_name(),
@@ -168,7 +196,9 @@ fn export_json_schemas(contracts_dir: &Path) -> std::io::Result<()> {
         if let Value::Object(object) = &mut value {
             object.insert(
                 "$comment".to_owned(),
-                Value::String(format!("{GENERATED_NOTICE}. Source: crates/lifetrace-contracts.")),
+                Value::String(format!(
+                    "{GENERATED_NOTICE}. Source: crates/lifetrace-contracts."
+                )),
             );
         }
         write_stable_json(&directory.join(format!("{name}.schema.json")), &value)?;
@@ -187,23 +217,127 @@ fn schema_for_type(name: &str) -> schemars::Schema {
     }
     match_type!(
         name,
-        UserId, DeviceId, EntityId, ChangeId, RequestId, ConflictId, AtomicGroupId, SnapshotId,
-        Cursor, ServerVersion, LocalDate, CurrencyCode, MoneyAmount, EntityMeta, JsonValue,
-        ErrorCode, FieldError, ApiErrorV1, EntityType, EntityRef, EntityOwnership, SyncMode,
-        ConflictMode, TransactionType, TransactionStatus, AccountType, ActivityType,
-        ActivityScheduleType, ActivityCheckinMethod, ActivitySyncSource, ActivityLogStatus,
-        NoteType, EnglishLevel, EnglishCategory, EnglishProcessingStatus, EnglishFetchStatus,
-        EnglishCompletionStatus, EnglishReadingStatus, VocabularyStatus, VocabularyReviewResult,
-        HighlightColor, WorkoutSource, WorkoutStatus, ImportStatus, FileStorageState, User, Device,
-        FinanceAccount, TransactionCategory, Transaction, TransactionEvidence, Activity,
-        ActivityLog, DailyReview, NoteFolder, Note, NoteTag, NoteTagRelation, NoteRelation,
-        NoteRevision, EnglishArticle, ArticleVocabularyItem, EnglishLearningRecord, EnglishHighlight,
-        EnglishNote, EnglishVocabulary, VocabularyOccurrence, VocabularyReviewState, WorkoutImport,
-        Workout, WorkoutExercise, WorkoutSet, TrainingNote, FileMetadata, EntityLink, UserPreference,
-        AppId, ClientPlatform, SyncClientInfo, ChangeOperation, SyncChangeV1, TombstoneV1,
-        ConflictReason, ConflictV1, PushRequestV1, PushChangeResultV1, PushResponseV1, PullRequestV1,
-        ServerChangeV1, PullResponseV1, SnapshotRequestV1, EntitySnapshotV1, SnapshotResponseV1,
-        MinimumClientVersion, CapabilitiesResponseV1,
+        UserId,
+        DeviceId,
+        EntityId,
+        ChangeId,
+        RequestId,
+        ConflictId,
+        AtomicGroupId,
+        SnapshotId,
+        Cursor,
+        ServerVersion,
+        LocalDate,
+        CurrencyCode,
+        MoneyAmount,
+        EntityMeta,
+        JsonValue,
+        ErrorCode,
+        FieldError,
+        ApiErrorV1,
+        EntityType,
+        EntityRef,
+        EntityOwnership,
+        SyncMode,
+        ConflictMode,
+        TransactionType,
+        TransactionStatus,
+        AccountType,
+        ActivityType,
+        ActivityScheduleType,
+        ActivityCheckinMethod,
+        ActivitySyncSource,
+        ActivityLogStatus,
+        NoteType,
+        EnglishLevel,
+        EnglishCategory,
+        EnglishProcessingStatus,
+        EnglishFetchStatus,
+        EnglishCompletionStatus,
+        EnglishReadingStatus,
+        VocabularyStatus,
+        VocabularyReviewResult,
+        HighlightColor,
+        WorkoutSource,
+        WorkoutStatus,
+        ImportStatus,
+        FileStorageState,
+        User,
+        Device,
+        FinanceAccount,
+        TransactionCategory,
+        Transaction,
+        TransactionEvidence,
+        Activity,
+        ActivityLog,
+        DailyReview,
+        NoteFolder,
+        Note,
+        NoteTag,
+        NoteTagRelation,
+        NoteRelation,
+        NoteRevision,
+        EnglishArticle,
+        ArticleVocabularyItem,
+        EnglishLearningRecord,
+        EnglishHighlight,
+        EnglishNote,
+        EnglishVocabulary,
+        VocabularyOccurrence,
+        VocabularyReviewState,
+        WorkoutImport,
+        Workout,
+        WorkoutExercise,
+        WorkoutSet,
+        TrainingNote,
+        FileMetadata,
+        EntityLink,
+        UserPreference,
+        AuthSessionId,
+        AppGrantId,
+        AppInstallationId,
+        TokenFamilyId,
+        Scope,
+        AuthUserV1,
+        RegisterRequestV1,
+        AuthCapabilitiesV1,
+        LoginRequestV1,
+        AuthSessionV1,
+        SessionListV1,
+        DeviceInstallationV1,
+        DeviceListV1,
+        UpdateDeviceRequestV1,
+        AppGrantV1,
+        AppGrantListV1,
+        UpdateAppGrantRequestV1,
+        TokenResponseV1,
+        RefreshRequestV1,
+        ChangePasswordRequestV1,
+        ForgotPasswordRequestV1,
+        ResetPasswordRequestV1,
+        AcceptedResponseV1,
+        WebLoginRequestV1,
+        WebSessionResponseV1,
+        CsrfResponseV1,
+        AppId,
+        ClientPlatform,
+        SyncClientInfo,
+        ChangeOperation,
+        SyncChangeV1,
+        TombstoneV1,
+        ConflictReason,
+        ConflictV1,
+        PushRequestV1,
+        PushChangeResultV1,
+        PushResponseV1,
+        PullRequestV1,
+        ServerChangeV1,
+        PullResponseV1,
+        SnapshotRequestV1,
+        EntitySnapshotV1,
+        SnapshotResponseV1,
+        MinimumClientVersion,
+        CapabilitiesResponseV1,
     )
 }
 
@@ -250,45 +384,192 @@ fn ts_decl_for(name: &str) -> String {
     }
     match_type!(
         name,
-        UserId, DeviceId, EntityId, ChangeId, RequestId, ConflictId, AtomicGroupId, SnapshotId,
-        Cursor, ServerVersion, LocalDate, CurrencyCode, MoneyAmount, EntityMeta, JsonValue,
-        ErrorCode, FieldError, ApiErrorV1, EntityType, EntityRef, EntityOwnership, SyncMode,
-        ConflictMode, TransactionType, TransactionStatus, AccountType, ActivityType,
-        ActivityScheduleType, ActivityCheckinMethod, ActivitySyncSource, ActivityLogStatus,
-        NoteType, EnglishLevel, EnglishCategory, EnglishProcessingStatus, EnglishFetchStatus,
-        EnglishCompletionStatus, EnglishReadingStatus, VocabularyStatus, VocabularyReviewResult,
-        HighlightColor, WorkoutSource, WorkoutStatus, ImportStatus, FileStorageState, User, Device,
-        FinanceAccount, TransactionCategory, Transaction, TransactionEvidence, Activity,
-        ActivityLog, DailyReview, NoteFolder, Note, NoteTag, NoteTagRelation, NoteRelation,
-        NoteRevision, EnglishArticle, ArticleVocabularyItem, EnglishLearningRecord, EnglishHighlight,
-        EnglishNote, EnglishVocabulary, VocabularyOccurrence, VocabularyReviewState, WorkoutImport,
-        Workout, WorkoutExercise, WorkoutSet, TrainingNote, FileMetadata, EntityLink, UserPreference,
-        AppId, ClientPlatform, SyncClientInfo, ChangeOperation, SyncChangeV1, TombstoneV1,
-        ConflictReason, ConflictV1, PushRequestV1, PushChangeResultV1, PushResponseV1, PullRequestV1,
-        ServerChangeV1, PullResponseV1, SnapshotRequestV1, EntitySnapshotV1, SnapshotResponseV1,
-        MinimumClientVersion, CapabilitiesResponseV1,
+        UserId,
+        DeviceId,
+        EntityId,
+        ChangeId,
+        RequestId,
+        ConflictId,
+        AtomicGroupId,
+        SnapshotId,
+        Cursor,
+        ServerVersion,
+        LocalDate,
+        CurrencyCode,
+        MoneyAmount,
+        EntityMeta,
+        JsonValue,
+        ErrorCode,
+        FieldError,
+        ApiErrorV1,
+        EntityType,
+        EntityRef,
+        EntityOwnership,
+        SyncMode,
+        ConflictMode,
+        TransactionType,
+        TransactionStatus,
+        AccountType,
+        ActivityType,
+        ActivityScheduleType,
+        ActivityCheckinMethod,
+        ActivitySyncSource,
+        ActivityLogStatus,
+        NoteType,
+        EnglishLevel,
+        EnglishCategory,
+        EnglishProcessingStatus,
+        EnglishFetchStatus,
+        EnglishCompletionStatus,
+        EnglishReadingStatus,
+        VocabularyStatus,
+        VocabularyReviewResult,
+        HighlightColor,
+        WorkoutSource,
+        WorkoutStatus,
+        ImportStatus,
+        FileStorageState,
+        User,
+        Device,
+        FinanceAccount,
+        TransactionCategory,
+        Transaction,
+        TransactionEvidence,
+        Activity,
+        ActivityLog,
+        DailyReview,
+        NoteFolder,
+        Note,
+        NoteTag,
+        NoteTagRelation,
+        NoteRelation,
+        NoteRevision,
+        EnglishArticle,
+        ArticleVocabularyItem,
+        EnglishLearningRecord,
+        EnglishHighlight,
+        EnglishNote,
+        EnglishVocabulary,
+        VocabularyOccurrence,
+        VocabularyReviewState,
+        WorkoutImport,
+        Workout,
+        WorkoutExercise,
+        WorkoutSet,
+        TrainingNote,
+        FileMetadata,
+        EntityLink,
+        UserPreference,
+        AuthSessionId,
+        AppGrantId,
+        AppInstallationId,
+        TokenFamilyId,
+        Scope,
+        AuthUserV1,
+        RegisterRequestV1,
+        AuthCapabilitiesV1,
+        LoginRequestV1,
+        AuthSessionV1,
+        SessionListV1,
+        DeviceInstallationV1,
+        DeviceListV1,
+        UpdateDeviceRequestV1,
+        AppGrantV1,
+        AppGrantListV1,
+        UpdateAppGrantRequestV1,
+        TokenResponseV1,
+        RefreshRequestV1,
+        ChangePasswordRequestV1,
+        ForgotPasswordRequestV1,
+        ResetPasswordRequestV1,
+        AcceptedResponseV1,
+        WebLoginRequestV1,
+        WebSessionResponseV1,
+        CsrfResponseV1,
+        AppId,
+        ClientPlatform,
+        SyncClientInfo,
+        ChangeOperation,
+        SyncChangeV1,
+        TombstoneV1,
+        ConflictReason,
+        ConflictV1,
+        PushRequestV1,
+        PushChangeResultV1,
+        PushResponseV1,
+        PullRequestV1,
+        ServerChangeV1,
+        PullResponseV1,
+        SnapshotRequestV1,
+        EntitySnapshotV1,
+        SnapshotResponseV1,
+        MinimumClientVersion,
+        CapabilitiesResponseV1,
     )
 }
 
-fn export_openapi(contracts_dir: &Path) -> std::io::Result<()> {
-    let directory = contracts_dir.join("openapi");
-    fs::create_dir_all(&directory)?;
+fn auth_type_names() -> Vec<String> {
+    vec![
+        AuthSessionId::type_name(),
+        AppGrantId::type_name(),
+        AppInstallationId::type_name(),
+        TokenFamilyId::type_name(),
+        Scope::type_name(),
+        AuthUserV1::type_name(),
+        RegisterRequestV1::type_name(),
+        AuthCapabilitiesV1::type_name(),
+        LoginRequestV1::type_name(),
+        AuthSessionV1::type_name(),
+        SessionListV1::type_name(),
+        DeviceInstallationV1::type_name(),
+        DeviceListV1::type_name(),
+        UpdateDeviceRequestV1::type_name(),
+        AppGrantV1::type_name(),
+        AppGrantListV1::type_name(),
+        UpdateAppGrantRequestV1::type_name(),
+        TokenResponseV1::type_name(),
+        RefreshRequestV1::type_name(),
+        ChangePasswordRequestV1::type_name(),
+        ForgotPasswordRequestV1::type_name(),
+        ResetPasswordRequestV1::type_name(),
+        AcceptedResponseV1::type_name(),
+        WebLoginRequestV1::type_name(),
+        WebSessionResponseV1::type_name(),
+        CsrfResponseV1::type_name(),
+    ]
+}
 
-    // Collect component schemas for every public type from one generator so
-    // $refs resolve inside components.schemas.
+fn export_auth_typescript(contracts_dir: &Path) -> std::io::Result<()> {
+    let directory = contracts_dir.join("typescript");
+    fs::create_dir_all(&directory)?;
+    let mut names = auth_type_names();
+    names.sort_unstable();
+    names.dedup();
+    let mut output = String::from(
+        "// GENERATED FILE - DO NOT EDIT MANUALLY\n\
+         // LifeTrace authentication protocol v1.\n\
+         // Rust types in crates/lifetrace-contracts are authoritative.\n\n\
+         import type { AppId, UserId } from \"./lifetrace-contracts.generated\";\n\n",
+    );
+    for name in names {
+        output.push_str(&with_export_prefix(&ts_decl_for(&name)));
+        output.push_str("\n\n");
+    }
+    fs::write(directory.join("lifetrace-auth.generated.ts"), output)
+}
+
+fn component_schemas() -> Map<String, Value> {
     let mut definitions: BTreeMap<String, Value> = BTreeMap::new();
     for name in public_types!() {
         let schema = schema_for_type(&name);
         let value = serde_json::to_value(&schema).unwrap();
         if let Value::Object(object) = &value {
-            // The root object contains the type's own schema (plus meta keys).
             let mut own_schema = object.clone();
             own_schema.remove("$schema");
             own_schema.remove("$defs");
             own_schema.remove("$comment");
             own_schema.remove("title");
             definitions.insert(name.clone(), Value::Object(own_schema));
-            // Dependencies referenced from other schemas.
             if let Some(Value::Object(defs)) = object.get("$defs") {
                 for (key, definition) in defs {
                     definitions.insert(key.clone(), definition.clone());
@@ -296,13 +577,89 @@ fn export_openapi(contracts_dir: &Path) -> std::io::Result<()> {
             }
         }
     }
-    // The type itself is referenced by name via its definition entry.
-    let mut components_schemas: Map<String, Value> = definitions.into_iter().collect();
-    for (_, schema) in components_schemas.iter_mut() {
+    let mut schemas: Map<String, Value> = definitions.into_iter().collect();
+    for (_, schema) in schemas.iter_mut() {
         rewrite_schema_refs(schema);
     }
+    schemas
+}
+
+fn auth_operation(
+    operation_id: &str,
+    summary: &str,
+    request: Option<&str>,
+    response: &str,
+    authenticated: bool,
+) -> Value {
+    let mut operation = json!({
+        "operationId": operation_id,
+        "summary": summary,
+        "responses": {
+            "200": {
+                "description": "Success",
+                "content": { "application/json": { "schema": { "$ref": format!("#/components/schemas/{response}") } } }
+            },
+            "400": error_response(), "401": error_response(), "403": error_response(),
+            "409": error_response(), "429": error_response(), "500": error_response()
+        }
+    });
+    if let Some(request) = request {
+        operation["requestBody"] = json!({
+            "required": true,
+            "content": { "application/json": { "schema": { "$ref": format!("#/components/schemas/{request}") } } }
+        });
+    }
+    if authenticated {
+        operation["security"] = json!([{ "bearerAuth": [] }]);
+    }
+    operation
+}
+
+fn export_auth_openapi(contracts_dir: &Path) -> std::io::Result<()> {
+    let directory = contracts_dir.join("openapi");
+    fs::create_dir_all(&directory)?;
+    let document = json!({
+        "openapi": "3.1.0",
+        "info": {
+            "title": "LifeTrace Authentication API v1",
+            "version": "1.0.0",
+            "description": format!("{GENERATED_NOTICE}. Opaque access and rotating refresh tokens; server-side web sessions with HttpOnly cookies and CSRF protection.")
+        },
+        "paths": {
+            "/api/v1/auth/capabilities": { "get": auth_operation("authCapabilities", "Read authentication capabilities", None, "AuthCapabilitiesV1", false) },
+            "/api/v1/auth/register": { "post": auth_operation("authRegister", "Register an account", Some("RegisterRequestV1"), "TokenResponseV1", false) },
+            "/api/v1/auth/login": { "post": auth_operation("authLogin", "Create a native session", Some("LoginRequestV1"), "TokenResponseV1", false) },
+            "/api/v1/auth/refresh": { "post": auth_operation("authRefresh", "Rotate a refresh token", Some("RefreshRequestV1"), "TokenResponseV1", false) },
+            "/api/v1/auth/me": { "get": auth_operation("authMe", "Read the current account", None, "AuthUserV1", true) },
+            "/api/v1/auth/logout": { "post": auth_operation("authLogout", "Revoke the current session", None, "AcceptedResponseV1", true) },
+            "/api/v1/auth/logout-all": { "post": auth_operation("authLogoutAll", "Revoke all user sessions", None, "AcceptedResponseV1", true) },
+            "/api/v1/auth/password/change": { "post": auth_operation("authPasswordChange", "Change the account password", Some("ChangePasswordRequestV1"), "AcceptedResponseV1", true) },
+            "/api/v1/auth/password/forgot": { "post": auth_operation("authPasswordForgot", "Request password recovery", Some("ForgotPasswordRequestV1"), "AcceptedResponseV1", false) },
+            "/api/v1/auth/password/reset": { "post": auth_operation("authPasswordReset", "Complete password recovery", Some("ResetPasswordRequestV1"), "AcceptedResponseV1", false) },
+            "/api/v1/auth/sessions": { "get": auth_operation("authSessions", "List sessions", None, "SessionListV1", true) },
+            "/api/v1/auth/devices": { "get": auth_operation("authDevices", "List devices", None, "DeviceListV1", true) },
+            "/api/v1/auth/apps": { "get": auth_operation("authApps", "List application grants", None, "AppGrantListV1", true) },
+            "/api/v1/web/session/login": { "post": auth_operation("webLogin", "Create a secure browser session", Some("WebLoginRequestV1"), "WebSessionResponseV1", false) },
+            "/api/v1/web/session": { "get": auth_operation("webSession", "Read the browser session", None, "WebSessionResponseV1", false) },
+            "/api/v1/web/csrf": { "get": auth_operation("webCsrf", "Rotate and read the CSRF token", None, "CsrfResponseV1", false) }
+        },
+        "components": {
+            "schemas": component_schemas(),
+            "securitySchemes": {
+                "bearerAuth": { "type": "http", "scheme": "bearer", "bearerFormat": "opaque" },
+                "webSession": { "type": "apiKey", "in": "cookie", "name": "__Host-lifetrace_session" }
+            }
+        }
+    });
+    write_stable_json(&directory.join("lifetrace-auth-v1.json"), &document)
+}
+
+fn export_openapi(contracts_dir: &Path) -> std::io::Result<()> {
+    let directory = contracts_dir.join("openapi");
+    fs::create_dir_all(&directory)?;
+
     let mut components = Map::new();
-    components.insert("schemas".to_owned(), Value::Object(components_schemas));
+    components.insert("schemas".to_owned(), Value::Object(component_schemas()));
 
     let document = json!({
         "openapi": "3.1.0",
@@ -480,7 +837,10 @@ fn rewrite_schema_refs(value: &mut Value) {
     match value {
         Value::Object(object) => {
             if let Some(reference) = object.get_mut("$ref") {
-                if let Some(name) = reference.as_str().and_then(|text| text.strip_prefix("#/$defs/")) {
+                if let Some(name) = reference
+                    .as_str()
+                    .and_then(|text| text.strip_prefix("#/$defs/"))
+                {
                     *reference = Value::String(format!("#/components/schemas/{name}"));
                 }
             }
@@ -503,7 +863,9 @@ fn main() -> std::io::Result<()> {
     fs::create_dir_all(&contracts_dir)?;
     export_json_schemas(&contracts_dir)?;
     export_typescript(&contracts_dir)?;
+    export_auth_typescript(&contracts_dir)?;
     export_openapi(&contracts_dir)?;
+    export_auth_openapi(&contracts_dir)?;
     println!("contracts exported to {}", contracts_dir.display());
     Ok(())
 }

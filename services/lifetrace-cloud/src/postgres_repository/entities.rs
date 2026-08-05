@@ -109,13 +109,12 @@ impl PostgresRepository {
     }
 
     pub(super) async fn change_count_impl(&self, user_id: &UserId) -> Result<usize, ApiError> {
-        let count: i64 = sqlx::query_scalar(
-            "SELECT COUNT(*)::BIGINT FROM sync_change_log WHERE user_id = $1",
-        )
-        .bind(Self::user_uuid(user_id))
-        .fetch_one(&self.pool)
-        .await
-        .map_err(Self::db_error)?;
+        let count: i64 =
+            sqlx::query_scalar("SELECT COUNT(*)::BIGINT FROM sync_change_log WHERE user_id = $1")
+                .bind(Self::user_uuid(user_id))
+                .fetch_one(&self.pool)
+                .await
+                .map_err(Self::db_error)?;
         Ok(count.max(0) as usize)
     }
 }

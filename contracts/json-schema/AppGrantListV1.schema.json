@@ -1,0 +1,74 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "AppGrantId": {
+      "description": "User-to-application grant identifier.",
+      "type": "string"
+    },
+    "AppGrantV1": {
+      "properties": {
+        "appId": {
+          "$ref": "#/$defs/AppId"
+        },
+        "grantedAt": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "id": {
+          "$ref": "#/$defs/AppGrantId"
+        },
+        "revokedAt": {
+          "format": "date-time",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scopes": {
+          "items": {
+            "$ref": "#/$defs/Scope"
+          },
+          "type": "array"
+        },
+        "status": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "format": "date-time",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "appId",
+        "scopes",
+        "status",
+        "grantedAt",
+        "updatedAt"
+      ],
+      "type": "object"
+    },
+    "AppId": {
+      "description": "Client application id. Known values: lifetrace-desktop, lifetrace-web, lifetrace-*-android.",
+      "type": "string"
+    },
+    "Scope": {
+      "description": "One OAuth-style authorization scope.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "grants": {
+      "items": {
+        "$ref": "#/$defs/AppGrantV1"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "grants"
+  ],
+  "title": "AppGrantListV1",
+  "type": "object"
+}

@@ -1,0 +1,23 @@
+{
+  "$comment": "GENERATED FILE - DO NOT EDIT MANUALLY. Source: crates/lifetrace-contracts.",
+  "$defs": {
+    "Scope": {
+      "description": "One OAuth-style authorization scope.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "properties": {
+    "scopes": {
+      "items": {
+        "$ref": "#/$defs/Scope"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "scopes"
+  ],
+  "title": "UpdateAppGrantRequestV1",
+  "type": "object"
+}

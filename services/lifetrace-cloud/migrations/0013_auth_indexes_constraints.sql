@@ -1,0 +1,11 @@
+CREATE INDEX idx_auth_grants_user_status ON auth_app_grants(user_id, status);
+CREATE INDEX idx_auth_sessions_user_status ON auth_sessions(user_id, status, created_at DESC);
+CREATE INDEX idx_auth_sessions_device_status ON auth_sessions(device_id, status);
+CREATE INDEX idx_auth_access_session_active ON auth_access_tokens(session_id, expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX idx_auth_refresh_family ON auth_refresh_tokens(family_id);
+CREATE INDEX idx_auth_refresh_session_active ON auth_refresh_tokens(session_id, absolute_expires_at) WHERE revoked_at IS NULL;
+CREATE INDEX idx_auth_reset_user_active ON auth_password_reset_tokens(user_id, expires_at) WHERE used_at IS NULL AND revoked_at IS NULL;
+CREATE INDEX idx_auth_attempt_email_time ON auth_login_attempts(email_hash, attempted_at DESC);
+CREATE INDEX idx_auth_attempt_ip_time ON auth_login_attempts(ip_address, attempted_at DESC);
+CREATE INDEX idx_auth_audit_user_time ON auth_audit_log(user_id, created_at DESC);
+CREATE INDEX idx_cloud_devices_user_status ON cloud_devices(user_id, status, last_seen_at DESC);

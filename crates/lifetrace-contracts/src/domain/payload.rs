@@ -19,6 +19,11 @@ use crate::json_value::JsonValue;
 use crate::registry::EntityType;
 
 /// All supported domain payloads, keyed by registered entity type.
+///
+/// This is a stable Rust-side protocol dispatch API. Boxing selected variants
+/// would impose a source-breaking constructor change across every adapter for
+/// no wire-format benefit, so its deliberately heterogeneous size is accepted.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EntityPayload {
     User(User),
@@ -78,9 +83,7 @@ impl EntityPayload {
             EntityPayload::EnglishNote(_) => EntityType::ENGLISH_NOTE,
             EntityPayload::EnglishVocabulary(_) => EntityType::ENGLISH_VOCABULARY,
             EntityPayload::VocabularyOccurrence(_) => EntityType::ENGLISH_VOCABULARY_OCCURRENCE,
-            EntityPayload::VocabularyReviewState(_) => {
-                EntityType::ENGLISH_VOCABULARY_REVIEW_STATE
-            }
+            EntityPayload::VocabularyReviewState(_) => EntityType::ENGLISH_VOCABULARY_REVIEW_STATE,
             EntityPayload::WorkoutImport(_) => EntityType::WORKOUT_IMPORT,
             EntityPayload::Workout(_) => EntityType::WORKOUT_WORKOUT,
             EntityPayload::WorkoutExercise(_) => EntityType::WORKOUT_EXERCISE,
@@ -134,9 +137,13 @@ impl EntityPayload {
             EntityPayload::User(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::Device(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::FinanceAccount(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::TransactionCategory(value) => serde_json::to_value(value).unwrap().into(),
+            EntityPayload::TransactionCategory(value) => {
+                serde_json::to_value(value).unwrap().into()
+            }
             EntityPayload::Transaction(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::TransactionEvidence(value) => serde_json::to_value(value).unwrap().into(),
+            EntityPayload::TransactionEvidence(value) => {
+                serde_json::to_value(value).unwrap().into()
+            }
             EntityPayload::Activity(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::ActivityLog(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::DailyReview(value) => serde_json::to_value(value).unwrap().into(),
@@ -183,13 +190,14 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
                 .map_err(|error| format!("invalid {name} payload: {error}"))
         }
         match entity_type.as_str() {
-            EntityType::IDENTITY_USER => parse::<User>(&value, "identity.user").map(EntityPayload::User),
+            EntityType::IDENTITY_USER => {
+                parse::<User>(&value, "identity.user").map(EntityPayload::User)
+            }
             EntityType::IDENTITY_DEVICE => {
                 parse::<Device>(&value, "identity.device").map(EntityPayload::Device)
             }
-            EntityType::FINANCE_ACCOUNT => {
-                parse::<FinanceAccount>(&value, "finance.account").map(EntityPayload::FinanceAccount)
-            }
+            EntityType::FINANCE_ACCOUNT => parse::<FinanceAccount>(&value, "finance.account")
+                .map(EntityPayload::FinanceAccount),
             EntityType::FINANCE_CATEGORY => {
                 parse::<TransactionCategory>(&value, "finance.category")
                     .map(EntityPayload::TransactionCategory)
@@ -214,28 +222,25 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
                 parse::<NoteFolder>(&value, "note.folder").map(EntityPayload::NoteFolder)
             }
             EntityType::NOTE_NOTE => parse::<Note>(&value, "note.note").map(EntityPayload::Note),
-            EntityType::NOTE_TAG => parse::<NoteTag>(&value, "note.tag").map(EntityPayload::NoteTag),
-            EntityType::NOTE_TAG_RELATION => {
-                parse::<NoteTagRelation>(&value, "note.tag_relation")
-                    .map(EntityPayload::NoteTagRelation)
+            EntityType::NOTE_TAG => {
+                parse::<NoteTag>(&value, "note.tag").map(EntityPayload::NoteTag)
             }
+            EntityType::NOTE_TAG_RELATION => parse::<NoteTagRelation>(&value, "note.tag_relation")
+                .map(EntityPayload::NoteTagRelation),
             EntityType::NOTE_RELATION => {
                 parse::<NoteRelation>(&value, "note.relation").map(EntityPayload::NoteRelation)
             }
             EntityType::NOTE_REVISION => {
                 parse::<NoteRevision>(&value, "note.revision").map(EntityPayload::NoteRevision)
             }
-            EntityType::ENGLISH_ARTICLE => {
-                parse::<EnglishArticle>(&value, "english.article").map(EntityPayload::EnglishArticle)
-            }
+            EntityType::ENGLISH_ARTICLE => parse::<EnglishArticle>(&value, "english.article")
+                .map(EntityPayload::EnglishArticle),
             EntityType::ENGLISH_LEARNING_RECORD => {
                 parse::<EnglishLearningRecord>(&value, "english.learning_record")
                     .map(EntityPayload::EnglishLearningRecord)
             }
-            EntityType::ENGLISH_HIGHLIGHT => {
-                parse::<EnglishHighlight>(&value, "english.highlight")
-                    .map(EntityPayload::EnglishHighlight)
-            }
+            EntityType::ENGLISH_HIGHLIGHT => parse::<EnglishHighlight>(&value, "english.highlight")
+                .map(EntityPayload::EnglishHighlight),
             EntityType::ENGLISH_NOTE => {
                 parse::<EnglishNote>(&value, "english.note").map(EntityPayload::EnglishNote)
             }
@@ -257,10 +262,8 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             EntityType::WORKOUT_WORKOUT => {
                 parse::<Workout>(&value, "workout.workout").map(EntityPayload::Workout)
             }
-            EntityType::WORKOUT_EXERCISE => {
-                parse::<WorkoutExercise>(&value, "workout.exercise")
-                    .map(EntityPayload::WorkoutExercise)
-            }
+            EntityType::WORKOUT_EXERCISE => parse::<WorkoutExercise>(&value, "workout.exercise")
+                .map(EntityPayload::WorkoutExercise),
             EntityType::WORKOUT_SET => {
                 parse::<WorkoutSet>(&value, "workout.set").map(EntityPayload::WorkoutSet)
             }
@@ -274,9 +277,8 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             EntityType::ENTITY_LINK => {
                 parse::<EntityLink>(&value, "entity.link").map(EntityPayload::EntityLink)
             }
-            EntityType::USER_PREFERENCE => {
-                parse::<UserPreference>(&value, "user.preference").map(EntityPayload::UserPreference)
-            }
+            EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, "user.preference")
+                .map(EntityPayload::UserPreference),
             other => Err(format!("unknown entity type: {other}")),
         }
     }

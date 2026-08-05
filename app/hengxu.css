@@ -36,3 +36,13 @@
 .ai-side .ai-history article{grid-template-columns:minmax(0,1fr) 34px 34px;gap:2px;min-height:38px}.ai-side .ai-history article>button{height:34px;cursor:pointer}.ai-side .ai-history article>button:last-child:hover{color:var(--hx-danger);background:#f9e9e7;border-radius:8px}
 @media(max-width:780px){.ai-side .ai-history article{grid-template-columns:minmax(0,1fr) 44px 44px;gap:8px;min-height:48px}.ai-side .ai-history article>button{height:44px}}
 .ai-history{border-top:1px solid var(--hx-line);padding-top:18px}.ai-history>span{display:block;color:var(--hx-muted);font-size:9px;letter-spacing:.1em;margin-bottom:9px}.ai-history>.ai-new-chat{width:100%;min-height:36px;border:1px dashed #aec8bc;border-radius:10px;background:#f5faf7;color:var(--hx-accent2);display:flex;align-items:center;justify-content:center;gap:6px;font-size:9px}.ai-history>.ai-new-chat svg{width:14px}.ai-history>p{margin:10px 0 0;color:var(--hx-muted);font-size:9px;text-align:center}.ai-history>div{display:grid;gap:5px;margin-top:8px}.ai-history article{display:grid;grid-template-columns:minmax(0,1fr) 26px 26px;align-items:center;border-radius:9px}.ai-history article:hover,.ai-history article.active{background:var(--hx-soft)}.ai-history article.active{box-shadow:inset 2px 0 0 var(--hx-accent)}.ai-history article>button{border:0;background:transparent;color:var(--hx-muted);padding:0;display:grid;place-items:center;height:31px}.ai-history article>button:first-child{grid-template-columns:15px minmax(0,1fr);gap:6px;text-align:left;padding:0 7px;color:var(--hx-ink);font-size:9px}.ai-history article>button:first-child span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%}.ai-history article>button svg{width:12px}.ai-side{overflow-y:auto;scrollbar-width:thin}.ai-side>.ai-reset{flex:none}
+
+
+.hx-cloud-account .hx-panel-head svg{width:24px;height:24px}
+.hx-cloud-account label{display:grid;gap:7px;margin:12px 0;font-size:13px;color:var(--hx-muted,#64748b)}
+.hx-cloud-account input{width:100%;border:1px solid rgba(148,163,184,.35);border-radius:10px;padding:10px 12px;background:var(--hx-surface,#fff);color:inherit}
+.hx-cloud-local-note{display:flex;gap:8px;align-items:flex-start;padding:10px 12px;border-radius:10px;background:rgba(16,185,129,.08);color:#047857}
+.hx-cloud-local-note svg{width:18px;min-width:18px}
+.hx-cloud-user{display:grid;gap:4px;padding:12px;border-radius:10px;background:rgba(59,130,246,.08);margin:12px 0}
+.hx-cloud-user small,.hx-cloud-user span{color:var(--hx-muted,#64748b)}
+.hx-cloud-account .hx-btn svg{width:16px;height:16px}

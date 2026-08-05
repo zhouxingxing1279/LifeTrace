@@ -22,13 +22,20 @@ pub fn sha256_hex(data: &[u8]) -> String {
 pub fn scope_hash(entity_types: &Option<Vec<lifetrace_contracts::EntityType>>) -> String {
     let mut names: Vec<String> = entity_types
         .as_ref()
-        .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect())
+        .map(|types| {
+            types
+                .iter()
+                .map(|value| value.as_str().to_owned())
+                .collect()
+        })
         .unwrap_or_default();
     names.sort();
-    sha256_hex(canonical_json(&Value::Array(
-        names.into_iter().map(Value::String).collect(),
-    ))
-    .as_bytes())
+    sha256_hex(
+        canonical_json(&Value::Array(
+            names.into_iter().map(Value::String).collect(),
+        ))
+        .as_bytes(),
+    )
 }
 
 /// Scope hash for "all entity types" (used by push/snapshot cursors).
