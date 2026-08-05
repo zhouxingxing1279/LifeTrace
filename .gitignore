@@ -93,3 +93,6 @@ ios/**/xcuserdata/
 *.py[cod]
 /public/hengxu-local-ca.cer
 /恒序个人管理平台整合Demo/
+
+# Rust service build outputs
+/services/*/target/
