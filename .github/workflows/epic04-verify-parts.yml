@@ -1,4 +1,5 @@
 name: EPIC-04 Verify Patch Parts
+# transport-revision: 5
 
 on:
   push:
@@ -21,12 +22,13 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import base64, gzip, hashlib
-          parts = sorted(Path('.epic04').glob('patch-*'))
+          names = ['patch-00', 'patch-01', 'fixed-020', 'fixed-021', 'patch-03']
           payload = ''
-          for path in parts:
+          for name in names:
+              path = Path('.epic04') / name
               data = path.read_text()
               payload += data
-              print(path.name, len(data), hashlib.sha256(data.encode()).hexdigest())
+              print(name, len(data), hashlib.sha256(data.encode()).hexdigest())
           print('total', len(payload), hashlib.sha256(payload.encode()).hexdigest())
           raw = gzip.decompress(base64.b64decode(payload))
           print('patch', len(raw), hashlib.sha256(raw).hexdigest())
