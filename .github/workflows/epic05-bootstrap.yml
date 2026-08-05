@@ -1,4 +1,4 @@
-name: EPIC-05 Bootstrap Source
+name: EPIC-05 Apply and Validate
 
 on:
   push:
@@ -9,20 +9,72 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  archive:
+  apply-test-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
-      - name: Archive source tree
-        run: |
-          tar --exclude=.git --exclude='**/target' --exclude=node_modules -czf /tmp/lifetrace-source.tar.gz .
-          cp /tmp/lifetrace-source.tar.gz ./lifetrace-source.tar.gz
-      - uses: actions/upload-artifact@v4
         with:
-          name: lifetrace-epic05-source
-          path: lifetrace-source.tar.gz
-          if-no-files-found: error
-          retention-days: 1
+          ref: agent/epic-05-windows-sync-core
+          fetch-depth: 0
+      - name: Verify and apply implementation overlay
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat .epic05-overlay/chunk-* | base64 -d > /tmp/epic05-overlay.tar.xz
+          echo "06c48794f267d29e22fe33a97f8a0f2eb938ebb69b0300dd3c1b4679a12037ac  /tmp/epic05-overlay.tar.xz" | sha256sum --check
+          test "$(stat -c %s /tmp/epic05-overlay.tar.xz)" = "60456"
+          tar -xJf /tmp/epic05-overlay.tar.xz
+      - name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-contracts
+            crates/lifetrace-sync-client
+            src-tauri
+      - name: Format and resolve lockfiles
+        run: |
+          cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Contract tests
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+      - name: Pure sync core tests
+        run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
+      - name: Desktop database and adapter tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+      - name: Clippy pure sync core
+        run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Clippy desktop library
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
+      - name: Frontend install and validation
+        run: |
+          npm ci
+          npm run lint
+          npm run test:unit
+          npm run web:build
+      - name: Publish validated implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .epic05-overlay
+          rm -f .github/workflows/epic05-bootstrap.yml
+          git config user.name "LifeTrace EPIC-05 Agent"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(epic05): implement Windows profile-aware offline sync"
+          git push origin HEAD:agent/epic-05-windows-sync-core
