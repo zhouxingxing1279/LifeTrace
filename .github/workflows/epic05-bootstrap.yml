@@ -32,6 +32,17 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+              db.execute("INSERT OR REPLACE INTO dictionary_meta(key, value) VALUES ('generated_for_ci', 'true')")
+          PY
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
