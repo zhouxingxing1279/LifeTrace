@@ -1,0 +1,27 @@
+name: EPIC-05 Bootstrap Source
+
+on:
+  push:
+    branches:
+      - agent/epic-05-windows-sync-core
+    paths:
+      - ".github/workflows/epic05-bootstrap.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive source tree
+        run: |
+          tar --exclude=.git --exclude='**/target' --exclude=node_modules -czf lifetrace-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifetrace-epic05-source
+          path: lifetrace-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
