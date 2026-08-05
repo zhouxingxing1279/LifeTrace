@@ -14,7 +14,7 @@ on:
       - ".github/workflows/epic03-postgres.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -101,16 +101,6 @@ jobs:
           CLOUD_HOST_PORT: "18787"
           POSTGRES_PASSWORD: lifetrace_compose_password
         run: docker compose -f deploy/cloud/docker-compose.local.yml --profile cloud down -v --remove-orphans
-      - name: Commit resolved cloud lockfile
-        if: github.event_name == 'push' && github.ref_name == 'agent/epic-03-postgres-runtime'
-        run: |
-          if ! git diff --quiet -- services/lifetrace-cloud/Cargo.lock; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add services/lifetrace-cloud/Cargo.lock
-            git commit -m "chore(cloud-db): refresh Cargo lockfile"
-            git push
-          fi
       - name: Upload resolved lockfile
         if: always()
         uses: actions/upload-artifact@v4
