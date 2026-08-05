@@ -34,6 +34,9 @@ services:
       DEV_AUTH_DEVICE_ID: ${DEV_AUTH_DEVICE_ID:-dev-device}
       CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY:-dev-cursor-key}
       PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY:-dev-page-token-key}
+      AUTH_PASSWORD_PEPPER: ${AUTH_PASSWORD_PEPPER:-development-password-pepper}
+      AUTH_TOKEN_HASH_PEPPER: ${AUTH_TOKEN_HASH_PEPPER:-development-token-pepper}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:1420,http://127.0.0.1:1420,http://tauri.localhost,https://tauri.localhost}
     ports:
       - "127.0.0.1:${CLOUD_HOST_PORT:-8787}:8787"
     depends_on:

@@ -18,7 +18,7 @@ pub use error::ApiError;
 pub use state::{AppState, StartupError};
 
 use axum::Router;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{Any, CorsLayer};
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
 /// Build the full application router.
@@ -32,7 +32,10 @@ pub fn app(state: AppState) -> Router {
             .iter()
             .filter_map(|value| value.parse().ok())
             .collect();
-        CorsLayer::new().allow_origin(origins)
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods(Any)
+            .allow_headers(Any)
     };
     routes::router(state.clone())
         .with_state(state)

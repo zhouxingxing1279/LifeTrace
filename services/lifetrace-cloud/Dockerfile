@@ -2,9 +2,15 @@
 # an unprivileged user.
 FROM rust:1.88-slim AS builder
 WORKDIR /build
+ENV CARGO_NET_RETRY=10 \
+    CARGO_HTTP_TIMEOUT=600
 COPY crates ./crates
 COPY services/lifetrace-cloud ./services/lifetrace-cloud
-RUN cargo build --release --manifest-path services/lifetrace-cloud/Cargo.toml --bin lifetrace-cloud
+RUN cargo build --release \
+    --config 'source.crates-io.replace-with="rsproxy-sparse"' \
+    --config 'source.rsproxy-sparse.registry="sparse+https://rsproxy.cn/index/"' \
+    --manifest-path services/lifetrace-cloud/Cargo.toml \
+    --bin lifetrace-cloud
 
 FROM debian:bookworm-slim
 RUN useradd --create-home --uid 10001 lifetrace \
