@@ -1,9 +1,7 @@
 //! Signed snapshot page tokens.
 //!
 //! Tokens bind `userId | snapshotId | offset` with HMAC-SHA256, so clients
-//! cannot skip pages or reuse tokens across users/snapshots. (The in-memory
-//! store pages by offset; the PostgreSQL implementation uses keyset
-//! pagination and signs `lastEntityType | lastEntityId` instead.)
+//! cannot skip pages or reuse tokens across users/snapshots.
 
 use axum::http::StatusCode;
 use base64::Engine;
@@ -26,7 +24,7 @@ impl PageTokenCodec {
     }
 
     pub fn encode(&self, user_id: &UserId, snapshot_id: &SnapshotId, offset: usize) -> String {
-        let payload = format!("v1|{}|{}|{}", user_id, snapshot_id, offset);
+        let payload = format!("v1|{user_id}|{snapshot_id}|{offset}");
         let signature = hex::encode(hmac_sha256(&self.key, payload.as_bytes()));
         let encoded = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(payload.as_bytes());
         format!("{encoded}.{signature}")
@@ -80,7 +78,11 @@ mod tests {
         let snapshot = SnapshotId::new("snapshot-1");
         let token = codec.encode(&user, &snapshot, 25);
         assert_eq!(codec.decode(&token, &user, &snapshot).unwrap(), 25);
-        assert!(codec.decode(&token, &UserId::new("user-b"), &snapshot).is_err());
-        assert!(codec.decode(&token, &user, &SnapshotId::new("snapshot-2")).is_err());
+        assert!(codec
+            .decode(&token, &UserId::new("user-b"), &snapshot)
+            .is_err());
+        assert!(codec
+            .decode(&token, &user, &SnapshotId::new("snapshot-2"))
+            .is_err());
     }
 }
