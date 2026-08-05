@@ -2,10 +2,11 @@
 name = "lifetrace-cloud"
 version = "0.1.0"
 edition = "2021"
-description = "LifeTrace EPIC-03 independent cloud sync server (Rust + Axum)"
+description = "LifeTrace EPIC-03 independent cloud sync server (Rust + Axum + PostgreSQL)"
 license = "MIT"
 
 [dependencies]
+async-trait = "0.1"
 axum = { version = "0.8", features = ["json", "macros"] }
 base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
@@ -14,11 +15,12 @@ lifetrace-contracts = { path = "../../crates/lifetrace-contracts" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "migrate"] }
 subtle = "2"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "request-id"] }
-uuid = { version = "1", features = ["v4", "serde"] }
+uuid = { version = "1", features = ["v4", "v5", "serde"] }
 
 [dev-dependencies]
 http-body-util = "0.1"
