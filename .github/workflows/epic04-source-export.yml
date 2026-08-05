@@ -17,9 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Archive source
-        run: tar --exclude=.git -czf lifetrace-source.tar.gz .
+        run: tar --exclude=.git -czf "$RUNNER_TEMP/lifetrace-source.tar.gz" .
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-epic04-source
-          path: lifetrace-source.tar.gz
+          path: ${{ runner.temp }}/lifetrace-source.tar.gz
           retention-days: 1
