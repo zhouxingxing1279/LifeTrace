@@ -58,6 +58,49 @@ jobs:
         run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
       - name: Docker build
         run: docker build -f services/lifetrace-cloud/Dockerfile .
+      - name: Compose PostgreSQL smoke test
+        env:
+          COMPOSE_PROJECT_NAME: lifetrace-epic03-ci
+          POSTGRES_HOST_PORT: "55432"
+          CLOUD_HOST_PORT: "18787"
+          POSTGRES_PASSWORD: lifetrace_compose_password
+          DEV_AUTH_TOKEN: compose-dev-token
+          CURSOR_SIGNING_KEY: compose-cursor-key
+          PAGE_TOKEN_SIGNING_KEY: compose-page-key
+        run: |
+          set -euo pipefail
+          compose_file="deploy/cloud/docker-compose.local.yml"
+          docker compose -f "$compose_file" --profile cloud up -d --build --wait
+
+          response="$(curl --fail --silent http://127.0.0.1:18787/health/ready)"
+          echo "$response" | jq -e '
+            .status == "ready" and
+            .checks.storage == "postgresql" and
+            .checks.postgresql == true
+          '
+
+          docker compose -f "$compose_file" --profile cloud restart lifetrace-cloud
+          for attempt in $(seq 1 30); do
+            if response="$(curl --fail --silent http://127.0.0.1:18787/health/ready 2>/dev/null)"; then
+              echo "$response" | jq -e '
+                .status == "ready" and
+                .checks.storage == "postgresql" and
+                .checks.postgresql == true
+              '
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose -f "$compose_file" --profile cloud logs
+          exit 1
+      - name: Stop Compose smoke environment
+        if: always()
+        env:
+          COMPOSE_PROJECT_NAME: lifetrace-epic03-ci
+          POSTGRES_HOST_PORT: "55432"
+          CLOUD_HOST_PORT: "18787"
+          POSTGRES_PASSWORD: lifetrace_compose_password
+        run: docker compose -f deploy/cloud/docker-compose.local.yml --profile cloud down -v --remove-orphans
       - name: Upload resolved lockfile
         if: always()
         uses: actions/upload-artifact@v4
