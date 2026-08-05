@@ -1,6 +1,6 @@
 # Multi-stage build. The runtime image contains no Rust toolchain and runs as
 # an unprivileged user.
-FROM rust:1.85-slim AS builder
+FROM rust:1.88-slim AS builder
 WORKDIR /build
 COPY crates ./crates
 COPY services/lifetrace-cloud ./services/lifetrace-cloud
