@@ -20,9 +20,10 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/sync/snapshot", post(snapshot))
 }
 
-async fn capabilities(State(state): State<AppState>) -> Json<CapabilitiesResponseV1> {
-    let store = state.store.read().expect("store lock poisoned");
-    Json(store.capabilities())
+async fn capabilities(
+    State(state): State<AppState>,
+) -> Result<Json<CapabilitiesResponseV1>, ApiError> {
+    state.store.capabilities().await.map(Json)
 }
 
 async fn push(
@@ -30,8 +31,7 @@ async fn push(
     principal: AuthenticatedPrincipal,
     Json(request): Json<PushRequestV1>,
 ) -> Result<Json<PushResponseV1>, ApiError> {
-    let mut store = state.store.write().expect("store lock poisoned");
-    store.push(&principal.user_id, &request).map(Json)
+    state.store.push(&principal.user_id, &request).await.map(Json)
 }
 
 async fn pull(
@@ -39,8 +39,7 @@ async fn pull(
     principal: AuthenticatedPrincipal,
     Json(request): Json<PullRequestV1>,
 ) -> Result<Json<PullResponseV1>, ApiError> {
-    let store = state.store.read().expect("store lock poisoned");
-    store.pull(&principal.user_id, &request).map(Json)
+    state.store.pull(&principal.user_id, &request).await.map(Json)
 }
 
 async fn snapshot(
@@ -48,6 +47,9 @@ async fn snapshot(
     principal: AuthenticatedPrincipal,
     Json(request): Json<SnapshotRequestV1>,
 ) -> Result<Json<SnapshotResponseV1>, ApiError> {
-    let mut store = state.store.write().expect("store lock poisoned");
-    store.snapshot(&principal.user_id, &request).map(Json)
+    state
+        .store
+        .snapshot(&principal.user_id, &request)
+        .await
+        .map(Json)
 }
