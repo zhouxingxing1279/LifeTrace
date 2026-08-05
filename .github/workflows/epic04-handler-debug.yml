@@ -1,0 +1,41 @@
+name: EPIC-04 Handler Diagnostic
+
+on:
+  push:
+    branches:
+      - agent/epic-04-auth-complete
+    paths:
+      - '.github/workflows/epic04-handler-debug.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply staged implementation
+        run: |
+          python - <<'PY'
+          import base64, gzip
+          from pathlib import Path
+          payload = ''.join(path.read_text() for path in sorted(Path('.epic04').glob('patch-*')))
+          Path('/tmp/epic04.patch').write_bytes(gzip.decompress(base64.b64decode(payload)))
+          PY
+          git apply /tmp/epic04.patch
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Add Axum debug handler
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/lifetrace-cloud/src/routes/auth.rs')
+          text = path.read_text()
+          text = text.replace('pub async fn capabilities(', '#[axum::debug_handler]\npub async fn capabilities(', 1)
+          path.write_text(text)
+          PY
+      - name: Compile diagnostic
+        run: cargo check --manifest-path services/lifetrace-cloud/Cargo.toml
