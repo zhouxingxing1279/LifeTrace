@@ -1,5 +1,5 @@
 name: EPIC-04 Cloud Clippy Diagnostic
-# diagnostic-revision: 3
+# diagnostic-revision: 4
 
 on:
   push:
