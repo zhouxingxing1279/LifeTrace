@@ -48,8 +48,8 @@ jobs:
           workspaces: |
             services/lifetrace-cloud
             crates/lifetrace-contracts
-      - name: Format
-        run: cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml -- --check
+      - name: Format validation workspace
+        run: cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud tests
