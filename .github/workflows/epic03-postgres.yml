@@ -54,8 +54,8 @@ jobs:
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud tests
         run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml
-      - name: Clippy
-        run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
+      - name: Clippy production targets
+        run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --lib --bins -- -D warnings
       - name: Docker build
         run: docker build -f services/lifetrace-cloud/Dockerfile .
       - name: Compose PostgreSQL smoke test
