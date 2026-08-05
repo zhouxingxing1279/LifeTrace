@@ -78,11 +78,20 @@ jobs:
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud PostgreSQL and API tests
-        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1 2>&1 | tee epic04-cloud-test.log
       - name: Desktop Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml 2>&1 | tee epic04-desktop-test.log
       - name: Frontend validation
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee epic04-frontend-test.log
       - name: Clippy contracts
         run: cargo clippy --manifest-path crates/lifetrace-contracts/Cargo.toml --all-targets -- -D warnings
       - name: Clippy cloud production targets
@@ -95,6 +104,9 @@ jobs:
         with:
           name: epic04-linux-diagnostics
           path: |
+            epic04-cloud-test.log
+            epic04-desktop-test.log
+            epic04-frontend-test.log
             services/lifetrace-cloud/Cargo.lock
             crates/lifetrace-contracts/Cargo.lock
             tools/contract-exporter/Cargo.lock
@@ -126,7 +138,17 @@ jobs:
       - name: Format desktop Rust
         run: cargo fmt --manifest-path src-tauri/Cargo.toml
       - name: Check Windows desktop credential integration
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        shell: pwsh
+        run: |
+          cargo check --manifest-path src-tauri/Cargo.toml 2>&1 | Tee-Object -FilePath epic04-windows-check.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload Windows diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic04-windows-diagnostics
+          path: epic04-windows-check.log
+          if-no-files-found: warn
 
   publish:
     needs: [validate-linux, validate-windows]
