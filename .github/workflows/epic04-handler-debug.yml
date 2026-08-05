@@ -1,5 +1,5 @@
 name: EPIC-04 Handler Diagnostic
-# diagnostic-revision: 2
+# diagnostic-revision: 3
 
 on:
   push:
@@ -42,14 +42,12 @@ jobs:
         shell: bash
         run: |
           set +e
-          cargo check --manifest-path services/lifetrace-cloud/Cargo.toml > epic04-handler-diagnostic.log 2>&1
+          cargo check --manifest-path services/lifetrace-cloud/Cargo.toml > /tmp/epic04-handler-diagnostic.log 2>&1
           status=$?
-          echo "exit_status=$status" >> epic04-handler-diagnostic.log
+          echo "exit_status=$status" >> /tmp/epic04-handler-diagnostic.log
           git reset --hard HEAD
           git clean -fd
-          cp /tmp/epic04.patch /tmp/ignored.patch
-          printf '%s\n' "$(cat epic04-handler-diagnostic.log 2>/dev/null || true)" > /tmp/diagnostic.log
-          cp /tmp/diagnostic.log epic04-handler-diagnostic.log
+          cp /tmp/epic04-handler-diagnostic.log epic04-handler-diagnostic.log
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add epic04-handler-diagnostic.log
