@@ -1,4 +1,4 @@
-# 本地开发：PostgreSQL 固定版本、持久化卷、仅回环监听。
+# Local development: PostgreSQL is pinned, persisted and exposed only on loopback.
 services:
   postgres:
     image: postgres:16-alpine
@@ -19,7 +19,7 @@ services:
   lifetrace-cloud:
     profiles: ["cloud"]
     build:
-      context: ..
+      context: ../..
       dockerfile: services/lifetrace-cloud/Dockerfile
     environment:
       LIFETRACE_ENV: development
@@ -39,6 +39,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8787/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
 volumes:
   lifetrace_pgdata:
