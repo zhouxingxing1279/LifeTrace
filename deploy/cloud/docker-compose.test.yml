@@ -1,0 +1,15 @@
+# 测试环境：每次从空库执行全部 migration。
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: lifetrace
+      POSTGRES_PASSWORD: lifetrace_test_password
+      POSTGRES_DB: lifetrace_test
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifetrace -d lifetrace_test"]
+      interval: 2s
+      timeout: 2s
+      retries: 15

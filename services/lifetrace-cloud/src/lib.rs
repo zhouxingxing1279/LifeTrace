@@ -12,11 +12,13 @@
 //! semantics validated by the reference testkit), behind a simple store
 //! module so a PostgreSQL-backed implementation can replace it later.
 
+pub mod auth;
 pub mod config;
 pub mod error;
 pub mod routes;
 pub mod state;
 pub mod store;
+pub mod sync;
 
 pub use config::Config;
 pub use error::ApiError;
@@ -28,9 +30,20 @@ use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetReques
 
 /// Build the full application router.
 pub fn app(state: AppState) -> Router {
+    let cors = if state.config.cors_allowed_origins.is_empty() {
+        CorsLayer::new()
+    } else {
+        let origins: Vec<axum::http::HeaderValue> = state
+            .config
+            .cors_allowed_origins
+            .iter()
+            .filter_map(|value| value.parse().ok())
+            .collect();
+        CorsLayer::new().allow_origin(origins)
+    };
     routes::router(state.clone())
         .with_state(state)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .layer(CorsLayer::permissive())
+        .layer(cors)
 }

@@ -1,14 +1,24 @@
-use lifetrace_sync_server::{app, Config};
+use lifetrace_cloud::{app, Config};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env();
-    let state = lifetrace_sync_server::AppState::new(config.clone());
+    config.validate().map_err(|message| {
+        eprintln!("[lifetrace-cloud] invalid configuration: {message}");
+        message
+    })?;
+    let state = lifetrace_cloud::AppState::new(config.clone());
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let address = listener.local_addr().unwrap_or(config.bind_addr);
+    let storage = if config.database_url.is_some() {
+        "postgresql"
+    } else {
+        "in-memory"
+    };
     println!(
-        "[lifetrace-sync-server] listening on http://{address} (in-memory storage prototype)"
+        "[lifetrace-cloud] env={} storage={storage} listening on http://{address}",
+        config.environment
     );
 
     axum::serve(listener, app(state))
@@ -39,5 +49,5 @@ async fn shutdown_signal() {
         _ = ctrl_c => {},
         _ = terminate => {},
     }
-    println!("[lifetrace-sync-server] shutting down");
+    println!("[lifetrace-cloud] shutting down");
 }

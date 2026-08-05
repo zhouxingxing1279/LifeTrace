@@ -28,6 +28,9 @@ use lifetrace_contracts::time::UtcTimestamp;
 
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::sync::cursor_codec::CursorCodec;
+use crate::sync::page_token::PageTokenCodec;
+use crate::sync::payload_hash::{change_hash, empty_scope, scope_hash};
 
 /// Current stored server state of one entity.
 #[derive(Debug, Clone)]
@@ -48,7 +51,7 @@ pub struct StoredEntity {
 #[derive(Debug, Clone)]
 struct StoredChangeResult {
     result: PushChangeResultV1,
-    payload_json: Option<String>,
+    change_hash: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -86,14 +89,18 @@ pub struct Store {
     users: HashMap<UserId, UserState>,
     snapshot_counter: u64,
     config: Arc<Config>,
+    cursor_codec: Arc<CursorCodec>,
+    page_token_codec: Arc<PageTokenCodec>,
 }
 
 impl Store {
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: Config, cursor_codec: CursorCodec, page_token_codec: PageTokenCodec) -> Self {
         Self {
             users: HashMap::new(),
             snapshot_counter: 0,
             config: Arc::new(config),
+            cursor_codec: Arc::new(cursor_codec),
+            page_token_codec: Arc::new(page_token_codec),
         }
     }
 
@@ -123,11 +130,11 @@ impl Store {
                 app_id: AppId::new(AppId::DESKTOP),
                 client_version: "0.2.1".to_owned(),
             }],
-            maximum_push_batch_size: self.config.max_push_batch_size as u32,
-            maximum_pull_batch_size: self.config.max_pull_batch_size as u32,
-            maximum_request_bytes: self.config.max_request_bytes as u64,
-            maximum_snapshot_page_size: self.config.max_snapshot_page_size as u32,
-            maximum_atomic_group_size: self.config.max_atomic_group_size as u32,
+            maximum_push_batch_size: self.config.push_max_changes as u32,
+            maximum_pull_batch_size: self.config.pull_max_changes as u32,
+            maximum_request_bytes: self.config.request_body_limit_bytes as u64,
+            maximum_snapshot_page_size: self.config.snapshot_max_page_size as u32,
+            maximum_atomic_group_size: self.config.maximum_atomic_group_size as u32,
             tombstone_retention_days: 90,
             supported_entity_types: REGISTRY
                 .iter()
@@ -144,7 +151,7 @@ impl Store {
             .get(user_id)
             .map(|user| user.next_cursor)
             .unwrap_or(0);
-        Cursor::new(next_cursor.to_string())
+        self.cursor_codec.encode(user_id, &empty_scope(), next_cursor)
     }
 
     /// Current stored state for a key (test helper).
@@ -229,13 +236,13 @@ impl Store {
                 StatusCode::BAD_REQUEST,
             ));
         }
-        if request.changes.len() > self.config.max_push_batch_size {
+        if request.changes.len() > self.config.push_max_changes {
             return Err(ApiError::new(
                 ErrorCode::BatchTooLarge,
                 format!(
                     "push batch of {} exceeds maximum {}",
                     request.changes.len(),
-                    self.config.max_push_batch_size
+                    self.config.push_max_changes
                 ),
                 StatusCode::BAD_REQUEST,
             ));
@@ -245,7 +252,7 @@ impl Store {
                 ApiError::new(ErrorCode::InternalError, error.to_string(), StatusCode::INTERNAL_SERVER_ERROR)
             })?
             .len();
-        if wire_size > self.config.max_request_bytes {
+        if wire_size > self.config.request_body_limit_bytes {
             return Err(ApiError::new(
                 ErrorCode::PayloadTooLarge,
                 format!("request body of {wire_size} bytes exceeds maximum"),
@@ -260,12 +267,12 @@ impl Store {
         }
         for (group, size) in &group_sizes {
             if let Some(group_id) = group {
-                if *size > self.config.max_atomic_group_size {
+                if *size > self.config.maximum_atomic_group_size {
                     return Err(ApiError::new(
                         ErrorCode::BatchTooLarge,
                         format!(
                             "atomic group {group_id} has {size} changes (maximum {})",
-                            self.config.max_atomic_group_size
+                            self.config.maximum_atomic_group_size
                         ),
                         StatusCode::BAD_REQUEST,
                     ));
@@ -371,11 +378,8 @@ impl Store {
     ) -> Result<ApplyOutcome, ApiError> {
         let user = self.users.get(user_id);
         if let Some(stored) = user.and_then(|state| state.processed.get(&change.change_id)) {
-            let incoming_payload = change
-                .payload
-                .as_ref()
-                .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
-            return if stored.payload_json == incoming_payload {
+            let incoming_hash = change_hash(change);
+            return if stored.change_hash.as_deref() == Some(incoming_hash.as_str()) {
                 Ok(ApplyOutcome::Duplicate(stored.result.clone()))
             } else {
                 Ok(ApplyOutcome::Rejected {
@@ -632,16 +636,13 @@ impl Store {
                     server_deleted,
                     reason,
                 };
-                let payload_json = change
-                    .payload
-                    .as_ref()
-                    .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
+                let change_hash = change_hash(change);
                 let user = self.user_mut(user_id);
                 user.processed.insert(
                     change.change_id.clone(),
                     StoredChangeResult {
                         result: result.clone(),
-                        payload_json,
+                        change_hash: Some(change_hash),
                     },
                 );
                 result
@@ -657,16 +658,13 @@ impl Store {
                         cursor: latest_cursor,
                         server_modified_at: Self::now(),
                     };
-                    let payload_json = change
-                        .payload
-                        .as_ref()
-                        .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
+                    let change_hash = change_hash(change);
                     let user = self.user_mut(user_id);
                     user.processed.insert(
                         change.change_id.clone(),
                         StoredChangeResult {
                             result: result.clone(),
-                            payload_json,
+                            change_hash: Some(change_hash),
                         },
                     );
                     return result;
@@ -746,23 +744,22 @@ impl Store {
                     _ => unreachable!("unsupported operations are rejected earlier"),
                 }
 
+                let accepted_cursor = self.cursor_codec.encode(user_id, &empty_scope(), cursor);
                 let result = PushChangeResultV1::Accepted {
                     change_id: change.change_id.clone(),
                     entity_type: change.entity_type.clone(),
                     entity_id: change.entity_id.clone(),
                     server_version: ServerVersion::from_u64(server_version),
-                    cursor: Cursor::new(cursor.to_string()),
+                    cursor: accepted_cursor,
                     server_modified_at: now,
                 };
-                let payload_json = change
-                    .payload
-                    .as_ref()
-                    .map(|value| serde_json::to_string(&value.0).unwrap_or_default());
+                let change_hash = change_hash(change);
+                let user = self.user_mut(user_id);
                 user.processed.insert(
                     change.change_id.clone(),
                     StoredChangeResult {
                         result: result.clone(),
-                        payload_json,
+                        change_hash: Some(change_hash),
                     },
                 );
                 result
@@ -797,15 +794,10 @@ impl Store {
         request: &PullRequestV1,
     ) -> Result<PullResponseV1, ApiError> {
         let user = self.users.get(user_id);
+        let scope = scope_hash(&request.entity_types);
         let after = match &request.after_cursor {
             Some(cursor) => {
-                let value = cursor.as_str().parse::<u64>().map_err(|_| {
-                    ApiError::new(
-                        ErrorCode::CursorInvalid,
-                        "cursor is not valid",
-                        StatusCode::BAD_REQUEST,
-                    )
-                })?;
+                let value = self.cursor_codec.decode(cursor, user_id, &scope)?;
                 if value > user.map(|state| state.next_cursor).unwrap_or(0) {
                     return Err(ApiError::new(
                         ErrorCode::CursorInvalid,
@@ -830,7 +822,7 @@ impl Store {
             .as_ref()
             .map(|types| types.iter().map(|value| value.as_str().to_owned()).collect());
         let limit = (request.limit as usize)
-            .min(self.config.max_pull_batch_size)
+            .min(self.config.pull_max_changes)
             .max(1);
         let mut changes = Vec::new();
         let mut has_more = false;
@@ -861,11 +853,17 @@ impl Store {
             });
         }
 
-        let next_cursor = changes
+        let next_position = changes
             .last()
-            .map(|change| change.cursor.clone())
-            .or_else(|| request.after_cursor.clone())
-            .unwrap_or_else(|| Cursor::new("0".to_owned()));
+            .map(|change| {
+                change
+                    .cursor
+                    .as_str()
+                    .parse::<u64>()
+                    .unwrap_or(after)
+            })
+            .unwrap_or(after);
+        let next_cursor = self.cursor_codec.encode(user_id, &scope, next_position);
         Ok(PullResponseV1 {
             request_id: request.request_id.clone(),
             server_time: Self::now(),
@@ -957,16 +955,9 @@ impl Store {
             .expect("snapshot exists");
         let offset = match &request.page_token {
             None => 0,
-            Some(token) => token
-                .strip_prefix("page-")
-                .and_then(|value| value.parse::<usize>().ok())
-                .ok_or_else(|| {
-                    ApiError::new(
-                        ErrorCode::CursorInvalid,
-                        "invalid page token",
-                        StatusCode::BAD_REQUEST,
-                    )
-                })?,
+            Some(token) => self
+                .page_token_codec
+                .decode(token, user_id, &snapshot_id)?,
         };
         let page_size = request.page_size.max(1) as usize;
         let end = (offset + page_size).min(stored.items.len());
@@ -975,13 +966,13 @@ impl Store {
         let next_page_token = if completed {
             None
         } else {
-            Some(format!("page-{end}"))
+            Some(self.page_token_codec.encode(user_id, &snapshot_id, end))
         };
 
         Ok(SnapshotResponseV1 {
             request_id: request.request_id.clone(),
             snapshot_id,
-            snapshot_cursor: Cursor::new(view_cursor.to_string()),
+            snapshot_cursor: self.cursor_codec.encode(user_id, &empty_scope(), view_cursor),
             items,
             next_page_token,
             completed,

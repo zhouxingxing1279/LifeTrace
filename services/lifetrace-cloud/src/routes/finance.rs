@@ -6,7 +6,7 @@
 //! idempotency-safe and visible to future pull clients.
 
 use axum::extract::{Path, State};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::StatusCode;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::Utc;
@@ -20,7 +20,7 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::error::ApiError;
-use crate::routes::resolve_user;
+use crate::auth::AuthenticatedPrincipal;
 use crate::state::AppState;
 
 const ENTITY_TYPE: &str = "finance.transaction";
@@ -36,12 +36,11 @@ pub fn router() -> Router<AppState> {
 
 async fn list(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    principal: AuthenticatedPrincipal,
 ) -> Json<Value> {
-    let user = resolve_user(&headers);
     let store = state.store.read().expect("store lock poisoned");
     let items: Vec<Value> = store
-        .list_entities(&user, ENTITY_TYPE)
+        .list_entities(&principal.user_id, ENTITY_TYPE)
         .into_iter()
         .map(|snapshot| {
             json!({
@@ -56,13 +55,12 @@ async fn list(
 
 async fn get_one(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    principal: AuthenticatedPrincipal,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = resolve_user(&headers);
     let entity_id = EntityId::new(id);
     let store = state.store.read().expect("store lock poisoned");
-    match store.entity(&user, ENTITY_TYPE, entity_id.as_str()) {
+    match store.entity(&principal.user_id, ENTITY_TYPE, entity_id.as_str()) {
         Some(entity) if !entity.deleted => Ok(Json(json!({
             "id": entity.entity_id,
             "serverVersion": lifetrace_contracts::ServerVersion::from_u64(entity.server_version),
@@ -78,10 +76,9 @@ async fn get_one(
 
 async fn create(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    principal: AuthenticatedPrincipal,
     Json(payload): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = resolve_user(&headers);
     let entity_id = payload
         .get("meta")
         .and_then(|meta| meta.get("id"))
@@ -114,7 +111,7 @@ async fn create(
     };
 
     let mut store = state.store.write().expect("store lock poisoned");
-    let response = store.push(&user, &request)?;
+    let response = store.push(&principal.user_id, &request)?;
     match &response.results[0] {
         lifetrace_contracts::sync::v1::PushChangeResultV1::Accepted {
             server_version, ..
@@ -144,15 +141,14 @@ async fn create(
 
 async fn delete_one(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    principal: AuthenticatedPrincipal,
     Path(id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = resolve_user(&headers);
     let entity_id = EntityId::new(id);
     let base = {
         let store = state.store.read().expect("store lock poisoned");
         store
-            .current_version(&user, ENTITY_TYPE, &entity_id)
+            .current_version(&principal.user_id, ENTITY_TYPE, &entity_id)
             .ok_or_else(|| {
                 ApiError::new(
                     ErrorCode::InvalidRequest,
@@ -181,7 +177,7 @@ async fn delete_one(
     };
 
     let mut store = state.store.write().expect("store lock poisoned");
-    let response = store.push(&user, &request)?;
+    let response = store.push(&principal.user_id, &request)?;
     match &response.results[0] {
         lifetrace_contracts::sync::v1::PushChangeResultV1::Accepted { .. } => {
             Ok(Json(json!({ "deleted": true })))

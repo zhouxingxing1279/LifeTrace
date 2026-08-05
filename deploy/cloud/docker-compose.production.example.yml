@@ -1,0 +1,18 @@
+# 生产示例：EPIC-04 完成前不得公网部署。
+services:
+  lifetrace-cloud:
+    image: lifetrace-cloud:${TAG:-latest}
+    environment:
+      LIFETRACE_ENV: production
+      DATABASE_URL: ${DATABASE_URL}
+      CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
+      PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY}
+      DEV_AUTH_ENABLED: "false"
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
+    secrets:
+      - database_url
+    restart: unless-stopped
+
+secrets:
+  database_url:
+    environment: DATABASE_URL

@@ -1,0 +1,44 @@
+# 本地开发：PostgreSQL 固定版本、持久化卷、仅回环监听。
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lifetrace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifetrace_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-lifetrace}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - lifetrace_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lifetrace} -d ${POSTGRES_DB:-lifetrace}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  lifetrace-cloud:
+    profiles: ["cloud"]
+    build:
+      context: ..
+      dockerfile: services/lifetrace-cloud/Dockerfile
+    environment:
+      LIFETRACE_ENV: development
+      LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
+      DATABASE_URL: postgres://${POSTGRES_USER:-lifetrace}:${POSTGRES_PASSWORD:-lifetrace_dev_password}@postgres:5432/${POSTGRES_DB:-lifetrace}
+      DATABASE_MIN_CONNECTIONS: "2"
+      DATABASE_MAX_CONNECTIONS: "10"
+      MIGRATION_ON_STARTUP: "true"
+      DEV_AUTH_ENABLED: "true"
+      DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-dev-token}
+      DEV_AUTH_USER_ID: ${DEV_AUTH_USER_ID:-dev-user}
+      DEV_AUTH_DEVICE_ID: ${DEV_AUTH_DEVICE_ID:-dev-device}
+      CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY:-dev-cursor-key}
+      PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY:-dev-page-token-key}
+    ports:
+      - "127.0.0.1:8787:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  lifetrace_pgdata:

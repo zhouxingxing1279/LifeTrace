@@ -1,4 +1,4 @@
-//! HTTP integration tests for the EPIC-03 sync server.
+﻿//! HTTP integration tests for the EPIC-03 sync server.
 //!
 //! These mirror the protocol semantics validated by the reference testkit
 //! (`lifetrace-contracts`), but through the real Axum HTTP layer.
@@ -10,12 +10,12 @@ use lifetrace_contracts::domain::finance::Transaction;
 use lifetrace_contracts::domain::{TransactionStatus, TransactionType};
 use lifetrace_contracts::time::{LocalDate, UtcTimestamp};
 use lifetrace_contracts::{CurrencyCode, EntityMeta, EntityId, UserId};
-use lifetrace_sync_server::{app, AppState, Config};
+use lifetrace_cloud::{app, AppState, Config};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
-const USER_A: &str = "user-a";
-const USER_B: &str = "user-b";
+const TOKEN_A: &str = "token-a";
+const TOKEN_B: &str = "token-b";
 
 fn stamp() -> UtcTimestamp {
     "2026-08-04T15:30:00Z".parse().unwrap()
@@ -105,7 +105,7 @@ async fn send(
     app: Router,
     method: Method,
     uri: &str,
-    user: &str,
+    token: &str,
     body: Value,
 ) -> (StatusCode, Value) {
     let response = app
@@ -114,7 +114,7 @@ async fn send(
                 .method(method)
                 .uri(uri)
                 .header("content-type", "application/json")
-                .header("x-lifetrace-user", user)
+                .header("authorization", format!("Bearer {token}"))
                 .body(Body::from(body.to_string()))
                 .unwrap(),
         )
@@ -127,12 +127,20 @@ async fn send(
 }
 
 fn test_app() -> Router {
-    app(AppState::new(Config::default()))
+    test_app_for(TOKEN_A, "user-a", "device-a")
+}
+
+fn test_app_for(token: &str, user: &str, device: &str) -> Router {
+    let mut config = Config::default();
+    config.dev_auth_token = token.to_owned();
+    config.dev_auth_user_id = user.to_owned();
+    config.dev_auth_device_id = device.to_owned();
+    app(AppState::new(config))
 }
 
 #[tokio::test]
-async fn healthz_ok() {
-    let (status, body) = send(test_app(), Method::GET, "/healthz", USER_A, Value::Null).await;
+async fn health_live_ok() {
+    let (status, body) = send(test_app(), Method::GET, "/health/live", TOKEN_A, Value::Null).await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["status"], "ok");
 }
@@ -143,7 +151,7 @@ async fn capabilities_ok() {
         test_app(),
         Method::GET,
         "/api/v1/sync/capabilities",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
@@ -162,19 +170,20 @@ async fn push_create_pull_and_delete() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
     )
     .await;
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body["results"][0]["status"], "accepted");
     assert_eq!(body["results"][0]["serverVersion"], "1");
+    let accepted_cursor = body["results"][0]["cursor"].as_str().unwrap().to_owned();
 
     let (status, body) = send(
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-2",
             "client": client(),
@@ -193,7 +202,7 @@ async fn push_create_pull_and_delete() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c2", "tx-1", 0, 1, "delete", None)]),
     )
     .await;
@@ -204,11 +213,11 @@ async fn push_create_pull_and_delete() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-3",
             "client": client(),
-            "afterCursor": "1",
+            "afterCursor": accepted_cursor,
             "limit": 10,
             "entityTypes": null
         }),
@@ -226,7 +235,7 @@ async fn base_version_conflict() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
     )
     .await;
@@ -234,7 +243,7 @@ async fn base_version_conflict() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c2", "tx-1", 200, 1, "upsert", None)]),
     )
     .await;
@@ -243,7 +252,7 @@ async fn base_version_conflict() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c3", "tx-1", 300, 1, "upsert", None)]),
     )
     .await;
@@ -263,7 +272,7 @@ async fn duplicate_change_id_is_idempotent() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         request.clone(),
     )
     .await;
@@ -271,7 +280,7 @@ async fn duplicate_change_id_is_idempotent() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         request,
     )
     .await;
@@ -287,7 +296,7 @@ async fn change_id_reuse_with_different_payload_is_rejected() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
     )
     .await;
@@ -295,7 +304,7 @@ async fn change_id_reuse_with_different_payload_is_rejected() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-2", 200, 0, "upsert", None)]),
     )
     .await;
@@ -313,7 +322,7 @@ async fn unknown_entity_type_is_rejected() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![unknown]),
     )
     .await;
@@ -331,7 +340,7 @@ async fn unsupported_protocol_returns_426() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         request,
     )
     .await;
@@ -346,7 +355,7 @@ async fn atomic_group_is_all_or_nothing() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
     )
     .await;
@@ -360,7 +369,7 @@ async fn atomic_group_is_all_or_nothing() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         group_request,
     )
     .await;
@@ -375,11 +384,11 @@ async fn atomic_group_is_all_or_nothing() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-9",
             "client": client(),
-            "afterCursor": "0",
+            "afterCursor": null,
             "limit": 10,
             "entityTypes": null
         }),
@@ -397,7 +406,7 @@ async fn pull_pagination_has_no_gaps_or_duplicates() {
             app.clone(),
             Method::POST,
             "/api/v1/sync/push",
-            USER_A,
+            TOKEN_A,
             push_request(vec![change(
                 change_id,
                 &format!("tx-{index}"),
@@ -414,7 +423,7 @@ async fn pull_pagination_has_no_gaps_or_duplicates() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-p1",
             "client": client(),
@@ -433,7 +442,7 @@ async fn pull_pagination_has_no_gaps_or_duplicates() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-p2",
             "client": client(),
@@ -463,7 +472,7 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
             app.clone(),
             Method::POST,
             "/api/v1/sync/push",
-            USER_A,
+            TOKEN_A,
             push_request(vec![change(
                 change_id,
                 &format!("tx-{index}"),
@@ -480,7 +489,7 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/snapshot",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-s1",
             "client": client(),
@@ -503,7 +512,7 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c3", "tx-9", 500, 0, "upsert", None)]),
     )
     .await;
@@ -512,7 +521,7 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/snapshot",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-s2",
             "client": client(),
@@ -533,7 +542,7 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-s3",
             "client": client(),
@@ -551,17 +560,27 @@ async fn snapshot_is_consistent_and_follow_up_pull_has_no_gaps() {
 #[tokio::test]
 async fn expired_cursor_requires_snapshot() {
     let mut config = Config::default();
+    config.dev_auth_token = TOKEN_A.to_owned();
     config.retention_entries = 1;
     let app = app(AppState::new(config));
-    for (index, change_id) in ["c1", "c2", "c3"].iter().enumerate() {
+    let (_, first) = send(
+        app.clone(),
+        Method::POST,
+        "/api/v1/sync/push",
+        TOKEN_A,
+        push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
+    )
+    .await;
+    let old_cursor = first["results"][0]["cursor"].as_str().unwrap().to_owned();
+    for (index, change_id) in ["c2", "c3"].iter().enumerate() {
         send(
             app.clone(),
             Method::POST,
             "/api/v1/sync/push",
-            USER_A,
+            TOKEN_A,
             push_request(vec![change(
                 change_id,
-                &format!("tx-{index}"),
+                &format!("tx-{}", index + 2),
                 100,
                 0,
                 "upsert",
@@ -574,11 +593,11 @@ async fn expired_cursor_requires_snapshot() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-e1",
             "client": client(),
-            "afterCursor": "0",
+            "afterCursor": old_cursor,
             "limit": 10,
             "entityTypes": null
         }),
@@ -590,21 +609,22 @@ async fn expired_cursor_requires_snapshot() {
 
 #[tokio::test]
 async fn users_are_isolated() {
-    let app = test_app();
+    let app_a = test_app_for(TOKEN_A, "user-a", "device-a");
+    let app_b = test_app_for(TOKEN_B, "user-b", "device-b");
     send(
-        app.clone(),
+        app_a.clone(),
         Method::POST,
         "/api/v1/sync/push",
-        USER_A,
+        TOKEN_A,
         push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
     )
     .await;
 
     let (_, pull) = send(
-        app.clone(),
+        app_b.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_B,
+        TOKEN_B,
         json!({
             "requestId": "req-i1",
             "client": client(),
@@ -618,22 +638,43 @@ async fn users_are_isolated() {
 }
 
 #[tokio::test]
-async fn device_registration_placeholder() {
+async fn sync_endpoints_require_auth() {
+    let app = test_app();
+    let (status, body) = send(
+        app.clone(),
+        Method::POST,
+        "/api/v1/sync/push",
+        "",
+        push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+    assert_eq!(body["code"], "LIFETRACE_AUTH_REQUIRED");
+
+    let (status, _) = send(
+        app.clone(),
+        Method::POST,
+        "/api/v1/sync/push",
+        "wrong-token",
+        push_request(vec![change("c1", "tx-1", 100, 0, "upsert", None)]),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn meta_version_endpoint() {
     let (status, body) = send(
         test_app(),
-        Method::POST,
-        "/api/v1/devices/register",
-        USER_A,
-        json!({
-            "appId": "lifetrace-desktop",
-            "platform": "windows",
-            "deviceName": "My PC"
-        }),
+        Method::GET,
+        "/api/v1/meta/version",
+        TOKEN_A,
+        Value::Null,
     )
     .await;
     assert_eq!(status, StatusCode::OK);
-    assert!(body["deviceId"].as_str().is_some());
-    assert_eq!(body["status"], "registered");
+    assert_eq!(body["protocolVersion"], 1);
+    assert_eq!(body["schemaVersion"], 1);
 }
 
 #[tokio::test]
@@ -645,7 +686,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::POST,
         "/api/v1/finance/transactions",
-        USER_A,
+        TOKEN_A,
         transaction_payload("tx-crud-1", 888),
     )
     .await;
@@ -657,7 +698,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::GET,
         "/api/v1/finance/transactions",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
@@ -671,7 +712,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::POST,
         "/api/v1/sync/pull",
-        USER_A,
+        TOKEN_A,
         json!({
             "requestId": "req-crud-1",
             "client": client(),
@@ -688,7 +729,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::GET,
         "/api/v1/finance/transactions/tx-crud-1",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
@@ -700,7 +741,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::DELETE,
         "/api/v1/finance/transactions/tx-crud-1",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
@@ -712,7 +753,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::GET,
         "/api/v1/finance/transactions/tx-crud-1",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
@@ -721,7 +762,7 @@ async fn finance_crud_create_list_get_delete() {
         app.clone(),
         Method::GET,
         "/api/v1/finance/transactions",
-        USER_A,
+        TOKEN_A,
         Value::Null,
     )
     .await;
