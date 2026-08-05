@@ -1,0 +1,25 @@
+name: EPIC-04 Source Export
+
+on:
+  push:
+    branches:
+      - agent/epic-04-auth-complete
+    paths:
+      - '.github/workflows/epic04-source-export.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive source
+        run: tar --exclude=.git -czf lifetrace-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifetrace-epic04-source
+          path: lifetrace-source.tar.gz
+          retention-days: 1
