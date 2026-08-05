@@ -8,8 +8,8 @@ pub struct Config {
     /// `development` or `production`.
     pub environment: String,
     pub bind_addr: SocketAddr,
-    /// PostgreSQL URL. Absent in the offline in-memory prototype unless
-    /// `LIFETRACE_STORAGE=memory` is set explicitly; required in production.
+    /// PostgreSQL URL. The executable cloud runtime requires this value;
+    /// `Config::default()` without a URL is reserved for in-process tests.
     pub database_url: Option<String>,
     pub database_min_connections: u32,
     pub database_max_connections: u32,
@@ -34,7 +34,7 @@ pub struct Config {
     pub maintenance_interval_seconds: u64,
     pub graceful_shutdown_seconds: u64,
 
-    /// Change-log retention in entries (in-memory store).
+    /// Maximum retained change-log entries per user.
     pub retention_entries: usize,
 }
 
@@ -78,9 +78,16 @@ impl Config {
             }
         }
         config.database_url = env_var("DATABASE_URL");
-        config.database_min_connections = env_usize("DATABASE_MIN_CONNECTIONS", config.database_min_connections as usize) as u32;
-        config.database_max_connections = env_usize("DATABASE_MAX_CONNECTIONS", config.database_max_connections as usize) as u32;
-        config.migration_on_startup = env_bool("MIGRATION_ON_STARTUP", config.migration_on_startup);
+        config.database_min_connections = env_usize(
+            "DATABASE_MIN_CONNECTIONS",
+            config.database_min_connections as usize,
+        ) as u32;
+        config.database_max_connections = env_usize(
+            "DATABASE_MAX_CONNECTIONS",
+            config.database_max_connections as usize,
+        ) as u32;
+        config.migration_on_startup =
+            env_bool("MIGRATION_ON_STARTUP", config.migration_on_startup);
         config.request_body_limit_bytes =
             env_usize("REQUEST_BODY_LIMIT_BYTES", config.request_body_limit_bytes);
         config.push_max_changes = env_usize("PUSH_MAX_CHANGES", config.push_max_changes);
@@ -113,7 +120,8 @@ impl Config {
             "GRACEFUL_SHUTDOWN_SECONDS",
             config.graceful_shutdown_seconds as usize,
         ) as u64;
-        config.retention_entries = env_usize("LIFETRACE_RETENTION_ENTRIES", config.retention_entries);
+        config.retention_entries =
+            env_usize("LIFETRACE_RETENTION_ENTRIES", config.retention_entries);
         config
     }
 
@@ -121,20 +129,30 @@ impl Config {
         self.environment == "production"
     }
 
-    /// Startup validation (hard rules from plan section 7/8).
+    /// Startup validation. The standalone cloud runtime never falls back to
+    /// in-memory persistence; the memory adapter is available only to tests
+    /// that construct `AppState` directly without calling this method.
     pub fn validate(&self) -> Result<(), String> {
+        if self.database_url.is_none() {
+            return Err("cloud runtime requires DATABASE_URL".to_owned());
+        }
+        if self.database_min_connections > self.database_max_connections {
+            return Err(
+                "DATABASE_MIN_CONNECTIONS must not exceed DATABASE_MAX_CONNECTIONS".to_owned(),
+            );
+        }
+        if self.database_max_connections == 0 {
+            return Err("DATABASE_MAX_CONNECTIONS must be greater than zero".to_owned());
+        }
         if self.is_production() {
             if self.dev_auth_enabled {
                 return Err("production must not enable DEV_AUTH".to_owned());
             }
-            if self.database_url.is_none() {
-                return Err("production requires DATABASE_URL".to_owned());
-            }
             if self.cursor_signing_key.is_none() || self.page_token_signing_key.is_none() {
-                return Err("production requires CURSOR_SIGNING_KEY and PAGE_TOKEN_SIGNING_KEY".to_owned());
+                return Err(
+                    "production requires CURSOR_SIGNING_KEY and PAGE_TOKEN_SIGNING_KEY".to_owned(),
+                );
             }
-        } else if self.database_url.is_none() && env_string("LIFETRACE_STORAGE", "memory") != "memory" {
-            return Err("DATABASE_URL is required unless LIFETRACE_STORAGE=memory".to_owned());
         }
         Ok(())
     }
@@ -156,6 +174,38 @@ fn env_usize(name: &str, default: usize) -> usize {
 
 fn env_bool(name: &str, default: bool) -> bool {
     env_var(name)
-        .map(|value| matches!(value.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
         .unwrap_or(default)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cloud_runtime_requires_postgres() {
+        let error = Config::default().validate().unwrap_err();
+        assert!(error.contains("DATABASE_URL"));
+    }
+
+    #[test]
+    fn development_config_accepts_postgres() {
+        let mut config = Config::default();
+        config.database_url = Some("postgres://user:password@localhost/lifetrace".to_owned());
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn invalid_pool_bounds_are_rejected() {
+        let mut config = Config::default();
+        config.database_url = Some("postgres://user:password@localhost/lifetrace".to_owned());
+        config.database_min_connections = 11;
+        config.database_max_connections = 10;
+        assert!(config.validate().is_err());
+    }
 }
