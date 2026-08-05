@@ -1,0 +1,33 @@
+name: EPIC-04 Artifact Cleanup
+
+on:
+  push:
+    branches:
+      - agent/epic-04-auth-complete
+    paths:
+      - '.github/workflows/epic04-artifact-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Remove build artifacts and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm -r --ignore-unmatch services/lifetrace-cloud/target
+          if ! grep -qxF '/services/*/target/' .gitignore; then
+            printf '\n# Rust service build outputs\n/services/*/target/\n' >> .gitignore
+          fi
+          rm -f .github/workflows/epic04-artifact-cleanup.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'chore: remove committed Rust build artifacts'
+          git push origin HEAD:agent/epic-04-auth-complete
