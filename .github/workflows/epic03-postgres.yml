@@ -1,0 +1,67 @@
+name: EPIC-03 PostgreSQL
+
+on:
+  push:
+    branches:
+      - main
+      - agent/epic-03-postgres-runtime
+  pull_request:
+    paths:
+      - "services/lifetrace-cloud/**"
+      - "crates/lifetrace-contracts/**"
+      - "deploy/cloud/**"
+      - "scripts/cloud/**"
+      - ".github/workflows/epic03-postgres.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lifetrace
+          POSTGRES_PASSWORD: lifetrace_test_password
+          POSTGRES_DB: lifetrace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lifetrace -d lifetrace_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      TEST_DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.85.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            services/lifetrace-cloud
+            crates/lifetrace-contracts
+      - name: Format
+        run: cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml -- --check
+      - name: Contract tests
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+      - name: Cloud tests
+        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml
+      - name: Clippy
+        run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
+      - name: Docker build
+        run: docker build -f services/lifetrace-cloud/Dockerfile .
+      - name: Upload resolved lockfile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lifetrace-cloud-cargo-lock
+          path: services/lifetrace-cloud/Cargo.lock
+          if-no-files-found: error
