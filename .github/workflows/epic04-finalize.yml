@@ -1,5 +1,5 @@
 name: EPIC-04 Final Validate and Publish
-# finalize-revision: 2
+# finalize-revision: 3
 
 on:
   push:
@@ -49,6 +49,8 @@ jobs:
           git apply /tmp/epic04.patch
           python .epic04/apply-fix.py
           python .epic04/apply-contract-fix.py
+          python .epic04/apply-clippy-fix.py
+          python .epic04/apply-cloud-clippy-fix.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -109,6 +111,8 @@ jobs:
           git apply epic04.patch
           python .epic04/apply-fix.py
           python .epic04/apply-contract-fix.py
+          python .epic04/apply-clippy-fix.py
+          python .epic04/apply-cloud-clippy-fix.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -141,6 +145,8 @@ jobs:
           git apply /tmp/epic04.patch
           python .epic04/apply-fix.py
           python .epic04/apply-contract-fix.py
+          python .epic04/apply-clippy-fix.py
+          python .epic04/apply-cloud-clippy-fix.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
