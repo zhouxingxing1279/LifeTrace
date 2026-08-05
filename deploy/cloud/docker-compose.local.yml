@@ -7,7 +7,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifetrace_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-lifetrace}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
     volumes:
       - lifetrace_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -35,7 +35,7 @@ services:
       CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY:-dev-cursor-key}
       PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY:-dev-page-token-key}
     ports:
-      - "127.0.0.1:8787:8787"
+      - "127.0.0.1:${CLOUD_HOST_PORT:-8787}:8787"
     depends_on:
       postgres:
         condition: service_healthy
