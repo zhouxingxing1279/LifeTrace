@@ -1,4 +1,5 @@
 name: EPIC-04 Handler Diagnostic
+# diagnostic-revision: 2
 
 on:
   push:
@@ -9,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   diagnose:
@@ -37,5 +38,21 @@ jobs:
           text = text.replace('pub async fn capabilities(', '#[axum::debug_handler]\npub async fn capabilities(', 1)
           path.write_text(text)
           PY
-      - name: Compile diagnostic
-        run: cargo check --manifest-path services/lifetrace-cloud/Cargo.toml
+      - name: Compile and capture diagnostic
+        shell: bash
+        run: |
+          set +e
+          cargo check --manifest-path services/lifetrace-cloud/Cargo.toml > epic04-handler-diagnostic.log 2>&1
+          status=$?
+          echo "exit_status=$status" >> epic04-handler-diagnostic.log
+          git reset --hard HEAD
+          git clean -fd
+          cp /tmp/epic04.patch /tmp/ignored.patch
+          printf '%s\n' "$(cat epic04-handler-diagnostic.log 2>/dev/null || true)" > /tmp/diagnostic.log
+          cp /tmp/diagnostic.log epic04-handler-diagnostic.log
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add epic04-handler-diagnostic.log
+          git commit -m 'ci: capture EPIC-04 handler diagnostic'
+          git push origin HEAD:agent/epic-04-auth-complete
+          exit 0
