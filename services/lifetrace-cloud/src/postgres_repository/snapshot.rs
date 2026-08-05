@@ -36,9 +36,11 @@ impl PostgresRepository {
             let expires_at = Self::now()
                 + Duration::seconds(self.config.snapshot_ttl_seconds.min(i64::MAX as u64) as i64);
             sqlx::query(
-                "INSERT INTO sync_snapshots (\
-                    id, user_id, scope_hash, snapshot_cursor, status, created_at, expires_at\
-                 ) VALUES ($1, $2, $3, $4, 'building', now(), $5)",
+                r#"
+                INSERT INTO sync_snapshots (
+                    id, user_id, scope_hash, snapshot_cursor, status, created_at, expires_at
+                ) VALUES ($1, $2, $3, $4, 'building', now(), $5)
+                "#,
             )
             .bind(snapshot_uuid)
             .bind(user_uuid)
@@ -56,13 +58,19 @@ impl PostgresRepository {
                 .unwrap_or_default();
             let inserted = if request.entity_types.is_some() {
                 sqlx::query(
-                    "INSERT INTO sync_snapshot_items (\
-                        snapshot_id, entity_type, entity_id, entity_schema_version,\
-                        server_version, payload, payload_hash, server_modified_at\
-                     ) SELECT $1, entity_type, entity_id, entity_schema_version, server_version,\
-                              payload, payload_hash, server_modified_at\
-                       FROM sync_entities\
-                      WHERE user_id = $2 AND is_deleted = FALSE AND entity_type = ANY($3)",
+                    r#"
+                    INSERT INTO sync_snapshot_items (
+                        snapshot_id, entity_type, entity_id, entity_schema_version,
+                        server_version, payload, payload_hash, server_modified_at
+                    )
+                    SELECT
+                        $1, entity_type, entity_id, entity_schema_version,
+                        server_version, payload, payload_hash, server_modified_at
+                    FROM sync_entities
+                    WHERE user_id = $2
+                      AND is_deleted = FALSE
+                      AND entity_type = ANY($3)
+                    "#,
                 )
                 .bind(snapshot_uuid)
                 .bind(user_uuid)
@@ -73,13 +81,18 @@ impl PostgresRepository {
                 .rows_affected()
             } else {
                 sqlx::query(
-                    "INSERT INTO sync_snapshot_items (\
-                        snapshot_id, entity_type, entity_id, entity_schema_version,\
-                        server_version, payload, payload_hash, server_modified_at\
-                     ) SELECT $1, entity_type, entity_id, entity_schema_version, server_version,\
-                              payload, payload_hash, server_modified_at\
-                       FROM sync_entities\
-                      WHERE user_id = $2 AND is_deleted = FALSE",
+                    r#"
+                    INSERT INTO sync_snapshot_items (
+                        snapshot_id, entity_type, entity_id, entity_schema_version,
+                        server_version, payload, payload_hash, server_modified_at
+                    )
+                    SELECT
+                        $1, entity_type, entity_id, entity_schema_version,
+                        server_version, payload, payload_hash, server_modified_at
+                    FROM sync_entities
+                    WHERE user_id = $2
+                      AND is_deleted = FALSE
+                    "#,
                 )
                 .bind(snapshot_uuid)
                 .bind(user_uuid)
@@ -89,8 +102,11 @@ impl PostgresRepository {
                 .rows_affected()
             };
             sqlx::query(
-                "UPDATE sync_snapshots SET status = 'ready', item_count = $2, completed_at = now() \
-                 WHERE id = $1",
+                r#"
+                UPDATE sync_snapshots
+                SET status = 'ready', item_count = $2, completed_at = now()
+                WHERE id = $1
+                "#,
             )
             .bind(snapshot_uuid)
             .bind(inserted as i64)
@@ -101,8 +117,11 @@ impl PostgresRepository {
         }
 
         let row = sqlx::query(
-            "SELECT snapshot_cursor, status, expires_at FROM sync_snapshots \
-             WHERE id = $1 AND user_id = $2",
+            r#"
+            SELECT snapshot_cursor, status, expires_at
+            FROM sync_snapshots
+            WHERE id = $1 AND user_id = $2
+            "#,
         )
         .bind(snapshot_uuid)
         .bind(user_uuid)
@@ -138,9 +157,13 @@ impl PostgresRepository {
             .max(1)
             .min(self.config.snapshot_max_page_size);
         let rows = sqlx::query(
-            "SELECT entity_type, entity_id, server_version, payload \
-             FROM sync_snapshot_items WHERE snapshot_id = $1 \
-             ORDER BY entity_type, entity_id OFFSET $2 LIMIT $3",
+            r#"
+            SELECT entity_type, entity_id, server_version, payload
+            FROM sync_snapshot_items
+            WHERE snapshot_id = $1
+            ORDER BY entity_type, entity_id
+            OFFSET $2 LIMIT $3
+            "#,
         )
         .bind(snapshot_uuid)
         .bind(offset as i64)
