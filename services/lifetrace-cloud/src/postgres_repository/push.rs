@@ -1,4 +1,3 @@
-#[allow(unused_imports)]
 mod process;
 
 use std::collections::HashMap;
@@ -23,14 +22,20 @@ impl PostgresRepository {
             return Ok(());
         }
         sqlx::query(
-            "DELETE FROM sync_change_log \
-             WHERE user_id = $1 AND cursor < COALESCE((\
-                 SELECT cursor FROM sync_change_log \
-                 WHERE user_id = $1 ORDER BY cursor DESC OFFSET $2 LIMIT 1\
-             ), 0)",
+            r#"
+            DELETE FROM sync_change_log
+            WHERE user_id = $1
+              AND cursor < COALESCE((
+                  SELECT cursor
+                  FROM sync_change_log
+                  WHERE user_id = $1
+                  ORDER BY cursor DESC
+                  OFFSET $2 LIMIT 1
+              ), 0)
+            "#,
         )
         .bind(user_uuid)
-        .bind(self.config.retention_entries as i64)
+        .bind(self.config.retention_entries.saturating_sub(1) as i64)
         .execute(&mut **tx)
         .await
         .map_err(Self::db_error)?;
