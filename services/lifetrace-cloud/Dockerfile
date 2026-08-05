@@ -1,21 +1,20 @@
-# 多阶段构建：runtime 不含 Rust 工具链，非 root 运行。
-FROM rust:1.85-slim AS builder
+# Multi-stage build. The runtime image contains no Rust toolchain and runs as
+# an unprivileged user.
+FROM rust:1.88-slim AS builder
 WORKDIR /build
-COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY services/lifetrace-cloud ./services/lifetrace-cloud
-RUN cargo build --release --manifest-path services/lifetrace-cloud/Cargo.toml
+RUN cargo build --release --manifest-path services/lifetrace-cloud/Cargo.toml --bin lifetrace-cloud
 
 FROM debian:bookworm-slim
 RUN useradd --create-home --uid 10001 lifetrace \
     && apt-get update \
-    && apt-get install -y --no-install-recommends ca-certificates \
+    && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /build/services/lifetrace-cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
-COPY services/lifetrace-cloud/migrations /app/migrations
 USER lifetrace
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD ["/app/lifetrace-cloud-healthcheck"] || true
+    CMD curl --fail --silent http://127.0.0.1:8787/health/ready || exit 1
 ENTRYPOINT ["/app/lifetrace-cloud"]

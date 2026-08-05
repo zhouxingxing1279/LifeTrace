@@ -8,13 +8,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         message
     })?;
     let state = lifetrace_cloud::AppState::new(config.clone());
+    state.initialize().await?;
 
     let listener = tokio::net::TcpListener::bind(config.bind_addr).await?;
     let address = listener.local_addr().unwrap_or(config.bind_addr);
-    let storage = if config.database_url.is_some() {
+    let storage = if state.database_enabled {
         "postgresql"
     } else {
-        "in-memory"
+        "memory-test-adapter"
     };
     println!(
         "[lifetrace-cloud] env={} storage={storage} listening on http://{address}",

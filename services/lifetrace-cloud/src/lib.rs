@@ -1,20 +1,13 @@
 //! LifeTrace EPIC-03 sync server.
 //!
-//! An Axum prototype implementing the sync protocol v1 contract defined in
-//! `lifetrace-contracts`:
-//!
-//! - `GET  /api/v1/sync/capabilities`
-//! - `POST /api/v1/sync/push`
-//! - `POST /api/v1/sync/pull`
-//! - `POST /api/v1/sync/snapshot`
-//!
-//! Storage is currently an in-memory per-user state machine (the same
-//! semantics validated by the reference testkit), behind a simple store
-//! module so a PostgreSQL-backed implementation can replace it later.
+//! The production path is backed by PostgreSQL through SQLx. The protocol
+//! surface remains the v1 contract defined in `lifetrace-contracts`.
 
 pub mod auth;
 pub mod config;
 pub mod error;
+pub mod postgres_repository;
+pub mod repository;
 pub mod routes;
 pub mod state;
 pub mod store;
@@ -22,7 +15,7 @@ pub mod sync;
 
 pub use config::Config;
 pub use error::ApiError;
-pub use state::AppState;
+pub use state::{AppState, StartupError};
 
 use axum::Router;
 use tower_http::cors::CorsLayer;
