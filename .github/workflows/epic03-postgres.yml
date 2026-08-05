@@ -36,6 +36,8 @@ jobs:
     env:
       DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
       TEST_DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      AUTH_PASSWORD_PEPPER: epic04-ci-password-pepper
+      AUTH_TOKEN_HASH_PEPPER: epic04-ci-token-pepper
       RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
@@ -53,7 +55,7 @@ jobs:
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud tests
-        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml
+        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
       - name: Clippy production targets
         run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --lib --bins -- -D warnings
       - name: Docker build
