@@ -17,8 +17,6 @@ export default function App() {
   const [error, setError] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
   const [privacy, setPrivacy] = useState(false);
-  const [updateReady, setUpdateReady] = useState(false);
-  const [waitingWorker, setWaitingWorker] = useState<ServiceWorker | null>(null);
   const storeRef = useRef<CloudDataStore | null>(null);
 
   useEffect(() => {
@@ -41,7 +39,7 @@ export default function App() {
     auth.session()
       .then((value) => { if (active) setSession(value); })
       .catch((cause: unknown) => {
-        if (active && cause instanceof Error && !/401|unauth|session/i.test(cause.message)) setError(cause.message);
+        if (active && cause instanceof Error && !/401|unauth|authentication|session/i.test(cause.message)) setError(cause.message);
       })
       .finally(() => { if (active) setAuthLoading(false); });
     return () => { active = false; };
@@ -58,25 +56,6 @@ export default function App() {
     setLoading(true); setError("");
     store.load().then(setState).catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "无法加载云端数据")).finally(() => setLoading(false));
   }, [session?.user.id, session?.session.deviceId]);
-
-  useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    void navigator.serviceWorker.register("/sw.js").then((registration) => {
-      if (registration.waiting) { setWaitingWorker(registration.waiting); setUpdateReady(true); }
-      registration.addEventListener("updatefound", () => {
-        const worker = registration.installing;
-        worker?.addEventListener("statechange", () => {
-          if (worker.state === "installed" && navigator.serviceWorker.controller) {
-            setWaitingWorker(registration.waiting ?? worker);
-            setUpdateReady(true);
-          }
-        });
-      });
-    });
-    const controllerChanged = () => window.location.reload();
-    navigator.serviceWorker.addEventListener("controllerchange", controllerChanged);
-    return () => navigator.serviceWorker.removeEventListener("controllerchange", controllerChanged);
-  }, []);
 
   const refresh = useCallback(async () => {
     if (!storeRef.current || !navigator.onLine) return;
@@ -124,7 +103,6 @@ export default function App() {
       {!online && <Notice kind="error">网页端需要联网使用。当前页面数据仅存在于内存中，所有写操作均已禁用。</Notice>}
       {error && <Notice kind="error">{error}</Notice>}
       {state.conflicts.length > 0 && <Notice kind="warning">检测到跨设备版本冲突，已经显示服务器最新版本，请检查后重新提交。</Notice>}
-      {updateReady && <Notice kind="neutral">发现新版本。<button className="link-button" onClick={() => { waitingWorker?.postMessage({ type: "SKIP_WAITING" }); if (!waitingWorker) window.location.reload(); }}>立即更新</button></Notice>}
       <section className="content-area">
         {route === "/" && <Dashboard state={state} privacy={privacy} />}
         {route === "/search" && <SearchPage state={state} />}

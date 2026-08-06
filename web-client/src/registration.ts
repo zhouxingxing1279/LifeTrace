@@ -1,4 +1,5 @@
 import { REQUESTED_SCOPES, type FetchLike, type WebSession } from "./cloud/types";
+import { API_BASE } from "./cloud/base";
 
 export interface AuthCapabilities {
   registrationMode: "open" | "invite" | "disabled" | string;
@@ -34,14 +35,14 @@ function errorMessage(payload: unknown, fallback: string): string {
 }
 
 export class RegistrationApi {
-  constructor(private readonly fetcher: FetchLike = fetch) {}
+  constructor(private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
 
   private async request<T>(url: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
     let response: Response;
-    try { response = await this.fetcher(url, { ...init, credentials: "include", headers }); }
-    catch { throw new Error("无法连接 LifeTrace 云端，请检查网络后重试"); }
+    try { response = await this.fetcher(`${API_BASE}${url}`, { ...init, credentials: "include", headers }); }
+    catch (cause) { throw new Error(`无法连接 LifeTrace 云端，请检查网络后重试（底层:${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}）`); }
     const payload = await readJson(response);
     if (!response.ok) throw new Error(errorMessage(payload, `请求失败 (${response.status})`));
     return payload as T;

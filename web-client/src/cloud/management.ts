@@ -1,4 +1,5 @@
 import type { DeviceInstallation, FetchLike, ManagedSession } from "./types";
+import { API_BASE } from "./base";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
@@ -17,7 +18,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export class WebManagementApi {
-  constructor(private readonly fetcher: FetchLike = fetch) {}
+  constructor(private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
 
   private async request<T>(url: string, init: RequestInit = {}, csrfToken?: string): Promise<T> {
     const headers = new Headers(init.headers);
@@ -25,7 +26,7 @@ export class WebManagementApi {
     if (csrfToken) headers.set("x-csrf-token", csrfToken);
     let response: Response;
     try {
-      response = await this.fetcher(url, { ...init, credentials: "include", headers });
+      response = await this.fetcher(`${API_BASE}${url}`, { ...init, credentials: "include", headers });
     } catch {
       throw new Error("无法连接 LifeTrace 云端，请检查网络后重试");
     }
