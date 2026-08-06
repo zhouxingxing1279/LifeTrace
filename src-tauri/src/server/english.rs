@@ -143,6 +143,18 @@ fn body_json(body: Body) -> impl std::future::Future<Output = Result<Value, Stri
 pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
     // 业务实体表已由版本化 Migration 创建，这里只保留配置类表与种子数据。
     connection.execute(
+        "CREATE TABLE IF NOT EXISTS english_sources(
+           id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL
+         )",
+        [],
+    )?;
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS english_sync_tasks(
+           id TEXT PRIMARY KEY,data_json TEXT NOT NULL,updated_at TEXT NOT NULL
+         )",
+        [],
+    )?;
+    connection.execute(
         "CREATE TABLE IF NOT EXISTS english_preferences(
            key TEXT PRIMARY KEY,value_json TEXT NOT NULL,updated_at TEXT NOT NULL
          )",
