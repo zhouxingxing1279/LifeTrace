@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { existsSync, readFileSync } from "node:fs";
 import test from "node:test";
 import {
   ENTITY_TYPES, REQUESTED_SCOPES, createBrowserFetch, createDailyReview,
@@ -40,6 +41,21 @@ test("browser sync registry includes all non-photo product domains", () => {
   }
   assert.equal(ENTITY_TYPES.some((value) => value.includes("photo") || value.includes("vault")), false);
   for (const scope of ["habits:read", "habits:write", "reviews:read", "reviews:write", "workouts:read", "workouts:write"]) assert.ok(REQUESTED_SCOPES.includes(scope as never), scope);
+});
+
+test("browser build remains a normal web application rather than a PWA", () => {
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { scripts?: Record<string, string> };
+  const scripts = packageJson.scripts ?? {};
+  assert.equal(Object.keys(scripts).some((name) => name.startsWith("pwa:")), false);
+  assert.equal(existsSync("vite.web.config.ts"), false);
+  assert.equal(existsSync("public/manifest.webmanifest"), false);
+  assert.equal(existsSync("public/sw.js"), false);
+});
+
+test("local browser authentication uses a cookie name accepted without HTTPS", () => {
+  const compose = readFileSync("deploy/cloud/docker-compose.local.yml", "utf8");
+  assert.match(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-lifetrace_session\}/);
+  assert.doesNotMatch(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-__Host-/);
 });
 
 test("habit review and workout factories produce syncable payloads", () => {
