@@ -43,22 +43,98 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('src-tauri/src/server.rs')
-          source = path.read_text(encoding='utf-8')
-          old = '''pub async fn serve(
+          server_path = Path('src-tauri/src/server.rs')
+          server_source = server_path.read_text(encoding='utf-8')
+          old_server = '''pub async fn serve(
               data_dir: PathBuf,
               resource_dir: PathBuf,
               photo_runtime: Arc<photo::Runtime>,
           ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {'''
-          new = '''pub async fn serve(
+          new_server = '''pub async fn serve(
               data_dir: PathBuf,
               resource_dir: PathBuf,
               photo_runtime: Arc<photo::Runtime>,
               sync_state: crate::sync::SyncDesktopState,
           ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {'''
-          if old not in source:
+          if old_server not in server_source:
               raise SystemExit('server::serve signature did not match the expected pre-fix source')
-          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          server_path.write_text(server_source.replace(old_server, new_server, 1), encoding='utf-8')
+
+          profile_path = Path('src-tauri/src/database/profile.rs')
+          profile_source = profile_path.read_text(encoding='utf-8')
+          old_profile = '''pub fn active_profile_id(connection: &Connection) -> Result<String, String> {
+              connection.query_row(
+                  "SELECT active_profile_id FROM app_profile_state WHERE singleton=1", [], |row| row.get(0)
+              ).map_err(|error| error.to_string())
+          }'''
+          new_profile = '''const LEGACY_PROFILE_TABLES: &[&str] = &[
+              "finance_accounts",
+              "transaction_categories",
+              "transactions",
+              "activities",
+              "activity_logs",
+              "daily_reviews",
+              "note_folders",
+              "note_tags",
+              "notes",
+              "english_learning_records",
+              "english_highlights",
+              "english_notes",
+              "english_vocabulary",
+              "english_ai_analysis",
+              "workouts",
+              "workout_imports",
+              "training_notes",
+          ];
+
+          fn legacy_profile_id(connection: &Connection) -> Result<String, String> {
+              for table in LEGACY_PROFILE_TABLES {
+                  let exists: bool = connection
+                      .query_row(
+                          "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+                          [*table],
+                          |row| row.get(0),
+                      )
+                      .map_err(|error| error.to_string())?;
+                  if !exists {
+                      continue;
+                  }
+                  let sql = format!(
+                      "SELECT user_id FROM {table} WHERE user_id IS NOT NULL AND trim(user_id)<>'' ORDER BY rowid LIMIT 1"
+                  );
+                  let profile_id = connection
+                      .query_row(&sql, [], |row| row.get::<_, String>(0))
+                      .optional()
+                      .map_err(|error| error.to_string())?;
+                  if let Some(profile_id) = profile_id {
+                      return Ok(profile_id);
+                  }
+              }
+              Ok("local".to_owned())
+          }
+
+          pub fn active_profile_id(connection: &Connection) -> Result<String, String> {
+              let state_exists: bool = connection
+                  .query_row(
+                      "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='app_profile_state')",
+                      [],
+                      |row| row.get(0),
+                  )
+                  .map_err(|error| error.to_string())?;
+              if !state_exists {
+                  return legacy_profile_id(connection);
+              }
+              connection
+                  .query_row(
+                      "SELECT active_profile_id FROM app_profile_state WHERE singleton=1",
+                      [],
+                      |row| row.get(0),
+                  )
+                  .map_err(|error| error.to_string())
+          }'''
+          if old_profile not in profile_source:
+              raise SystemExit('active_profile_id did not match the expected pre-fix source')
+          profile_path.write_text(profile_source.replace(old_profile, new_profile, 1), encoding='utf-8')
           PY
       - name: Install Tauri Linux build dependencies
         env:
