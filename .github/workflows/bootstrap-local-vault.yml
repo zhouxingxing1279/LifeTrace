@@ -19,9 +19,13 @@ jobs:
         with:
           ref: agent/local-encrypted-album
           fetch-depth: 0
-      - name: Expand complete private album implementation
+      - name: Verify and expand complete private album implementation
         run: |
+          wc -c tools/local-vault-v2.part*
+          sha256sum tools/local-vault-v2.part*
           cat tools/local-vault-v2.part* | base64 --decode > /tmp/local-vault-v2.zip
+          sha256sum /tmp/local-vault-v2.zip
+          unzip -t /tmp/local-vault-v2.zip
           python3 - <<'PY'
           import zipfile
           with zipfile.ZipFile('/tmp/local-vault-v2.zip') as archive:
