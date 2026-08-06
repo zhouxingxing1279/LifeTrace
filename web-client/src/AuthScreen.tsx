@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { AuthApi, Notice, type WebSession } from "./core";
+import { AuthApi, type WebSession } from "./core";
 import { RegistrationApi, type AuthCapabilities } from "./registration";
+import { Notice } from "./ui";
 
 type AuthMode = "login" | "register";
 
