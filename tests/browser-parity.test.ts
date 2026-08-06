@@ -52,6 +52,12 @@ test("browser build remains a normal web application rather than a PWA", () => {
   assert.equal(existsSync("public/sw.js"), false);
 });
 
+test("local browser authentication uses a cookie name accepted without HTTPS", () => {
+  const compose = readFileSync("deploy/cloud/docker-compose.local.yml", "utf8");
+  assert.match(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-lifetrace_session\}/);
+  assert.doesNotMatch(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-__Host-/);
+});
+
 test("habit review and workout factories produce syncable payloads", () => {
   const habit = createHabitActivity("u", "d", { name: "练钢琴", unit: "分钟", normalTarget: 30 });
   const log = createHabitLog("u", "d", habit.meta.id, 35, "完成音阶练习", "2026-08-07");
