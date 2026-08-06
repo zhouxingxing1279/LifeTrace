@@ -269,7 +269,25 @@ jobs:
         run: exit 1
 
       - name: Clippy pure sync core
-        run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
+        id: sync-clippy
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings 2>&1 | tee epic05-sync-clippy.log
+
+      - name: Upload sync Clippy diagnostics
+        if: always() && steps.sync-clippy.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic05-sync-clippy-log
+          path: epic05-sync-clippy.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Stop after sync Clippy failure
+        if: steps.sync-clippy.outcome == 'failure'
+        run: exit 1
 
       - name: Clippy desktop library
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
