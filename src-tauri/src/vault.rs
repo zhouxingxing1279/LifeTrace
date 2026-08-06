@@ -851,11 +851,14 @@ impl VaultState {
                 if !metadata.is_file() {
                     bail!("所选路径不是文件：{source_path}");
                 }
-                if source
+                let canonical_source = source
                     .canonicalize()
-                    .ok()
-                    .is_some_and(|path| path.starts_with(&self.root))
-                {
+                    .with_context(|| format!("无法解析所选文件路径：{source_path}"))?;
+                let canonical_root = self
+                    .root
+                    .canonicalize()
+                    .context("failed to resolve private album directory")?;
+                if canonical_source.starts_with(&canonical_root) {
                     bail!("不能从私密相册内部目录重复导入文件");
                 }
                 let original_name = source
