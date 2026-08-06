@@ -107,9 +107,34 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
+          components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: services/lifetrace-cloud
-      - run: cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml -- --check
+      - name: Resolve dependencies and capture lockfile
+        shell: bash
+        run: cargo metadata --manifest-path services/lifetrace-cloud/Cargo.toml --format-version 1 > /dev/null
+      - name: Format and verify Rust
+        shell: bash
+        run: |
+          cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml
+          git diff -- services/lifetrace-cloud/src services/lifetrace-cloud/Cargo.toml > rustfmt.patch
+          if test -s rustfmt.patch; then
+            cat rustfmt.patch
+            exit 1
+          fi
       - run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
       - run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
+      - name: Require committed dependency lockfile
+        shell: bash
+        run: git diff --exit-code -- services/lifetrace-cloud/Cargo.lock
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: browser-cloud-diagnostics
+          path: |
+            rustfmt.patch
+            services/lifetrace-cloud/src/routes/assistant.rs
+            services/lifetrace-cloud/Cargo.lock
+          if-no-files-found: warn
+          retention-days: 7
