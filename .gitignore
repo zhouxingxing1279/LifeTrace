@@ -46,10 +46,14 @@ yarn-error.log*
 
 # local credentials and certificates
 *.key
+*.key.pub
 *.p12
 *.pfx
 *.crt
 *.cer
+
+# Tauri updater signing keys and local key directory
+.tauri/
 
 # vercel
 .vercel
@@ -59,6 +63,7 @@ next-env.d.ts
 *.tsbuildinfo
 /dist/
 /dist-tauri/
+/dist-web/
 /src-tauri/target/
 /crates/*/target/
 /tools/*/target/

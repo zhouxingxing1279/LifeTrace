@@ -24,15 +24,27 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:3103 http://localhost:8787 http://127.0.0.1:8787; img-src 'self' asset: http://asset.localhost http://127.0.0.1:3444 data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:3103 http://localhost:8787 http://127.0.0.1:8787 https://github.com; img-src 'self' asset: http://asset.localhost http://127.0.0.1:3444 data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
     "active": true,
     "targets": ["nsis"],
+    "createUpdaterArtifacts": true,
     "icon": ["../public/icons/icon-512.png"],
     "resources": {
       "../xunji_service/data/dictionary.db": "dictionary/dictionary.db"
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/zhouxingxing1279/LifeTrace-Releases/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
     }
   }
 }

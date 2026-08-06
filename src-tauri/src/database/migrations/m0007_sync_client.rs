@@ -226,12 +226,19 @@ mod tests {
         M0001Framework, M0002Finance, M0003HabitsReviews, M0004Notes, M0005English, M0006Workouts,
     };
     use rusqlite::Connection;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn replaces_placeholder_owner_and_creates_sync_tables() {
         let mut connection = Connection::open_in_memory().unwrap();
         connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-        let context = MigrationContext::new(std::env::temp_dir());
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data_dir = std::env::temp_dir().join(format!("lifetrace-m0007-{unique}"));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        let context = MigrationContext::new(data_dir);
         let migrations: Vec<Box<dyn Migration>> = vec![
             Box::new(M0001Framework),
             Box::new(M0002Finance),

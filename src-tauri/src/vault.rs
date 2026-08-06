@@ -1,8 +1,8 @@
-use std::{
+﻿use std::{
     fs::{self, File},
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -15,7 +15,9 @@ use argon2::{Algorithm, Argon2, Params, Version};
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use chrono::Utc;
 use rand::{rngs::OsRng, RngCore};
+use rusqlite::{params, OptionalExtension};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tauri::State;
 use uuid::Uuid;
 use zeroize::{Zeroize, Zeroizing};
@@ -209,6 +211,14 @@ impl VaultState {
 
     fn temp_dir(&self) -> PathBuf {
         self.root.join("temp")
+    }
+
+    /// 私密相册所在的应用数据目录（`root = data_dir/vault`）。
+    fn data_dir(&self) -> PathBuf {
+        self.root
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."))
     }
 
     fn ensure_directories(&self) -> Result<()> {
@@ -826,97 +836,398 @@ impl VaultState {
         Ok(true)
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn import_files(
         &self,
         source_paths: Vec<String>,
         move_source: bool,
         album_id: Option<String>,
     ) -> Result<Vec<VaultAsset>> {
+        self.session_key(|master_key| {
+            self.import_paths(source_paths, move_source, album_id, master_key)
+        })
+    }
+
+    /// 在已持有主密钥的前提下导入文件（与 `import_files` 相同，但密钥由调用方提供，
+    /// 供长任务在会话可能被自动锁定后继续完成整批加密）。
+    fn import_paths(
+        &self,
+        source_paths: Vec<String>,
+        move_source: bool,
+        album_id: Option<String>,
+        master_key: &[u8],
+    ) -> Result<Vec<VaultAsset>> {
         if source_paths.is_empty() {
             return Ok(Vec::new());
         }
         self.ensure_directories()?;
-        self.session_key(|master_key| {
-            let mut manifest = self.load_manifest(master_key)?;
-            if let Some(id) = album_id.as_deref() {
-                if !manifest.albums.iter().any(|album| album.id == id) {
-                    bail!("private album was not found");
-                }
+        let mut manifest = self.load_manifest(master_key)?;
+        if let Some(id) = album_id.as_deref() {
+            if !manifest.albums.iter().any(|album| album.id == id) {
+                bail!("private album was not found");
             }
-            let mut imported = Vec::new();
-            for source_path in source_paths {
-                let source = PathBuf::from(&source_path);
-                let metadata = fs::metadata(&source)
-                    .with_context(|| format!("无法读取所选文件：{source_path}"))?;
-                if !metadata.is_file() {
-                    bail!("所选路径不是文件：{source_path}");
-                }
-                let canonical_source = source
-                    .canonicalize()
-                    .with_context(|| format!("无法解析所选文件路径：{source_path}"))?;
-                let canonical_root = self
-                    .root
-                    .canonicalize()
-                    .context("failed to resolve private album directory")?;
-                if canonical_source.starts_with(&canonical_root) {
-                    bail!("不能从私密相册内部目录重复导入文件");
-                }
-                let original_name = source
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .ok_or_else(|| anyhow!("所选文件名无效"))?
-                    .to_string();
-                let asset_id = Uuid::new_v4().to_string();
-                let target = self.object_path(&asset_id);
-                self.encrypt_file(&source, &target, &asset_id, master_key)?;
-                if let Err(error) =
-                    self.verify_encrypted_file(&target, &asset_id, master_key, metadata.len())
-                {
-                    let _ = fs::remove_file(&target);
-                    return Err(error);
-                }
-                let mime_type = mime_guess::from_path(&source)
-                    .first_or_octet_stream()
-                    .essence_str()
-                    .to_string();
-                let has_thumbnail = if mime_type.starts_with("image/") {
-                    self.create_thumbnail(&source, &asset_id, master_key)
-                        .unwrap_or(false)
-                } else {
-                    false
-                };
-                let asset = VaultAsset {
-                    id: asset_id.clone(),
-                    original_name,
-                    mime_type,
-                    size: metadata.len(),
-                    imported_at: Utc::now().to_rfc3339(),
-                    has_thumbnail,
-                    state: VaultAssetState::Active,
-                    album_ids: album_id.iter().cloned().collect(),
-                    deleted_at: None,
-                };
-                let previous_manifest = manifest.clone();
-                manifest.assets.push(asset.clone());
-                if let Err(error) = self.save_manifest(master_key, &manifest) {
+        }
+        let mut imported = Vec::new();
+        for source_path in source_paths {
+            let source = PathBuf::from(&source_path);
+            let metadata = fs::metadata(&source)
+                .with_context(|| format!("无法读取所选文件：{source_path}"))?;
+            if !metadata.is_file() {
+                bail!("所选路径不是文件：{source_path}");
+            }
+            let canonical_source = source
+                .canonicalize()
+                .with_context(|| format!("无法解析所选文件路径：{source_path}"))?;
+            let canonical_root = self
+                .root
+                .canonicalize()
+                .context("failed to resolve private album directory")?;
+            if canonical_source.starts_with(&canonical_root) {
+                bail!("不能从私密相册内部目录重复导入文件");
+            }
+            let original_name = source
+                .file_name()
+                .and_then(|name| name.to_str())
+                .ok_or_else(|| anyhow!("所选文件名无效"))?
+                .to_string();
+            let asset_id = Uuid::new_v4().to_string();
+            let target = self.object_path(&asset_id);
+            self.encrypt_file(&source, &target, &asset_id, master_key)?;
+            if let Err(error) =
+                self.verify_encrypted_file(&target, &asset_id, master_key, metadata.len())
+            {
+                let _ = fs::remove_file(&target);
+                return Err(error);
+            }
+            let mime_type = mime_guess::from_path(&source)
+                .first_or_octet_stream()
+                .essence_str()
+                .to_string();
+            let has_thumbnail = if mime_type.starts_with("image/") {
+                self.create_thumbnail(&source, &asset_id, master_key)
+                    .unwrap_or(false)
+            } else {
+                false
+            };
+            let asset = VaultAsset {
+                id: asset_id.clone(),
+                original_name,
+                mime_type,
+                size: metadata.len(),
+                imported_at: Utc::now().to_rfc3339(),
+                has_thumbnail,
+                state: VaultAssetState::Active,
+                album_ids: album_id.iter().cloned().collect(),
+                deleted_at: None,
+            };
+            let previous_manifest = manifest.clone();
+            manifest.assets.push(asset.clone());
+            if let Err(error) = self.save_manifest(master_key, &manifest) {
+                let _ = fs::remove_file(&target);
+                let _ = fs::remove_file(self.thumbnail_path(&asset_id));
+                return Err(error);
+            }
+            if move_source {
+                if let Err(error) = fs::remove_file(&source) {
+                    manifest = previous_manifest;
+                    let rollback = self.save_manifest(master_key, &manifest);
                     let _ = fs::remove_file(&target);
                     let _ = fs::remove_file(self.thumbnail_path(&asset_id));
-                    return Err(error);
+                    rollback?;
+                    return Err(error).context("加密成功，但无法删除原文件，已回滚此次移入");
                 }
-                if move_source {
-                    if let Err(error) = fs::remove_file(&source) {
-                        manifest = previous_manifest;
-                        let rollback = self.save_manifest(master_key, &manifest);
-                        let _ = fs::remove_file(&target);
-                        let _ = fs::remove_file(self.thumbnail_path(&asset_id));
-                        rollback?;
-                        return Err(error).context("加密成功，但无法删除原文件，已回滚此次移入");
-                    }
-                }
-                imported.push(asset);
+            }
+            imported.push(asset);
+        }
+        Ok(imported)
+    }
+
+    /// 按照片库记录把照片 id 解析为本地原文件路径。
+    fn resolve_photo_source_paths(&self, photo_ids: &[String]) -> Result<Vec<String>> {
+        if photo_ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let database_path = self.data_dir().join("lifetrace.db");
+        let connection = crate::database::connection::open(&database_path)
+            .context("无法打开本地照片库数据库")?;
+        let mut source_paths = Vec::with_capacity(photo_ids.len());
+        for photo_id in photo_ids {
+            let relative: Option<String> = connection
+                .query_row(
+                    "SELECT original_path FROM photos WHERE id=?1 AND deleted_at IS NULL",
+                    [photo_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|error| anyhow!(error.to_string()))?;
+            let relative = relative.ok_or_else(|| anyhow!("同步相册中不存在该照片：{photo_id}"))?;
+            source_paths.push(
+                self.data_dir()
+                    .join("photos")
+                    .join(relative)
+                    .to_string_lossy()
+                    .into_owned(),
+            );
+        }
+        drop(connection);
+        Ok(source_paths)
+    }
+
+    /// 批量隐藏：从同步相册加密移入私密相册，并在同步相册中软删除原记录。
+    fn hide_photos_from_sync_album(
+        &self,
+        photo_ids: Vec<String>,
+        album_id: Option<String>,
+    ) -> Result<Vec<VaultAsset>> {
+        let source_paths = self.resolve_photo_source_paths(&photo_ids)?;
+        // 先标记为“隐藏中”：照片立即从同步相册消失；加密失败时会自动回滚。
+        self.set_photo_hiding(&photo_ids, true)?;
+        let outcome = self.session_key(|master_key| {
+            let imported = self.import_paths(source_paths, false, album_id, master_key)?;
+            if !imported.is_empty() {
+                // 加密成功后：软删除记录并物理删除原文件与缩略图，只保留私密加密副本。
+                self.finalize_photo_hide(&photo_ids)?;
             }
             Ok(imported)
+        });
+        if outcome.is_err() {
+            // 加密失败：恢复照片到同步相册，避免数据“消失”。
+            let _ = self.set_photo_hiding(&photo_ids, false);
+        }
+        outcome
+    }
+
+    /// 标记/取消照片为“隐藏中”（同步相册界面立即隐藏该状态）。
+    fn set_photo_hiding(&self, photo_ids: &[String], hiding: bool) -> Result<()> {
+        if photo_ids.is_empty() {
+            return Ok(());
+        }
+        let database_path = self.data_dir().join("lifetrace.db");
+        let connection = crate::database::connection::open(&database_path)
+            .context("无法打开本地照片库数据库")?;
+        let status = if hiding { "hiding" } else { "completed" };
+        for photo_id in photo_ids {
+            connection.execute(
+                "UPDATE photos SET processing_status=?1 WHERE id=?2 AND deleted_at IS NULL",
+                params![status, photo_id],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// 隐藏完成后：彻底清除同步相册里的原文件、缩略图和相关记录，保证无痕。
+    fn finalize_photo_hide(&self, photo_ids: &[String]) -> Result<()> {
+        if photo_ids.is_empty() {
+            return Ok(());
+        }
+        let database_path = self.data_dir().join("lifetrace.db");
+        let connection = crate::database::connection::open(&database_path)
+            .context("无法打开本地照片库数据库")?;
+        let mut files_to_remove = Vec::new();
+        for photo_id in photo_ids {
+            let paths: Option<(String, Option<String>)> = connection
+                .query_row(
+                    "SELECT original_path, thumbnail_path FROM photos WHERE id=?1",
+                    [photo_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|error| anyhow!(error.to_string()))?;
+            if let Some((original, thumbnail)) = paths {
+                files_to_remove.push(self.data_dir().join("photos").join(original));
+                if let Some(thumbnail) = thumbnail {
+                    files_to_remove.push(self.data_dir().join("photos").join(thumbnail));
+                }
+            }
+            // 删除照片记录、上传任务与设备映射，不留索引痕迹。
+            let _ = connection.execute(
+                "DELETE FROM photo_device_assets WHERE photo_id=?1",
+                [photo_id],
+            );
+            let _ = connection.execute(
+                "DELETE FROM photo_upload_tasks WHERE photo_id=?1",
+                [photo_id],
+            );
+            connection.execute("DELETE FROM photos WHERE id=?1", [photo_id])?;
+        }
+        drop(connection);
+        for path in files_to_remove {
+            if let Err(error) = fs::remove_file(&path) {
+                eprintln!(
+                    "LifeTrace hide cleanup failed to remove {}: {error}",
+                    path.display()
+                );
+            }
+        }
+        Ok(())
+    }
+
+    /// 把私密相册里的照片恢复（移除）到同步相册：解密后写回照片库并去重。
+    fn restore_to_sync_album(&self, asset_id: &str) -> Result<VaultAsset> {
+        self.session_key(|master_key| {
+            let manifest = self.load_manifest(master_key)?;
+            let asset = manifest
+                .assets
+                .iter()
+                .find(|asset| asset.id == asset_id && asset.state == VaultAssetState::Active)
+                .cloned()
+                .ok_or_else(|| anyhow!("私密相册中不存在该照片"))?;
+            let object_path = self.object_path(&asset.id);
+            let file_len = fs::metadata(&object_path)
+                .map(|metadata| metadata.len())
+                .unwrap_or(MAX_PREVIEW_BYTES);
+            let plaintext = self.decrypt_file(&object_path, &asset.id, master_key, file_len)?;
+            let content_hash = format!("{:x}", Sha256::digest(plaintext.as_slice()));
+            let database_path = self.data_dir().join("lifetrace.db");
+            let connection = crate::database::connection::open(&database_path)
+                .context("无法打开本地照片库数据库")?;
+            let existing: Option<(String, Option<String>)> = connection
+                .query_row(
+                    "SELECT id, deleted_at FROM photos WHERE content_hash=?1",
+                    [&content_hash],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|error| anyhow!(error.to_string()))?;
+            match existing {
+                Some((photo_id, deleted_at)) => {
+                    if deleted_at.is_some() {
+                        connection.execute(
+                            "UPDATE photos SET deleted_at=NULL, processing_status='completed' WHERE id=?1",
+                            [&photo_id],
+                        )?;
+                    }
+                    // 隐藏时可能已删除磁盘原文件；恢复时确保文件与缩略图都在。
+                    self.ensure_photo_files(&connection, &photo_id, &plaintext, &asset.mime_type)?;
+                }
+                None => {
+                    self.write_restored_photo(&connection, &asset, &plaintext, &content_hash)?;
+                }
+            }
+            drop(connection);
+            // 从私密相册移除该资产。
+            let mut manifest = self.load_manifest(master_key)?;
+            manifest.assets.retain(|item| item.id != asset_id);
+            self.save_manifest(master_key, &manifest)?;
+            let _ = fs::remove_file(self.object_path(asset_id));
+            let _ = fs::remove_file(self.thumbnail_path(asset_id));
+            Ok(asset)
         })
+    }
+
+    /// 确保照片记录对应的原文件与缩略图存在于磁盘（缺失时从解密内容重建）。
+    fn ensure_photo_files(
+        &self,
+        connection: &rusqlite::Connection,
+        photo_id: &str,
+        plaintext: &[u8],
+        mime_type: &str,
+    ) -> Result<()> {
+        let (original_relative, thumbnail_relative): (String, Option<String>) = connection
+            .query_row(
+                "SELECT original_path, thumbnail_path FROM photos WHERE id=?1",
+                [photo_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| anyhow!(error.to_string()))?
+            .ok_or_else(|| anyhow!("照片记录不存在"))?;
+        let photos_root = self.data_dir().join("photos");
+        let original_path = photos_root.join(&original_relative);
+        if !original_path.exists() {
+            if let Some(parent) = original_path.parent() {
+                fs::create_dir_all(parent).context("无法创建照片目录")?;
+            }
+            fs::write(&original_path, plaintext).context("无法恢复同步相册照片文件")?;
+        }
+        if let Some(thumbnail_relative) = thumbnail_relative {
+            let thumb_path = photos_root.join(&thumbnail_relative);
+            if !thumb_path.exists() && mime_type.starts_with("image/") {
+                if let Ok(image) = image::load_from_memory(plaintext) {
+                    if let Some(parent) = thumb_path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                    let _ = image
+                        .thumbnail(640, 640)
+                        .save_with_format(&thumb_path, image::ImageFormat::Jpeg);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// 把解密后的照片写入同步照片库（新的照片记录 + 原文件 + 缩略图）。
+    fn write_restored_photo(
+        &self,
+        connection: &rusqlite::Connection,
+        asset: &VaultAsset,
+        plaintext: &[u8],
+        content_hash: &str,
+    ) -> Result<()> {
+        let media_type = if asset.mime_type.starts_with("video/") {
+            "video"
+        } else {
+            "image"
+        };
+        let extension = Path::new(&asset.original_name)
+            .extension()
+            .and_then(|value| value.to_str())
+            .filter(|value| value.len() <= 8)
+            .map(str::to_lowercase)
+            .unwrap_or_else(|| if media_type == "video" { "mp4" } else { "jpg" }.to_owned());
+        let photo_id = format!("photo_{}", Uuid::new_v4());
+        let stored_name = format!("{photo_id}.{extension}");
+        let photos_root = self.data_dir().join("photos");
+        let originals = photos_root.join("originals");
+        fs::create_dir_all(&originals).context("无法创建照片目录")?;
+        let original_path = originals.join(&stored_name);
+        fs::write(&original_path, plaintext).context("无法写回同步相册照片")?;
+        let original_relative = format!("originals/{stored_name}");
+
+        let mut width = None;
+        let mut height = None;
+        let mut thumbnail_relative = None;
+        if media_type == "image" {
+            if let Ok(image) = image::load_from_memory(plaintext) {
+                width = Some(image.width() as i64);
+                height = Some(image.height() as i64);
+                let thumb_dir = photos_root.join("thumbnails");
+                if fs::create_dir_all(&thumb_dir).is_ok() {
+                    let thumb_name = format!("{photo_id}.jpg");
+                    let thumb_path = thumb_dir.join(&thumb_name);
+                    if image
+                        .thumbnail(640, 640)
+                        .save_with_format(&thumb_path, image::ImageFormat::Jpeg)
+                        .is_ok()
+                    {
+                        thumbnail_relative = Some(format!("thumbnails/{thumb_name}"));
+                    }
+                }
+            }
+        }
+        let imported_at = Utc::now().to_rfc3339();
+        connection.execute(
+            "INSERT INTO photos(
+               id, content_hash, original_file_name, stored_file_name, original_path,
+               thumbnail_path, media_type, mime_type, file_size, width, height,
+               captured_at, imported_at, processing_status, source_device_id
+             ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,?12,'completed',NULL)",
+            params![
+                photo_id,
+                content_hash,
+                asset.original_name,
+                stored_name,
+                original_relative,
+                thumbnail_relative,
+                media_type,
+                asset.mime_type,
+                plaintext.len() as i64,
+                width,
+                height,
+                imported_at
+            ],
+        )?;
+        Ok(())
     }
 
     fn read_asset(&self, asset_id: &str) -> Result<VaultAssetPayload> {
@@ -962,6 +1273,7 @@ impl VaultState {
         })
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn unique_export_path(directory: &Path, original_name: &str) -> Result<PathBuf> {
         let safe_name = Path::new(original_name)
             .file_name()
@@ -990,6 +1302,7 @@ impl VaultState {
         bail!("无法为导出文件生成不冲突的文件名")
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     fn export_asset(
         &self,
         asset_id: &str,
@@ -1271,32 +1584,38 @@ fn command_result<T>(result: Result<T>) -> std::result::Result<T, String> {
 }
 
 #[tauri::command]
-pub fn vault_status(state: State<'_, VaultState>) -> std::result::Result<VaultStatus, String> {
+pub fn vault_status(state: State<'_, Arc<VaultState>>) -> std::result::Result<VaultStatus, String> {
     command_result(state.status())
 }
 
 #[tauri::command]
-pub fn vault_initialize(
+pub async fn vault_initialize(
     password: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultStatus, String> {
-    command_result(state.initialize(&password))
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || command_result(vault.initialize(&password)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub async fn vault_unlock(
     password: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultStatus, String> {
     let delay = state.remaining_attempt_delay();
     if !delay.is_zero() {
         tokio::time::sleep(delay).await;
     }
-    command_result(state.unlock(&password))
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || command_result(vault.unlock(&password)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn vault_lock(state: State<'_, VaultState>) -> std::result::Result<VaultStatus, String> {
+pub fn vault_lock(state: State<'_, Arc<VaultState>>) -> std::result::Result<VaultStatus, String> {
     command_result(state.lock_internal().and_then(|_| state.status()))
 }
 
@@ -1304,32 +1623,53 @@ pub fn vault_lock(state: State<'_, VaultState>) -> std::result::Result<VaultStat
 pub fn vault_list_assets(
     trashed: bool,
     album_id: Option<String>,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<Vec<VaultAsset>, String> {
     command_result(state.list_assets(trashed, album_id.as_deref()))
 }
 
 #[tauri::command]
 pub fn vault_list_albums(
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<Vec<VaultAlbum>, String> {
     command_result(state.list_albums())
 }
 
 #[tauri::command]
-pub fn vault_import_files(
-    source_paths: Vec<String>,
-    move_source: bool,
+pub fn vault_hide_photos_from_sync_album(
+    photo_ids: Vec<String>,
     album_id: Option<String>,
-    state: State<'_, VaultState>,
-) -> std::result::Result<Vec<VaultAsset>, String> {
-    command_result(state.import_files(source_paths, move_source, album_id))
+    state: State<'_, Arc<VaultState>>,
+) -> std::result::Result<serde_json::Value, String> {
+    if photo_ids.is_empty() {
+        return Err("没有选择要隐藏的照片".to_owned());
+    }
+    let vault = state.inner().clone();
+    let count = photo_ids.len();
+    // 立即返回；加密与移入在后台线程执行，界面无需等待。
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = vault.hide_photos_from_sync_album(photo_ids, album_id) {
+            eprintln!("LifeTrace vault hide background job failed: {error}");
+        }
+    });
+    Ok(serde_json::json!({ "started": true, "count": count }))
+}
+
+#[tauri::command]
+pub async fn vault_restore_to_sync_album(
+    asset_id: String,
+    state: State<'_, Arc<VaultState>>,
+) -> std::result::Result<VaultAsset, String> {
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || command_result(vault.restore_to_sync_album(&asset_id)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub fn vault_read_asset(
     asset_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultAssetPayload, String> {
     command_result(state.read_asset(&asset_id))
 }
@@ -1337,25 +1677,15 @@ pub fn vault_read_asset(
 #[tauri::command]
 pub fn vault_read_thumbnail(
     asset_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultThumbnailPayload, String> {
     command_result(state.read_thumbnail(&asset_id))
 }
 
 #[tauri::command]
-pub fn vault_export_asset(
-    asset_id: String,
-    target_directory: String,
-    remove_from_vault: bool,
-    state: State<'_, VaultState>,
-) -> std::result::Result<String, String> {
-    command_result(state.export_asset(&asset_id, &target_directory, remove_from_vault))
-}
-
-#[tauri::command]
 pub fn vault_move_to_trash(
     asset_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.move_to_trash(&asset_id))
 }
@@ -1363,7 +1693,7 @@ pub fn vault_move_to_trash(
 #[tauri::command]
 pub fn vault_restore_asset(
     asset_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.restore_asset(&asset_id))
 }
@@ -1371,7 +1701,7 @@ pub fn vault_restore_asset(
 #[tauri::command]
 pub fn vault_delete_asset_permanently(
     asset_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.delete_asset_permanently(&asset_id))
 }
@@ -1379,7 +1709,7 @@ pub fn vault_delete_asset_permanently(
 #[tauri::command]
 pub fn vault_create_album(
     name: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultAlbum, String> {
     command_result(state.create_album(&name))
 }
@@ -1388,7 +1718,7 @@ pub fn vault_create_album(
 pub fn vault_rename_album(
     album_id: String,
     name: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.rename_album(&album_id, &name))
 }
@@ -1396,7 +1726,7 @@ pub fn vault_rename_album(
 #[tauri::command]
 pub fn vault_delete_album(
     album_id: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.delete_album(&album_id))
 }
@@ -1406,31 +1736,39 @@ pub fn vault_set_asset_album(
     asset_id: String,
     album_id: String,
     assigned: bool,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
     command_result(state.set_asset_album(&asset_id, &album_id, assigned))
 }
 
 #[tauri::command]
-pub fn vault_verify_integrity(
-    state: State<'_, VaultState>,
+pub async fn vault_verify_integrity(
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultIntegrityReport, String> {
-    command_result(state.verify_integrity())
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || command_result(vault.verify_integrity()))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
-pub fn vault_change_password(
+pub async fn vault_change_password(
     old_password: String,
     new_password: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultStatus, String> {
-    command_result(state.change_password(&old_password, &new_password))
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        command_result(vault.change_password(&old_password, &new_password))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
 pub fn vault_set_auto_lock(
     seconds: u64,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultStatus, String> {
     command_result(state.set_auto_lock(seconds))
 }
@@ -1438,17 +1776,20 @@ pub fn vault_set_auto_lock(
 #[tauri::command]
 pub fn vault_set_lock_on_blur(
     enabled: bool,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultStatus, String> {
     command_result(state.set_lock_on_blur(enabled))
 }
 
 #[tauri::command]
-pub fn vault_delete_all(
+pub async fn vault_delete_all(
     confirmation: String,
-    state: State<'_, VaultState>,
+    state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<(), String> {
-    command_result(state.delete_all(&confirmation))
+    let vault = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || command_result(vault.delete_all(&confirmation)))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[cfg(test)]
@@ -1723,3 +2064,4 @@ mod tests {
         assert!(!root.join("vault").exists());
     }
 }
+

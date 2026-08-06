@@ -48,10 +48,10 @@ declare global {
       lock():Promise<VaultStatus>;
       listAssets(options?:{trashed?:boolean;albumId?:string|null}):Promise<VaultAsset[]>;
       listAlbums():Promise<VaultAlbum[]>;
-      importFiles(options?:{moveSource?:boolean;albumId?:string|null}):Promise<VaultAsset[]>;
+      hidePhotosFromSyncAlbum(photoIds:string[],albumId?:string|null):Promise<{started:boolean;count:number}>;
+      restoreToSyncAlbum(assetId:string):Promise<VaultAsset>;
       readAsset(assetId:string):Promise<VaultAssetPayload>;
       readThumbnail(assetId:string):Promise<VaultThumbnailPayload>;
-      exportAsset(assetId:string,removeFromVault:boolean):Promise<string|null>;
       moveToTrash(assetId:string):Promise<void>;
       restoreAsset(assetId:string):Promise<void>;
       deleteAssetPermanently(assetId:string):Promise<void>;

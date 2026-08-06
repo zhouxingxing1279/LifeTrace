@@ -161,17 +161,19 @@ mod tests {
     use crate::database::migrations::all;
     use rusqlite::Connection;
     use serde_json::json;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn local_write_enqueues_and_remote_write_is_suppressed() {
         let mut connection = Connection::open_in_memory().unwrap();
         connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
-        run(
-            &mut connection,
-            &MigrationContext::new(std::env::temp_dir()),
-            &all(),
-        )
-        .unwrap();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let data_dir = std::env::temp_dir().join(format!("lifetrace-m0008-{unique}"));
+        std::fs::create_dir_all(&data_dir).unwrap();
+        run(&mut connection, &MigrationContext::new(data_dir), &all()).unwrap();
         let profile: String = connection
             .query_row(
                 "SELECT active_profile_id FROM app_profile_state",

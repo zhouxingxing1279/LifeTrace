@@ -14,8 +14,8 @@ LifeTrace 是一款个人管理平台，覆盖习惯、训练、财务、复盘�
 - Tiptap 笔记、标签、文件夹、附件、回收站和版本历史
 - 英语文章库、VOA 同步、离线词典、生词本和复习计划
 - AI 管家与跨模块个人数据分析
-- iPhone 快捷指令局域网照片同步、去重、缩略图与媒体预览（仅桌面端）
-- 本地或云端 JSON 备份与恢复
+- 手机浏览器局域网照片同步、去重、缩略图与媒体预览（仅桌面端）
+- 本地 JSON 备份与恢复
 
 ## 架构
 
@@ -27,7 +27,6 @@ src-tauri/src/                  Rust 桌面后端
 src-tauri/src/server/           SQLite、英语、寻迹、照片同步等本地接口
 web-client/                     浏览器云端客户端
 services/lifetrace-cloud/       Rust + Axum + PostgreSQL 云端服务
-vite.browser.config.ts          普通浏览器应用构建配置
 src-tauri/tauri.conf.json
 xunji_service/data/             随安装包发布的离线词典数据库
 ```

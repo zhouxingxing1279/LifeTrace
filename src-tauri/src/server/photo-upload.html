@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>LifeTrace 照片同步</title>
+  <style>
+    :root{color-scheme:light;--ink:#10231d;--muted:#6b7c75;--accent:#14775d;--soft:#e6f2ed;--line:#dbe4df;--paper:#fff;--bg:#f1f5f3}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+    main{width:min(100% - 32px,560px);margin:auto;padding:calc(22px + env(safe-area-inset-top)) 0 calc(36px + env(safe-area-inset-bottom))}
+    header{display:flex;align-items:center;gap:13px;margin-bottom:22px}.mark{width:48px;height:48px;border-radius:16px;background:var(--ink);color:#c8f0df;display:grid;place-items:center;font-weight:850}
+    header h1{font-size:22px;margin:2px 0 0}header small{color:var(--muted)}
+    .status{margin-left:auto;padding:8px 11px;border-radius:999px;background:var(--soft);color:var(--accent);font-size:12px;font-weight:700}.status.offline{background:#f9e7e5;color:#a23e37}
+    .card{padding:22px;border-radius:22px;background:var(--paper);border:1px solid var(--line);box-shadow:0 8px 28px rgba(22,53,42,.05)}
+    .hero{padding:24px;border-radius:24px;background:linear-gradient(145deg,#10231d,#1c4c3d);color:#fff;box-shadow:0 18px 48px rgba(20,55,44,.18);margin-bottom:16px}
+    .hero small{color:#9ec7b7}.hero h2{font-size:24px;line-height:1.28;margin:11px 0 8px}.hero p{font-size:14px;line-height:1.7;color:#b5ccc3;margin:0}
+    label{display:block;font-size:13px;color:var(--muted);margin:14px 0 6px}
+    input[type=text]{width:100%;padding:13px 14px;border:1px solid var(--line);border-radius:13px;font-size:16px;background:#fbfdfc;color:var(--ink)}
+    button{font:inherit;border:0;border-radius:13px;padding:13px 16px;font-size:15px;font-weight:700;background:var(--soft);color:var(--accent);cursor:pointer}
+    button.primary{width:100%;background:var(--accent);color:#fff;min-height:52px;margin-top:14px}
+    button:disabled{opacity:.55}
+    .upload{width:100%;min-height:112px;border:1px dashed var(--line);border-radius:20px;background:var(--paper);padding:20px;display:grid;place-items:center;gap:8px;text-align:center;color:var(--ink);cursor:pointer}
+    .upload .icon{width:52px;height:52px;border-radius:16px;background:var(--soft);display:grid;place-items:center;color:var(--accent);font-size:26px}
+    .upload b{font-size:17px}.upload small{color:var(--muted);line-height:1.55}
+    input[type=file]{display:none}
+    .message{display:none;margin:14px 0 0;padding:13px 15px;border-radius:14px;background:var(--soft);color:var(--accent);font-size:14px;line-height:1.55}.message.show{display:block}.message.error{background:#f9e7e5;color:#a23e37}
+    .progress{margin-top:14px}.progress .bar{height:8px;border-radius:999px;background:var(--soft);overflow:hidden}.progress .bar i{display:block;height:100%;width:0;background:var(--accent);border-radius:999px;transition:width .2s}
+    .history{margin-top:16px}.history h3{font-size:14px;margin:0 0 10px;color:var(--muted)}.history ul{list-style:none;padding:0;margin:0;display:grid;gap:8px}.history li{padding:11px 12px;border-radius:12px;background:#f5f8f6;font-size:13px;display:flex;justify-content:space-between;gap:12px}.history li.error{background:#f9e7e5;color:#a23e37}.history time{color:var(--muted);white-space:nowrap}
+    .hint{font-size:12px;color:var(--muted);line-height:1.6;text-align:center;margin-top:18px}
+    .hidden{display:none!important}
+  </style>
+</head>
+<body>
+<main>
+  <header><span class="mark">LT</span><div><small>同一局域网临时入口</small><h1>同步照片到电脑</h1></div><span id="status" class="status">连接检查中</span></header>
+
+  <section id="pairCard" class="card hidden">
+    <h2 style="margin:0 0 4px">配对手机</h2>
+    <p style="margin:0;color:var(--muted);font-size:14px;line-height:1.6">输入电脑端“照片”页面显示的一次性配对码，完成后这台手机才能在局域网内上传照片。</p>
+    <label for="pairCode">配对码（6 位数字）</label>
+    <input id="pairCode" type="text" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+    <button id="pairButton" class="primary" type="button">配对并开始上传</button>
+    <p id="pairError" class="message error" role="alert"></p>
+  </section>
+
+  <section id="uploadCard" class="hidden">
+    <div class="hero"><small>文件只保存在你的电脑</small><h2>选择照片或视频，<br>电脑负责整理和去重。</h2><p>上传完成后可在 LifeTrace 电脑端确认结果。请保持手机与电脑连接同一个 Wi-Fi。</p></div>
+    <button id="pickButton" class="upload" type="button"><span class="icon">图</span><span><b>选择照片 / 视频</b><small>可多选；重复文件不会重复保存</small></span></button>
+    <input id="fileInput" type="file" multiple accept="image/*,video/*">
+    <p id="message" class="message" role="status"></p>
+    <div id="progress" class="progress hidden"><div class="bar"><i id="progressBar"></i></div><p id="progressText" style="margin:8px 0 0;font-size:13px;color:var(--muted)"></p></div>
+    <section id="history" class="history hidden"><h3>本次上传</h3><ul id="historyList"></ul></section>
+    <button id="resetButton" type="button" style="width:100%;margin-top:14px">更换电脑或重新配对</button>
+  </section>
+
+  <p class="hint">此页面仅在电脑端开启“手机上传”期间可用<br>手机与电脑需要连接同一个 Wi-Fi</p>
+</main>
+<script>
+  const statusElement=document.querySelector('#status');
+  const pairCard=document.querySelector('#pairCard');
+  const uploadCard=document.querySelector('#uploadCard');
+  const pairCodeInput=document.querySelector('#pairCode');
+  const pairButton=document.querySelector('#pairButton');
+  const pairError=document.querySelector('#pairError');
+  const pickButton=document.querySelector('#pickButton');
+  const fileInput=document.querySelector('#fileInput');
+  const message=document.querySelector('#message');
+  const progress=document.querySelector('#progress');
+  const progressBar=document.querySelector('#progressBar');
+  const progressText=document.querySelector('#progressText');
+  const history=document.querySelector('#history');
+  const historyList=document.querySelector('#historyList');
+  const resetButton=document.querySelector('#resetButton');
+  const DEVICE_KEY='lifetrace-photo-device-id';
+  const TOKEN_KEY='lifetrace-photo-device-token';
+  let pairing=false;
+  let uploading=false;
+
+  function deviceId(){
+    let value=localStorage.getItem(DEVICE_KEY);
+    if(!value){value=(crypto.randomUUID&&crypto.randomUUID())||('dev-'+Date.now().toString(36)+Math.random().toString(36).slice(2));localStorage.setItem(DEVICE_KEY,value)}
+    return value;
+  }
+  function token(){return localStorage.getItem(TOKEN_KEY)||''}
+  function showMessage(text,error=false){message.textContent=text;message.className=`message show${error?' error':''}`}
+  function showPairError(text){pairError.textContent=text;pairError.className='message show error'}
+  function setStatus(text,offline){statusElement.textContent=text;statusElement.className=`status${offline?' offline':''}`}
+  function setPairing(value){
+    pairing=value;
+    pairCard.classList.toggle('hidden',value);
+    uploadCard.classList.toggle('hidden',!value);
+  }
+  function addHistory(name,error){
+    history.classList.remove('hidden');
+    const row=document.createElement('li');
+    if(error)row.className='error';
+    const label=document.createElement('span');label.textContent=name;
+    const time=document.createElement('time');time.textContent=new Date().toLocaleTimeString('zh-CN',{hour:'2-digit',minute:'2-digit'});
+    row.append(label,time);historyList.prepend(row);
+  }
+  async function readError(response,fallback){try{const value=await response.json();return value.error||value.message||fallback}catch{return fallback}}
+  async function check(){try{const response=await fetch('/api/health',{cache:'no-store'});const value=await response.json();if(!response.ok||!value.ok)throw new Error();setStatus('已连接')}catch{setStatus('连接失败',true)}}
+  async function sha256Hex(text){
+    if(!crypto.subtle){let hash=2166136261;for(const char of text){hash^=char.charCodeAt(0);hash=Math.imul(hash,16777619)>>>0}return hash.toString(16).padStart(8,'0')}
+    const bytes=new TextEncoder().encode(text);
+    const digest=await crypto.subtle.digest('SHA-256',bytes);
+    return Array.from(new Uint8Array(digest)).map(value=>value.toString(16).padStart(2,'0')).join('');
+  }
+  async function pair(){
+    const code=pairCodeInput.value.trim();
+    if(code.length!==6){showPairError('请输入 6 位配对码');return}
+    pairButton.disabled=true;showPairError('');
+    try{
+      const response=await fetch('/api/photo-sync/pair',{
+        method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({pairCode:code,deviceId:deviceId(),deviceName:'手机浏览器'}),
+      });
+      if(!response.ok)throw new Error(await readError(response,'配对失败，请确认配对码正确且未过期'));
+      const payload=await response.json();
+      if(!payload.success||!payload.deviceToken)throw new Error('配对响应无效');
+      localStorage.setItem(TOKEN_KEY,payload.deviceToken);
+      setPairing(true);showMessage('配对成功，选择照片即可开始上传。');
+    }catch(error){showPairError(error.message||'配对失败')}
+    finally{pairButton.disabled=false}
+  }
+  function requireToken(){
+    if(token())return true;
+    setPairing(false);showMessage('设备授权已失效，请重新配对。',true);
+    return false;
+  }
+  async function uploadFile(file){
+    if(!requireToken())return false;
+    const clientAssetId=await sha256Hex(`${deviceId()}:${file.name}:${file.size}:${file.lastModified}`);
+    const mediaType=file.type.startsWith('video/')?'video':'image';
+    const capturedAt=file.lastModified?new Date(file.lastModified).toISOString():new Date().toISOString();
+    const headers={'content-type':'application/json',authorization:`Bearer ${token()}`};
+    const create=await fetch('/api/photo-sync/assets',{
+      method:'POST',headers,
+      body:JSON.stringify({clientAssetId,fileName:file.name,mediaType,mimeType:file.type||'',fileSize:file.size,capturedAt}),
+    });
+    if(create.status===401){localStorage.removeItem(TOKEN_KEY);return requireToken()&&uploadFile(file)}
+    if(!create.ok)throw new Error(await readError(create,'电脑拒绝了该文件'));
+    const created=await create.json();
+    if(created.alreadyExists){addHistory(`${file.name} · 已存在，跳过`);return true}
+    if(!created.uploadId)throw new Error('电脑未返回上传任务');
+    const content=await fetch(`/api/photo-sync/assets/${created.uploadId}/content`,{
+      method:'PUT',headers:{authorization:`Bearer ${token()}`},body:file,
+    });
+    if(content.status===401){localStorage.removeItem(TOKEN_KEY);return requireToken()&&uploadFile(file)}
+    if(!content.ok)throw new Error(await readError(content,'文件内容上传失败'));
+    const complete=await fetch(`/api/photo-sync/assets/${created.uploadId}/complete`,{
+      method:'POST',headers:{authorization:`Bearer ${token()}`},
+    });
+    if(complete.status===401){localStorage.removeItem(TOKEN_KEY);return requireToken()&&uploadFile(file)}
+    if(!complete.ok)throw new Error(await readError(complete,'电脑确认完成失败'));
+    addHistory(file.name);
+    return true;
+  }
+  async function startUpload(){
+    const files=Array.from(fileInput.files||[]);
+    if(!files.length||uploading)return;
+    uploading=true;pickButton.disabled=true;showMessage('');
+    progress.classList.remove('hidden');
+    let done=0;
+    const update=()=>{progressBar.style.width=`${Math.round(done/files.length*100)}%`;progressText.textContent=`${done} / ${files.length}`};
+    update();
+    for(const file of files){
+      try{await uploadFile(file)}catch(error){addHistory(`${file.name} · ${error.message||'失败'}`,true)}
+      finally{done+=1;update()}
+    }
+    uploading=false;pickButton.disabled=false;
+    showMessage(`全部完成：${done} 个文件已处理。`);
+    fileInput.value='';
+  }
+  pairButton.addEventListener('click',pair);
+  pickButton.addEventListener('click',()=>{if(!uploading)fileInput.click()});
+  fileInput.addEventListener('change',startUpload);
+  resetButton.addEventListener('click',()=>{localStorage.removeItem(TOKEN_KEY);setPairing(false);showMessage('')});
+  (function(){
+    const params=new URLSearchParams(location.search);
+    const code=params.get('code')||'';
+    if(code.length===6){pairCodeInput.value=code}
+    setPairing(Boolean(token()));
+    check();setInterval(check,15000);
+  })();
+</script>
+</body>
+</html>

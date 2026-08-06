@@ -213,6 +213,17 @@ mod tests {
     use super::*;
     use crate::database::migration_runner::{run, MigrationContext};
     use crate::database::migrations::all;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn unique_data_dir(label: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!("lifetrace-{label}-{unique}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        directory
+    }
 
     #[test]
     fn profiles_isolate_repository_reads_and_reject_duplicate_cloud_binding() {
@@ -220,7 +231,7 @@ mod tests {
         connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
         run(
             &mut connection,
-            &MigrationContext::new(std::env::temp_dir()),
+            &MigrationContext::new(unique_data_dir("profile-isolation")),
             &all(),
         )
         .unwrap();
@@ -258,7 +269,7 @@ mod tests {
         connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
         run(
             &mut connection,
-            &MigrationContext::new(std::env::temp_dir()),
+            &MigrationContext::new(unique_data_dir("profile-owner")),
             &all(),
         )
         .unwrap();

@@ -4,9 +4,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import QRCode from "qrcode";
 import {
-  AlertTriangle, CheckCircle2, Clock3, Copy, Download, Film, Image as ImageIcon,
-  LoaderCircle, MonitorUp, RefreshCw, ShieldCheck, Smartphone, Unplug, X,
+  AlertTriangle, CheckCircle2, Copy, EyeOff, Film, Image as ImageIcon, LockKeyhole,
+  LoaderCircle, RefreshCw, Smartphone, X,
 } from "lucide-react";
+import Toast from "@/src/components/Toast";
 
 type Photo = {
   id:string; original_file_name:string; media_type:"image"|"video"; mime_type:string|null;
@@ -53,7 +54,14 @@ export default function PhotoSyncModule() {
   const [qr,setQr]=useState("");
   const [remaining,setRemaining]=useState(0);
   const [selected,setSelected]=useState<Photo|null>(null);
-  const [serverStatus,setServerStatus]=useState<MobileUploadStatus|null>(null);
+  const [selectMode,setSelectMode]=useState(false);
+  const [selectedIds,setSelectedIds]=useState<Set<string>>(new Set());
+  const [vaultGate,setVaultGate]=useState<"create"|"unlock"|null>(null);
+  const [vaultPassword,setVaultPassword]=useState("");
+  const [vaultRepeat,setVaultRepeat]=useState("");
+  const [vaultAccepted,setVaultAccepted]=useState(false);
+  const [vaultBusy,setVaultBusy]=useState(false);
+  const [vaultGateError,setVaultGateError]=useState("");
   const closeRef=useRef<HTMLButtonElement>(null);
 
   const load=useCallback(async(targetPage=page)=>{
@@ -63,10 +71,6 @@ export default function PhotoSyncModule() {
       const payload=await response.json() as Dashboard&{error?:string};
       if(!response.ok)throw new Error(payload.error||"照片数据读取失败");
       setData(payload);setPage(targetPage);
-      if(window.photoSyncApi){
-        const status=await window.photoSyncApi.status();
-        if(status.ok&&status.status)setServerStatus(status.status);
-      }
     }catch(error){setMessage(error instanceof Error?error.message:"照片数据读取失败")}
     finally{setLoading(false)}
   },[page]);
@@ -108,59 +112,96 @@ export default function PhotoSyncModule() {
     if(!window.photoSyncApi){setMessage("请在 LifeTrace Electron 桌面应用中创建配对二维码");return}
     setMessage("");
     const response=await window.photoSyncApi.createPairing();
-    const status=response.status as (MobileUploadStatus&{pairing?:Pairing})|undefined;
+    const status=response.status as {pairing?:Pairing}|undefined;
     if(!response.ok||!status?.pairing){setMessage(response.error||"无法创建配对码");return}
-    setServerStatus(status);setPairing(status.pairing);
+    setPairing(status.pairing);
   };
   const cancelPairing=async()=>{
     if(pairing&&window.photoSyncApi)await window.photoSyncApi.cancelPairing(pairing.pairCode);
     setPairing(null);setQr("");
   };
-  const revoke=async(device:Device)=>{
-    if(!window.confirm(`撤销“${device.device_name}”的照片同步授权？撤销后该设备会立即无法继续上传。`))return;
-    const response=await fetch("/api/photo-sync/dashboard",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"revokeDevice",deviceId:device.id})});
-    if(!response.ok){setMessage("设备授权撤销失败");return}
-    await load(page);
+  const enterSelectMode=()=>{
+    if(!data?.photos.length){setMessage("当前没有可隐藏的照片");return}
+    setSelectMode(true);setSelectedIds(new Set());setMessage("");
   };
-  const retry=async(task:UploadTask)=>{
-    if(!task.photo_id)return;
-    const response=await fetch("/api/photo-sync/dashboard",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"retryProcessing",photoId:task.photo_id})});
-    if(!response.ok){setMessage("重新处理任务失败");return}
-    await window.photoSyncApi?.recover();
-    await load(page);
+  const cancelSelect=()=>{setSelectMode(false);setSelectedIds(new Set())};
+  const toggleSelect=(id:string)=>{
+    setSelectedIds(current=>{
+      const next=new Set(current);
+      if(next.has(id))next.delete(id);else next.add(id);
+      return next;
+    });
   };
-  const exportCertificate=async()=>{
-    if(!window.photoSyncApi){setMessage("请在 LifeTrace 桌面应用中导出 iPhone 信任证书");return}
+  const performHide=async(ids:string[])=>{
     setMessage("");
-    const response=await window.photoSyncApi.exportCertificate();
-    if(!response.ok){setMessage(response.error||"证书导出失败");return}
-    if(response.status?.certificateExported){
-      setServerStatus(response.status);
-      setMessage(`证书已保存：${response.status.certificateExportPath||"请在保存位置查看"}`);
+    try{
+      const result=await window.vaultApi!.hidePhotosFromSyncAlbum(ids,null);
+      if(!result.started){setMessage("隐藏任务未能启动，请重试。");return}
+      // 立即从当前列表移除，加密在后台执行，做到无感隐藏。
+      const idSet=new Set(ids);
+      setData(current=>current?{
+        ...current,
+        photos:current.photos.filter(photo=>!idSet.has(photo.id)),
+        total:Math.max(0,(current.total??0)-ids.length),
+      }:current);
+      setSelectMode(false);setSelectedIds(new Set());
+      setMessage(`已开始后台隐藏 ${result.count} 张照片，加密完成后可在私密相册查看。`);
+    }catch(error){
+      const text=error instanceof Error?error.message:String(error??"");
+      setMessage(text||"隐藏任务启动失败");
     }
   };
-  const setCompatibilityMode=async(enabled:boolean)=>{
-    if(!window.photoSyncApi){setMessage("请在 LifeTrace 桌面应用中切换传输模式");return}
-    if(enabled&&!window.confirm("开启后，设备令牌和照片会在当前局域网内以明文传输，可能被同一网络中的其他设备监听。仅应在可信的家庭网络中临时使用。确定开启吗？"))return;
+  const hideSelected=async()=>{
+    const ids=Array.from(selectedIds);
+    if(!ids.length)return;
+    if(typeof window.vaultApi?.hidePhotosFromSyncAlbum!=="function"){
+      setMessage("当前版本缺少隐藏命令，请重新构建桌面端后重试。");
+      return;
+    }
     setMessage("");
-    const response=await window.photoSyncApi.setCompatibilityMode(enabled,enabled);
-    if(!response.ok||!response.status){setMessage(response.error||"传输模式切换失败");return}
-    setServerStatus(response.status);
-    setPairing(null);setQr("");
-    setMessage(enabled
-      ?"HTTP 兼容模式已开启。请重新点击“添加 iPhone”生成二维码。"
-      :"HTTPS 安全模式已恢复。已有 HTTP 二维码已失效，请重新生成。");
+    try{
+      const vault=await window.vaultApi.status();
+      if(!vault.configured){setVaultGate("create");return}
+      if(!vault.unlocked){setVaultGate("unlock");return}
+      await performHide(ids);
+    }catch(error){
+      const text=error instanceof Error?error.message:String(error??"");
+      setMessage(text||"无法读取私密相册状态");
+    }
   };
-
+  const submitVaultGate=async()=>{
+    if(!window.vaultApi||!vaultGate)return;
+    if(vaultGate==="create"){
+      if(!vaultAccepted){setVaultGateError("请先确认密码丢失后无法恢复");return}
+      if(vaultPassword!==vaultRepeat){setVaultGateError("两次输入的密码不一致");return}
+    }
+    const gate=vaultGate;
+    const password=vaultPassword;
+    // 立即关闭弹窗，创建/解锁与隐藏全部在后台执行，界面不显示处理中状态。
+    setVaultPassword("");setVaultRepeat("");setVaultAccepted(false);
+    setVaultGate(null);
+    setVaultBusy(true);setVaultGateError("");
+    try{
+      if(gate==="create"){
+        await window.vaultApi.initialize(password);
+      }else{
+        await window.vaultApi.unlock(password);
+      }
+      await performHide(Array.from(selectedIds));
+    }catch(error){
+      const text=error instanceof Error?error.message:String(error??"");
+      setMessage(text||"操作失败");
+    }finally{
+      setVaultBusy(false);
+    }
+  };
   const summary=data?.summary??{};
   const recentDevice=[...(data?.devices??[])].sort((a,b)=>Date.parse(b.last_seen_at||"0")-Date.parse(a.last_seen_at||"0"))[0];
   return <div className="hx-view photo-sync">
     <section className="photo-sync-hero">
-      <div><span className="hx-pill">iPhone 快捷指令</span><h2>把相册原文件，安静地收回本机</h2><p>同一局域网内增量同步，不使用 iCloud、PWA 或 iOS 原生应用。</p></div>
+      <div><span className="hx-pill">手机局域网</span><h2>把相册原文件，安静地收回本机</h2><p>同一局域网内用手机浏览器同步，不使用 iCloud 或 iOS 原生应用。</p></div>
       <button className="hx-btn primary" onClick={createPairing}><Smartphone/>添加 iPhone</button>
     </section>
-
-    {message&&<div className="photo-sync-message" role="alert"><AlertTriangle/>{message}<button aria-label="关闭提示" onClick={()=>setMessage("")}><X/></button></div>}
 
     <section className="hx-metrics photo-sync-metrics" aria-label="最近同步概览">
       <div className="hx-metric"><span>最近同步</span><strong>{summary.last_sync_at?new Date(summary.last_sync_at).toLocaleDateString("zh-CN"):"暂无"}</strong><small>{formatDateTime(summary.last_sync_at)}</small></div>
@@ -171,11 +212,17 @@ export default function PhotoSyncModule() {
 
     <section className="photo-sync-layout">
       <div className="photo-timeline">
-        <header className="photo-section-head"><div><span>照片时间线</span><h2>{data?.total??0} 个本地媒体文件</h2></div><button className="hx-btn secondary" onClick={()=>load(page)} disabled={loading}><RefreshCw className={loading?"spin":""}/>刷新</button></header>
+        <header className="photo-section-head"><div><span>照片时间线</span><h2>{data?.total??0} 个本地媒体文件</h2></div><div className="photo-section-actions">
+          {selectMode
+            ?<><span className="photo-select-count">已选 {selectedIds.size} 张</span><button className="hx-btn secondary" onClick={cancelSelect} disabled={loading}>取消</button><button className="hx-btn primary" onClick={()=>void hideSelected()} disabled={selectedIds.size===0||loading}><LockKeyhole/>隐藏到私密相册</button></>
+            :<><button className="hx-btn secondary" onClick={enterSelectMode} disabled={loading}><EyeOff/>批量隐藏</button><button className="hx-btn secondary" onClick={()=>load(page)} disabled={loading}><RefreshCw className={loading?"spin":""}/>刷新</button></>}
+        </div></header>
+        {selectMode&&<p className="photo-select-hint">选择要隐藏的照片，确认后会被加密移入私密相册并从同步相册移除。</p>}
         {loading&&!data?<div className="photo-loading"><LoaderCircle className="spin"/><p>正在读取缩略图索引…</p></div>:
           groups.length?groups.map(([day,photos])=><section className="photo-day" key={day}>
             <header><h3>{day}</h3><span>{photos.length} 项</span></header>
-            <div className="photo-grid">{photos.map(photo=><button className="photo-card" key={photo.id} onClick={()=>setSelected(photo)} aria-label={`查看 ${photo.original_file_name}`}>
+            <div className="photo-grid">{photos.map(photo=><button className={`photo-card${selectMode?" selectable":""}${selectedIds.has(photo.id)?" selected":""}`} key={photo.id} onClick={()=>selectMode?toggleSelect(photo.id):setSelected(photo)} aria-label={selectMode?`选择 ${photo.original_file_name}`:`查看 ${photo.original_file_name}`}>
+              {selectedIds.has(photo.id)&&<i className="photo-select-mark">✓</i>}
               <span className="photo-thumb">
                 {photo.processing_status==="completed"
                   ?<img src={`${mediaBase}/${photo.id}/thumbnail`} alt="" loading="lazy" decoding="async"/>
@@ -184,41 +231,34 @@ export default function PhotoSyncModule() {
               </span>
               <span className="photo-card-copy"><strong>{new Date(photo.captured_at||photo.imported_at).toLocaleTimeString("zh-CN",{hour:"2-digit",minute:"2-digit"})}</strong><small>{photo.device_name||"iPhone"} · {formatBytes(photo.file_size)}</small></span>
             </button>)}</div>
-          </section>):<div className="photo-empty"><ImageIcon/><h3>还没有同步照片</h3><p>添加 iPhone 后，快捷指令上传成功的照片会按拍摄日期出现在这里。</p></div>}
+          </section>):<div className="photo-empty"><ImageIcon/><h3>还没有同步照片</h3><p>添加手机后，通过浏览器上传成功的照片会按拍摄日期出现在这里。</p></div>}
         {(data?.total??0)>30&&<footer className="photo-pagination">
           <button className="hx-btn secondary" disabled={page<=1||loading} onClick={()=>load(page-1)}>上一页</button>
           <span>第 {page} / {Math.ceil((data?.total??0)/30)} 页</span>
           <button className="hx-btn secondary" disabled={page>=Math.ceil((data?.total??0)/30)||loading} onClick={()=>load(page+1)}>下一页</button>
         </footer>}
       </div>
-
-      <aside className="photo-sync-side">
-        <article className="hx-panel"><header className="photo-side-head"><div><span>局域网服务</span><h3>{serverStatus?.active?"正在运行":"等待开启"}</h3></div>{serverStatus?.active?<ShieldCheck/>:<Unplug/>}</header>
-          <div className="photo-info-list"><span>电脑名称<b>{serverStatus?.computerName||"LifeTrace-PC"}</b></span><span>监听地址<b>{serverStatus?.bindAddress||"0.0.0.0"}:{serverStatus?.port||3443}</b></span><span>手机地址<b>{serverStatus?.photoSyncUrls?.[0]||"添加设备时自动显示"}</b></span></div>
-          {serverStatus?.allowInsecureHttp
-            ?<div className="photo-transport-warning" role="status"><AlertTriangle aria-hidden="true"/><div><strong>HTTP 兼容模式已开启</strong><span>照片与设备令牌未加密，仅限可信局域网临时使用。</span></div></div>
-            :<><button className="photo-certificate-action" onClick={exportCertificate}><Download aria-hidden="true"/>导出 iPhone 信任证书</button>
-              <p className="photo-certificate-note">首次使用时安装并完全信任一次。电脑 IP 变化后，LifeTrace 会自动更新服务器证书，无需重新安装。</p></>}
-          <button className={`photo-compatibility-action${serverStatus?.allowInsecureHttp?" active":""}`} onClick={()=>setCompatibilityMode(!serverStatus?.allowInsecureHttp)}>
-            {serverStatus?.allowInsecureHttp?"关闭兼容模式，恢复 HTTPS":"快捷指令证书无效？开启 HTTP 兼容模式"}
-          </button>
-          <p className="photo-hint">仅开放同一局域网；Windows 首次提示时允许“专用网络”。权限最终由设备 Token 判断，不只依赖 IP。</p>
-        </article>
-
-        <article className="hx-panel"><header className="photo-side-head"><div><span>同步设备</span><h3>{data?.devices.length??0} 台</h3></div><Smartphone/></header>
-          <div className="photo-device-list">{data?.devices.length?data.devices.map(device=><div key={device.id}><span><Smartphone/><i className={device.status}/></span><div><strong>{device.device_name}</strong><small>配对 {formatDateTime(device.paired_at)}<br/>在线 {formatDateTime(device.last_seen_at)}</small></div><button disabled={device.status==="revoked"} onClick={()=>revoke(device)}>{device.status==="active"?"撤销":"已撤销"}</button></div>):<p className="photo-side-empty">尚未配对 iPhone</p>}</div>
-        </article>
-
-        <article className="hx-panel"><header className="photo-side-head"><div><span>上传与处理</span><h3>{data?.tasks.length??0} 个待处理任务</h3></div><MonitorUp/></header>
-          <div className="photo-task-list">{data?.tasks.length?data.tasks.map(task=><div key={task.id}><StateIcon status={task.status}/><div><strong>{task.original_file_name}</strong><small>{statusLabel[task.status]||task.status} · {formatBytes(task.received_file_size||task.expected_file_size)}{task.error_code?` · ${task.error_code}`:""}</small>{task.error_message&&<p>{task.error_message}</p>}</div>{task.status==="failed"&&task.photo_id&&<button onClick={()=>retry(task)}>重试</button>}</div>):<p className="photo-side-empty">没有失败或进行中的任务</p>}</div>
-          <button className="photo-cleanup" onClick={async()=>{await window.photoSyncApi?.recover();await load(page)}}><Clock3/>清理过期临时文件并恢复任务</button>
-        </article>
-      </aside>
     </section>
+
+    {message&&<Toast message={message} onClose={()=>setMessage("")}/>}
+
+    {vaultGate&&<div className="hx-overlay photo-vault-gate" role="dialog" aria-modal="true" aria-labelledby="vault-gate-title" onMouseDown={event=>{if(event.target===event.currentTarget&&!vaultBusy)setVaultGate(null)}}>
+      <article className="photo-vault-gate-card"><header><div><span>私密相册</span><h2 id="vault-gate-title">{vaultGate==="create"?"创建私密相册":"解锁私密相册"}</h2><p>{vaultGate==="create"?"隐藏的照片会加密保存在本机，密码丢失后任何人都无法恢复。":"输入密码解锁后即可把所选照片隐藏进去。"}</p></div><button aria-label="关闭" disabled={vaultBusy} onClick={()=>setVaultGate(null)}><X/></button></header>
+        <div className="photo-vault-gate-body">
+          {vaultGate==="create"?<>
+            <label>私密相册密码<input type="password" minLength={6} value={vaultPassword} onChange={event=>setVaultPassword(event.target.value)} autoComplete="new-password"/></label>
+            <label>再次输入密码<input type="password" minLength={6} value={vaultRepeat} onChange={event=>setVaultRepeat(event.target.value)} autoComplete="new-password"/></label>
+            <label className="photo-vault-confirm"><input type="checkbox" checked={vaultAccepted} onChange={event=>setVaultAccepted(event.target.checked)}/><span>我确认密码丢失后，任何人都无法恢复其中内容。</span></label>
+          </>:<label>密码<input type="password" value={vaultPassword} onChange={event=>setVaultPassword(event.target.value)} autoFocus autoComplete="current-password"/></label>}
+          {vaultGateError&&<p className="photo-vault-gate-error" role="alert">{vaultGateError}</p>}
+          <button className="hx-btn primary" disabled={vaultBusy||!vaultPassword||(vaultGate==="create"&&(!vaultAccepted||vaultPassword.length<6||vaultPassword!==vaultRepeat))} onClick={()=>void submitVaultGate()}>{vaultGate==="create"?"创建并隐藏所选照片":"解锁并隐藏所选照片"}</button>
+        </div>
+      </article>
+    </div>}
 
     {pairing&&<div className="hx-overlay photo-pair-overlay" role="dialog" aria-modal="true" aria-labelledby="pair-title" onMouseDown={event=>{if(event.target===event.currentTarget)void cancelPairing()}}>
       <article className="photo-pair-modal"><header><div><span>一次性配对</span><h2 id="pair-title">扫描二维码添加 iPhone</h2></div><button aria-label="取消配对" onClick={cancelPairing}><X/></button></header>
-        <div className="photo-pair-body">{qr?<img src={qr} alt="打开 LifeTrace 照片同步快捷指令的配对二维码"/>:<LoaderCircle className="spin"/>}
+        <div className="photo-pair-body">{qr?<img src={qr} alt="打开 LifeTrace 照片同步配对页面的二维码"/>:<LoaderCircle className="spin"/>}
           <div><span>配对码</span><strong>{pairing.pairCode}</strong><button onClick={()=>navigator.clipboard.writeText(pairing.pairCode)}><Copy/>复制</button></div>
           <p>二维码只包含一次性配对码和局域网地址，不包含长期设备令牌。</p>
           <b className={remaining<60?"urgent":""}>{remaining>0?`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,"0")} 后失效`:"配对码已失效"}</b>

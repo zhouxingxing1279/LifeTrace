@@ -1,15 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
-
-const mediaFilters = [
-  {
-    name: "照片和视频",
-    extensions: [
-      "jpg", "jpeg", "png", "webp", "gif", "bmp", "tif", "tiff",
-      "mp4", "mov", "m4v", "avi", "mkv", "webm",
-    ],
-  },
-];
 
 export function installVaultBridge() {
   if (!("__TAURI_INTERNALS__" in window)) return;
@@ -24,27 +13,15 @@ export function installVaultBridge() {
       albumId: options.albumId ?? null,
     }),
     listAlbums: () => invoke<VaultAlbum[]>("vault_list_albums"),
-    async importFiles(options = {}) {
-      const selected = await open({ multiple: true, directory: false, filters: mediaFilters });
-      if (!selected) return [];
-      const sourcePaths = Array.isArray(selected) ? selected : [selected];
-      return invoke<VaultAsset[]>("vault_import_files", {
-        sourcePaths,
-        moveSource: options.moveSource ?? false,
-        albumId: options.albumId ?? null,
-      });
-    },
+    hidePhotosFromSyncAlbum: (photoIds, albumId = null) =>
+      invoke<{ started: boolean; count: number }>("vault_hide_photos_from_sync_album", {
+        photoIds,
+        albumId,
+      }),
+    restoreToSyncAlbum: (assetId) =>
+      invoke<VaultAsset>("vault_restore_to_sync_album", { assetId }),
     readAsset: (assetId) => invoke<VaultAssetPayload>("vault_read_asset", { assetId }),
     readThumbnail: (assetId) => invoke<VaultThumbnailPayload>("vault_read_thumbnail", { assetId }),
-    async exportAsset(assetId, removeFromVault) {
-      const selected = await open({ directory: true, multiple: false });
-      if (!selected || Array.isArray(selected)) return null;
-      return invoke<string>("vault_export_asset", {
-        assetId,
-        targetDirectory: selected,
-        removeFromVault,
-      });
-    },
     moveToTrash: (assetId) => invoke<void>("vault_move_to_trash", { assetId }),
     restoreAsset: (assetId) => invoke<void>("vault_restore_asset", { assetId }),
     deleteAssetPermanently: (assetId) => invoke<void>("vault_delete_asset_permanently", { assetId }),

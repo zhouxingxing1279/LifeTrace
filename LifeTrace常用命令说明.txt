@@ -1,0 +1,197 @@
+========================================================
+LifeTrace 本地部署 · 常用命令说明
+========================================================
+环境：后端跑在 WSL2（Ubuntu），Web 前端跑在 WSL2，
+桌面客户端在 Windows 构建运行。
+
+--------------------------------------------------------
+〇、地址与端口
+--------------------------------------------------------
+  后端（Cloud + PostgreSQL）  http://localhost:8787（Windows）
+                              http://127.0.0.1:8787 （WSL）
+  Web/PWA 前端（开发模式）    http://127.0.0.1:5190（Windows 浏览器）
+  健康检查                    http://localhost:8787/health/ready
+  数据库端口                  127.0.0.1:5432（仅本机）
+
+--------------------------------------------------------
+一、后端（在 WSL 里执行）
+--------------------------------------------------------
+进入项目目录：
+  cd ~/projects/LifeTrace
+
+启动后端（PostgreSQL + LifeTrace Cloud，后台运行）：
+  ./scripts/local-wsl/start.sh
+
+停止后端（保留数据卷）：
+  ./scripts/local-wsl/stop.sh
+
+查看状态与健康检查：
+  ./scripts/local-wsl/status.sh
+
+查看后端日志（-f 实时跟随，Ctrl+C 退出不影响服务）：
+  ./scripts/local-wsl/logs.sh
+  ./scripts/local-wsl/logs.sh -f
+
+备份数据库（保存到 backups/postgres/）：
+  ./scripts/local-wsl/backup.sh
+
+更新并部署（自动先备份 → 拉代码 → 重建启动）：
+  ./scripts/local-wsl/update.sh
+
+手动构建启动（等价于 start.sh，改过 Dockerfile/代码时用）：
+  docker compose \
+    --env-file .env.wsl \
+    -f deploy/cloud/docker-compose.local.yml \
+    --profile cloud \
+    up -d --build
+
+健康检查（期望 status: ready，postgresql: true）：
+  curl --fail --silent http://127.0.0.1:8787/health/ready | jq
+
+进入 PostgreSQL 命令行：
+  docker compose --env-file .env.wsl -f deploy/cloud/docker-compose.local.yml \
+    exec -T postgres psql -U lifetrace -d lifetrace
+
+--------------------------------------------------------
+二、Web/PWA 前端（在 WSL 里执行）
+--------------------------------------------------------
+启动开发服务器（自动跟随页面主机连后端，最稳定）：
+  cd ~/projects/LifeTrace
+  npm run pwa:dev -- --port 5190
+
+停止开发服务器：
+  pkill -f "vite.web.config"
+
+构建正式产物（输出到 dist-web/）：
+  npm run pwa:build
+
+浏览器访问：
+  http://127.0.0.1:5190
+
+--------------------------------------------------------
+〇、Git 拉取与推送
+--------------------------------------------------------
+查看仓库状态（改了什么、有没有未提交文件）：
+  git status
+  git status --short
+
+查看当前分支与远程是否一致：
+  git branch --show-current
+  git fetch origin
+  git status -sb
+
+拉取 main 分支最新代码（WSL 网络正常时）：
+  cd ~/projects/LifeTrace        # WSL 里的部署仓库
+  git fetch origin
+  git pull --ff-only origin main
+
+Windows 仓库（桌面客户端代码）拉取：
+  cd D:\WorkSpace\LifeTrace
+  git pull --ff-only origin main
+
+如果 WSL 直连 GitHub 超时（本机网络不稳时），改用 Windows 仓库同步：
+  # 1. 先在 Windows 仓库拉取最新
+  cd D:\WorkSpace\LifeTrace
+  git -c http.proxy=http://127.0.0.1:7890 pull --ff-only origin main
+  # 2. 再把提交对象同步到 WSL 仓库
+  wsl
+  cd ~/projects/LifeTrace
+  git fetch /mnt/d/WorkSpace/LifeTrace main:refs/remotes/origin/main
+  git merge --ff-only origin/main
+
+提交本地修改并推送到 GitHub：
+  # 在 Windows 仓库操作（网络最稳，代理可用）
+  cd D:\WorkSpace\LifeTrace
+  git status                              # 先确认要提交哪些文件
+  git add <文件或目录>                    # 例如 git add src/services/cloudAuth.ts
+  git commit -m "说明这次改了什么"
+  git push origin main                    # 直连失败时用：
+  git -c http.proxy=http://127.0.0.1:7890 push origin main
+
+在 WSL 仓库提交推送（网络通畅时）：
+  cd ~/projects/LifeTrace
+  git add <文件或目录>
+  git commit -m "说明"
+  git push origin main
+
+查看最近提交：
+  git log --oneline -10
+  git log -1 --oneline
+
+查看某次提交改了什么文件：
+  git show --stat <提交号>
+
+【绝对不要提交的内容】
+  .env.wsl（密钥）、scripts/local-wsl/（本地脚本）、backups/（数据库备份）
+  这些已被忽略/排除，正常 git add 不会包含，但提交前最好 git status 确认。
+
+--------------------------------------------------------
+三、桌面客户端（在 Windows PowerShell 里执行）
+--------------------------------------------------------
+工作目录：
+  cd D:\WorkSpace\LifeTrace
+
+开发模式运行：
+  npm run dev
+
+打包安装程序：
+  npm run build
+
+客户端登录时云服务地址填：
+  http://localhost:8787
+
+--------------------------------------------------------
+四、创建云端账号（在 WSL 里执行，一次即可）
+--------------------------------------------------------
+  cd ~/projects/LifeTrace
+  set -a; source .env.wsl; set +a
+  export DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_HOST_PORT}/${POSTGRES_DB}"
+  export LIFETRACE_ENV=development
+  export DEV_AUTH_ENABLED=true
+  export AUTH_REGISTRATION_MODE=disabled
+  cargo run --manifest-path services/lifetrace-cloud/Cargo.toml \
+    --bin lifetrace-admin \
+    -- bootstrap-user \
+    --email "你的邮箱" \
+    --display-name "你的显示名"
+
+说明：
+  - 密码在终端交互式输入，最短 15 位，不会写进命令历史。
+  - 邮箱已存在时会报错，不会重复创建。
+
+--------------------------------------------------------
+五、接口级登录测试（可选，WSL）
+--------------------------------------------------------
+  printf '{"email":"你的邮箱","password":"你的密码","appId":"lifetrace-desktop","deviceId":"test-device","deviceName":"test","platform":"windows"}' > /tmp/login.json
+  chmod 600 /tmp/login.json
+  curl --fail --silent -X POST -H 'Content-Type: application/json' \
+    --data @/tmp/login.json http://127.0.0.1:8787/api/v1/auth/login | jq
+  rm -f /tmp/login.json
+
+成功返回 accessToken/refreshToken；密码错误返回 401。
+
+--------------------------------------------------------
+六、注意事项
+--------------------------------------------------------
+  1. 密钥文件 .env.wsl 不要提交到 Git（已在 .gitignore 中）。
+  2. 本地管理脚本 scripts/local-wsl/ 不提交 GitHub。
+  3. 备份文件在 backups/postgres/，不提交。
+  4. 停止服务用 stop.sh（down），不要加 -v，否则会删数据卷。
+  5. 本地 Compose 只绑定 127.0.0.1，不要改成公网暴露。
+  6. 前端默认直接请求“页面同主机”的 8787 端口（跨端口但同站，
+     会话 Cookie 才能正常发送）。如需覆盖可用
+     VITE_LIFETRACE_CLOUD_URL=http://主机:8787 指定。
+  7. 浏览器访问前端时如果仍显示旧内容/旧报错，
+     用无痕窗口，或在 F12 → Application 里 Unregister Service Worker 后
+     清理站点数据，再刷新（Ctrl+Shift+R 硬刷新）。
+  8. 常用管理脚本：
+       ./scripts/local-wsl/start.sh    启动
+       ./scripts/local-wsl/stop.sh     停止
+       ./scripts/local-wsl/status.sh   状态
+       ./scripts/local-wsl/logs.sh -f  实时日志
+       ./scripts/local-wsl/backup.sh   备份
+       ./scripts/local-wsl/update.sh   更新部署
+
+========================================================
+生成时间：2026-08-06
+========================================================

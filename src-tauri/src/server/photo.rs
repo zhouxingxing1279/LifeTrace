@@ -28,7 +28,6 @@ use super::AppState;
 #[derive(Clone)]
 struct Pairing {
     expires_at: chrono::DateTime<Utc>,
-    server: String,
 }
 
 pub struct Runtime {
@@ -105,14 +104,11 @@ impl Runtime {
             .map_err(|_| "配对状态锁已损坏".to_owned())?
             .insert(
                 code.clone(),
-                Pairing {
-                    expires_at: expires,
-                    server: server.clone(),
-                },
+                Pairing { expires_at: expires },
             );
         let pairing = json!({
             "success": true, "pairCode": code, "expiresAt": expires.to_rfc3339(),
-            "entryUrl": format!("{server}/api/photo-sync/shortcut-entry?code={code}")
+            "entryUrl": format!("{server}/photos?code={code}")
         });
         let mut status = self.status();
         status
@@ -220,7 +216,15 @@ pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
          );
          CREATE INDEX IF NOT EXISTS photos_captured_at_idx ON photos(captured_at);
          CREATE INDEX IF NOT EXISTS photo_tasks_status_idx ON photo_upload_tasks(status);",
-    )
+    )?;
+    // 上次隐藏任务被中断（例如加密完成前应用退出）时，把卡在“隐藏中”的照片
+    // 恢复为可见：文件仍在磁盘，不丢数据，等待用户再次隐藏。
+    connection.execute(
+        "UPDATE photos SET processing_status='completed'
+         WHERE processing_status='hiding' AND deleted_at IS NULL",
+        [],
+    )?;
+    Ok(())
 }
 
 fn json_error(status: StatusCode, code: &str, message: &str) -> Response {
@@ -300,12 +304,12 @@ fn rows(
 
 fn dashboard(connection: &Connection, page: usize, page_size: usize) -> Result<Value, String> {
     let offset = (page - 1) * page_size;
-    let photos = rows(connection, "SELECT p.id,p.original_file_name,p.media_type,p.mime_type,p.file_size,p.width,p.height,p.duration_ms,p.captured_at,p.imported_at,p.processing_status,p.processing_error,d.device_name FROM photos p LEFT JOIN photo_sync_devices d ON d.id=p.source_device_id WHERE p.deleted_at IS NULL ORDER BY COALESCE(p.captured_at,p.imported_at) DESC LIMIT ?1 OFFSET ?2", &[&(page_size as i64), &(offset as i64)])?;
+    let photos = rows(connection, "SELECT p.id,p.original_file_name,p.media_type,p.mime_type,p.file_size,p.width,p.height,p.duration_ms,p.captured_at,p.imported_at,p.processing_status,p.processing_error,d.device_name FROM photos p LEFT JOIN photo_sync_devices d ON d.id=p.source_device_id WHERE p.deleted_at IS NULL AND p.processing_status <> 'hiding' ORDER BY COALESCE(p.captured_at,p.imported_at) DESC LIMIT ?1 OFFSET ?2", &[&(page_size as i64), &(offset as i64)])?;
     let devices = rows(connection, "SELECT id,device_name,device_type,status,paired_at,last_seen_at,revoked_at FROM photo_sync_devices ORDER BY paired_at DESC", &[])?;
     let tasks = rows(connection, "SELECT id,device_id,original_file_name,expected_file_size,received_file_size,status,photo_id,created_at,updated_at,error_code,error_message FROM photo_upload_tasks WHERE status NOT IN ('completed','expired') ORDER BY updated_at DESC LIMIT 100", &[])?;
     let total: i64 = connection
         .query_row(
-            "SELECT COUNT(*) FROM photos WHERE deleted_at IS NULL",
+            "SELECT COUNT(*) FROM photos WHERE deleted_at IS NULL AND processing_status <> 'hiding'",
             [],
             |row| row.get(0),
         )
@@ -490,40 +494,12 @@ fn clean_name(value: &str) -> String {
         .collect()
 }
 
-async fn shortcut_entry(runtime: &Runtime, code: &str) -> Response {
-    let pairing = runtime
-        .pairings
-        .lock()
-        .ok()
-        .and_then(|pairings| pairings.get(code).cloned());
-    let Some(pairing) = pairing.filter(|pairing| pairing.expires_at > Utc::now()) else {
-        return json_error(
-            StatusCode::BAD_REQUEST,
-            "PAIR_CODE_INVALID",
-            "配对码无效或已经过期",
-        );
-    };
-    let config = json!({
-        "action": "pair", "server": pairing.server, "pairCode": code,
-        "stableServer": pairing.server, "expiresAt": pairing.expires_at.to_rfc3339()
-    });
-    let shortcut = format!(
-        "shortcuts://run-shortcut?name={}&input=text&text={}",
-        url::form_urlencoded::byte_serialize("LifeTrace照片同步".as_bytes()).collect::<String>(),
-        url::form_urlencoded::byte_serialize(config.to_string().as_bytes()).collect::<String>()
-    );
-    Html(format!(
-        r#"<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
-        <title>LifeTrace 照片同步</title><style>body{{font-family:system-ui;text-align:center;padding:48px 20px;background:#f4f7f5;color:#173d30}}a{{display:inline-block;padding:14px 22px;border-radius:12px;background:#1f6b4f;color:white;text-decoration:none;font-weight:700}}</style>
-        <h1>LifeTrace 照片同步</h1><p>打开快捷指令完成设备配对。</p><a href="{shortcut}">打开快捷指令</a>"#
-    )).into_response()
-}
-
 // Embedded so the phone only downloads a small upload UI; all parsing remains on the PC.
 const MOBILE_UPLOAD_PAGE: &str = include_str!("mobile-upload.html");
+const PHOTO_UPLOAD_PAGE: &str = include_str!("photo-upload.html");
 
 fn is_mobile_upload_route(method: &Method, path: &str) -> bool {
-    (*method == Method::GET && matches!(path, "/" | "/fitness" | "/api/health"))
+    (*method == Method::GET && matches!(path, "/" | "/fitness" | "/photos" | "/api/health"))
         || (*method == Method::POST && matches!(path, "/api/imports" | "/api/xunji/parse"))
 }
 
@@ -591,6 +567,9 @@ async fn lan_dispatch(State(state): State<AppState>, request: Request<Body>) -> 
     if request_method == Method::GET && matches!(request_path.as_str(), "/" | "/fitness") {
         return Html(MOBILE_UPLOAD_PAGE).into_response();
     }
+    if request_method == Method::GET && request_path == "/photos" {
+        return Html(PHOTO_UPLOAD_PAGE).into_response();
+    }
     if request_method == Method::GET && request_path == "/api/health" {
         return Json(json!({
             "ok": true,
@@ -610,17 +589,6 @@ async fn lan_dispatch(State(state): State<AppState>, request: Request<Body>) -> 
     let uri = parts.uri;
     let headers = parts.headers;
     let path = uri.path();
-    if method == Method::GET && path == "/api/photo-sync/shortcut-entry" {
-        let params: HashMap<String, String> =
-            url::form_urlencoded::parse(uri.query().unwrap_or_default().as_bytes())
-                .into_owned()
-                .collect();
-        return shortcut_entry(
-            &state.photo_runtime,
-            params.get("code").map(String::as_str).unwrap_or_default(),
-        )
-        .await;
-    }
     if method == Method::POST && path == "/api/photo-sync/pair" {
         let payload = match to_bytes(body, 128 * 1024).await.and_then(|bytes| {
             serde_json::from_slice::<Value>(&bytes).map_err(|error| axum::Error::new(error))

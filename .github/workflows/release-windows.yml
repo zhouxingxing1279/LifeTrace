@@ -1,0 +1,135 @@
+name: Release Windows Installer
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "要发布的版本（必须与 package.json / tauri.conf.json / Cargo.toml 一致），例如 0.2.2"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  release-windows:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create required bundled dictionary resource
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-sync-client
+            src-tauri
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Check version consistency
+        run: node scripts/check-version-consistency.mjs
+
+      - name: Resolve release tag from configuration
+        id: tag
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $requested = "${{ inputs.version }}"
+          if ([string]::IsNullOrWhiteSpace($requested)) {
+            $requested = $config.version
+          }
+          if ($requested -ne $config.version) {
+            throw "输入的版本 $requested 与配置文件版本 $($config.version) 不一致，拒绝发布。"
+          }
+          "tag=v$requested" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Lint, unit tests and frontend build
+        run: |
+          npm run lint
+          npm run test:unit
+          npm run web:build
+
+      - name: Prepare release notes
+        id: release_notes
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $version = $config.version
+          $body = "LifeTrace v$version 正式发布（Windows NSIS 安装包）。"
+          $body += "`n`n更新内容：`n"
+          $body += (git log -1 --pretty=format:"- %h %s")
+          "body<<EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          $body | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "EOF" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Build NSIS installer and publish GitHub Release
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ steps.tag.outputs.tag }}
+          releaseName: LifeTrace ${{ steps.tag.outputs.tag }}
+          releaseBody: ${{ steps.release_notes.outputs.body }}
+          releaseDraft: false
+          prerelease: false
+          owner: zhouxingxing1279
+          repo: LifeTrace-Releases
+          args: --verbose
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+
+      - name: Verify published updater metadata
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $expectedVersion = $config.version
+          $tag = $env:RELEASE_TAG
+          if ($tag -ne "v$expectedVersion") {
+            throw "标签 $tag 与应用版本 v$expectedVersion 不一致，拒绝发布。"
+          }
+          $latestUrl = "https://github.com/zhouxingxing1279/LifeTrace-Releases/releases/latest/download/latest.json"
+          $json = Invoke-RestMethod -Uri $latestUrl -TimeoutSec 60
+          if (-not $json.version) {
+            throw "latest.json 缺少 version 字段。"
+          }
+          if ($json.version -ne $expectedVersion) {
+            throw "latest.json 的 version $($json.version) 与项目版本 v$expectedVersion 不一致。"
+          }
+          $entry = $json.platforms."windows-x86_64"
+          if (-not $entry) {
+            throw "latest.json 缺少 platforms.windows-x86_64 条目。"
+          }
+          if ([string]::IsNullOrWhiteSpace($entry.url)) {
+            throw "platforms.windows-x86_64.url 为空。"
+          }
+          if ([string]::IsNullOrWhiteSpace($entry.signature)) {
+            throw "platforms.windows-x86_64.signature 为空。"
+          }
+          if ($entry.url -notmatch "^https://github\.com/zhouxingxing1279/LifeTrace-Releases/releases/") {
+            throw "platforms.windows-x86_64.url 未指向公开 LifeTrace-Releases 仓库：$($entry.url)"
+          }
+          Write-Output "latest.json 验证通过：version=$($json.version)，url=$($entry.url)"

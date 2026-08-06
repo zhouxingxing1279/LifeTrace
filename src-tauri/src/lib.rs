@@ -8,12 +8,16 @@ mod server;
 mod sync;
 mod vault;
 
+use std::sync::Arc;
+
 use tauri::Manager;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let _ = rustls::crypto::ring::default_provider().install_default();
     tauri::Builder::default()
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             cloud_auth::cloud_credential_set,
@@ -50,10 +54,10 @@ pub fn run() {
             vault::vault_lock,
             vault::vault_list_assets,
             vault::vault_list_albums,
-            vault::vault_import_files,
+            vault::vault_hide_photos_from_sync_album,
+            vault::vault_restore_to_sync_album,
             vault::vault_read_asset,
             vault::vault_read_thumbnail,
-            vault::vault_export_asset,
             vault::vault_move_to_trash,
             vault::vault_restore_asset,
             vault::vault_delete_asset_permanently,
@@ -70,7 +74,7 @@ pub fn run() {
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let resource_dir = app.path().resource_dir()?;
-            let vault_state = vault::VaultState::new(data_dir.join("vault"))?;
+            let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
             app.manage(vault_state);
             let photo_runtime = server::photo::Runtime::new(data_dir.clone());
             app.manage(desktop::DesktopState {
