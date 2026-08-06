@@ -110,7 +110,7 @@ jobs:
           npm run web:build
       - name: Require committed formatting and lockfile
         run: git diff --exit-code -- src-tauri/src/vault.rs src-tauri/Cargo.lock
-      - name: Upload diagnostics and generated files
+      - name: Upload diagnostics and source snapshot
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -118,5 +118,13 @@ jobs:
           path: |
             vault-test.log
             src-tauri/src/vault.rs
+            src-tauri/src/lib.rs
+            src-tauri/Cargo.toml
             src-tauri/Cargo.lock
+            src/components/LocalVaultModule.tsx
+            src/components/PhotoSyncModule.tsx
+            src/types/electron.d.ts
+            tauri-ui/vaultBridge.ts
+            tauri-ui/main.tsx
+            app/local-vault.css
           if-no-files-found: warn
