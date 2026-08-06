@@ -193,6 +193,14 @@ jobs:
                   raise SystemExit('habits restore owner patch did not match expected source')
               habits_source = habits_source.replace(old, new, 1)
           habits_path.write_text(habits_source, encoding='utf-8')
+
+          push_path = Path('crates/lifetrace-sync-client/src/push.rs')
+          push_source = push_path.read_text(encoding='utf-8')
+          old_push = "change.atomic_group_id = group.map(|value| AtomicGroupId::new(value));"
+          new_push = "change.atomic_group_id = group.map(AtomicGroupId::new);"
+          if push_source.count(old_push) != 1:
+              raise SystemExit('sync push Clippy patch did not match expected source')
+          push_path.write_text(push_source.replace(old_push, new_push, 1), encoding='utf-8')
           PY
 
       - name: Install Tauri Linux build dependencies
@@ -290,7 +298,25 @@ jobs:
         run: exit 1
 
       - name: Clippy desktop library
-        run: cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
+        id: desktop-clippy
+        shell: bash
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings 2>&1 | tee epic05-desktop-clippy.log
+
+      - name: Upload desktop Clippy diagnostics
+        if: always() && steps.desktop-clippy.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic05-desktop-clippy-log
+          path: epic05-desktop-clippy.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Stop after desktop Clippy failure
+        if: steps.desktop-clippy.outcome == 'failure'
+        run: exit 1
 
       - name: Frontend install and validation
         run: |
