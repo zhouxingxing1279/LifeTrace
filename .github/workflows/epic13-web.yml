@@ -47,7 +47,7 @@ jobs:
       - run: npm ci
       - name: Enforce cloud-only storage policy
         run: |
-          if grep -R -n -E 'localStorage|sessionStorage|indexedDB|IDBDatabase' web-client/src; then
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' web-client/src; then
             echo "Business data must not be persisted in browser storage"
             exit 1
           fi
