@@ -77,7 +77,10 @@ jobs:
           cargo fmt --manifest-path src-tauri/Cargo.toml
           cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
       - name: Rust private album tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1 2>&1 | tee vault-test.log
       - name: Rust desktop regression tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Clippy
@@ -107,12 +110,13 @@ jobs:
           npm run web:build
       - name: Require committed formatting and lockfile
         run: git diff --exit-code -- src-tauri/src/vault.rs src-tauri/Cargo.lock
-      - name: Upload formatted Rust and lockfile for repair
+      - name: Upload diagnostics and generated files
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: local-vault-generated-files
+          name: local-vault-diagnostics
           path: |
+            vault-test.log
             src-tauri/src/vault.rs
             src-tauri/Cargo.lock
           if-no-files-found: warn
