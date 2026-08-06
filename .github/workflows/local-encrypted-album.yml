@@ -72,20 +72,20 @@ jobs:
           fi
           test ! -e src-tauri/src/server/vault.rs
           test ! -e src-tauri/src/sync/vault.rs
-      - name: Format Rust and refresh lockfile
+      - name: Verify Rust formatting and committed lockfile
         run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml
-          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
       - name: Rust private album tests
         shell: bash
         run: |
           set -o pipefail
-          cargo test --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1 2>&1 | tee vault-test.log
+          cargo test --locked --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1 2>&1 | tee vault-test.log
       - name: Rust desktop regression tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Clippy
         run: |
-          cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- \
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --lib -- \
             -D warnings \
             -A dead_code \
             -A clippy::explicit_auto_deref \
@@ -108,7 +108,7 @@ jobs:
           npm run lint
           npm run test:unit
           npm run web:build
-      - name: Require committed formatting and lockfile
+      - name: Require clean tracked sources
         run: git diff --exit-code -- src-tauri/src/vault.rs src-tauri/Cargo.lock
       - name: Upload diagnostics and source snapshot
         if: always()
