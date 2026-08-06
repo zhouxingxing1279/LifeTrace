@@ -28,6 +28,7 @@ jobs:
           with zipfile.ZipFile('/tmp/local-vault-patch.zip') as archive:
               archive.extractall('.')
           PY
+          rm -f .github/workflows/local-encrypted-album.yml
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -40,7 +41,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/local-encrypted-album.yml app/local-vault.css \
+          git add app/local-vault.css \
             src/components/LocalVaultModule.tsx src/components/PhotoSyncDashboard.tsx \
             src/components/PhotoSyncModule.tsx src/types/electron.d.ts \
             src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/lib.rs src-tauri/src/vault.rs \
