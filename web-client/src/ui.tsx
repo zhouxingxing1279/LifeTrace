@@ -1,27 +1,9 @@
 import type { ReactNode } from "react";
 import type { CloudDataStore, CloudState, EntityType, JsonEntity, WebSession } from "./core";
+import { currentRoute, navigate, type Route } from "./navigation";
 
-export type Route =
-  | "/"
-  | "/search"
-  | "/devices"
-  | "/finance"
-  | "/finance/transactions"
-  | "/finance/accounts"
-  | "/finance/categories"
-  | "/finance/budgets"
-  | "/finance/import"
-  | "/notes"
-  | "/english/articles"
-  | "/english/vocabulary"
-  | "/english/stats";
-
-const ROUTES = new Set<Route>([
-  "/", "/search", "/devices", "/finance", "/finance/transactions",
-  "/finance/accounts", "/finance/categories", "/finance/budgets",
-  "/finance/import", "/notes", "/english/articles",
-  "/english/vocabulary", "/english/stats",
-]);
+export type { Route } from "./navigation";
+export { currentRoute, navigate } from "./navigation";
 
 export interface CloudPageProps {
   session: WebSession;
@@ -29,16 +11,6 @@ export interface CloudPageProps {
   privacy: boolean;
   online: boolean;
   run: (action: (store: CloudDataStore) => Promise<CloudState>) => Promise<CloudState>;
-}
-
-export function currentRoute(): Route {
-  const path = window.location.pathname.replace(/\/$/, "") || "/";
-  return ROUTES.has(path as Route) ? (path as Route) : "/";
-}
-
-export function navigate(route: Route): void {
-  if (window.location.pathname !== route) window.history.pushState({}, "", route);
-  window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
 export function text(entity: JsonEntity, key: string): string {
@@ -53,28 +25,32 @@ export function entities(state: CloudState, entityType: EntityType): JsonEntity[
   return Object.values(state.entities[entityType] ?? {});
 }
 
-export function Notice({ kind, children }: { kind: "error" | "warning" | "neutral"; children: ReactNode }) {
-  return <div className={`notice ${kind}`}>{children}</div>;
+export function Notice({ kind, children }: { kind: "error" | "warning" | "neutral" | "success"; children: ReactNode }) {
+  return <div className={`notice ${kind} hx-notice`}>{children}</div>;
 }
 
 export function PageStack({ children }: { children: ReactNode }) {
-  return <div className="page-stack">{children}</div>;
+  return <div className="page-stack hx-view">{children}</div>;
 }
 
-export function Panel({ title, eyebrow, actions, children }: { title: string; eyebrow: string; actions?: ReactNode; children: ReactNode }) {
-  return <section className="panel"><div className="panel-heading"><div><p className="eyebrow">{eyebrow}</p><h3>{title}</h3></div>{actions}</div>{children}</section>;
+export function Panel({ title, eyebrow, actions, children, className = "" }: { title: string; eyebrow: string; actions?: ReactNode; children: ReactNode; className?: string }) {
+  return <section className={`panel hx-panel ${className}`.trim()}>
+    <div className="panel-heading hx-panel-head"><div><p className="eyebrow">{eyebrow}</p><h3>{title}</h3></div>{actions}</div>
+    <div className="hx-panel-body">{children}</div>
+  </section>;
 }
 
-export function Metric({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <article className="metric-card"><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>;
+export function Metric({ label, value, detail, positive = false }: { label: string; value: string; detail: string; positive?: boolean }) {
+  return <article className="metric-card hx-metric"><span>{label}</span><strong>{value}</strong><small className={positive ? "positive" : ""}>{detail}</small></article>;
 }
 
 export function Empty({ title, description }: { title: string; description: string }) {
-  return <div className="empty-state"><span>·</span><h4>{title}</h4><p>{description}</p></div>;
+  return <div className="empty-state hx-empty"><span>—</span><h4>{title}</h4><p>{description}</p></div>;
 }
 
 export function TabBar({ items }: { items: Array<{ route: Route; label: string }> }) {
-  return <nav className="tab-bar">{items.map((item) => <button key={item.route} className={window.location.pathname === item.route ? "active" : ""} onClick={() => navigate(item.route)}>{item.label}</button>)}</nav>;
+  const route = currentRoute();
+  return <nav className="tab-bar hx-tab-bar">{items.map((item) => <button key={item.route} className={route === item.route ? "active" : ""} onClick={() => navigate(item.route)}>{item.label}</button>)}</nav>;
 }
 
 export function FinanceTabs() {
