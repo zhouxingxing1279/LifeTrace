@@ -18,39 +18,23 @@ jobs:
         with:
           ref: agent/epic-05-windows-sync-core
           fetch-depth: 0
-      - name: Prepare implementation overlays
+      - name: Verify and apply implementation overlays
         shell: bash
         run: |
           set -euo pipefail
-          cat .epic05-overlay/chunk-* | base64 -d > epic05-base-overlay.tar.xz
-          xz -t epic05-base-overlay.tar.xz
-          tar -tJf epic05-base-overlay.tar.xz >/dev/null
-          echo "Base overlay: $(sha256sum epic05-base-overlay.tar.xz | cut -d' ' -f1), $(stat -c %s epic05-base-overlay.tar.xz) bytes"
-          tar -xJf epic05-base-overlay.tar.xz
+          cat .epic05-overlay/chunk-* | base64 -d > /tmp/epic05-base.tar.xz
+          echo "06c48794f267d29e22fe33a97f8a0f2eb938ebb69b0300dd3c1b4679a12037ac  /tmp/epic05-base.tar.xz" | sha256sum --check
+          test "$(stat -c %s /tmp/epic05-base.tar.xz)" = "60456"
+          xz -t /tmp/epic05-base.tar.xz
+          tar -tJf /tmp/epic05-base.tar.xz >/dev/null
+          tar -xJf /tmp/epic05-base.tar.xz
 
-          cat .epic05-fix/chunk-* | base64 -d > epic05-fix-diagnostic.tar.xz
-          echo "Fix overlay: $(sha256sum epic05-fix-diagnostic.tar.xz | cut -d' ' -f1), $(stat -c %s epic05-fix-diagnostic.tar.xz) bytes"
-      - name: Upload base overlay diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: epic05-base-archive
-          path: epic05-base-overlay.tar.xz
-          if-no-files-found: error
-          retention-days: 1
-      - name: Upload repair archive diagnostics
-        uses: actions/upload-artifact@v4
-        with:
-          name: epic05-fix-archive
-          path: epic05-fix-diagnostic.tar.xz
-          if-no-files-found: error
-          retention-days: 1
-      - name: Verify and apply repair overlay
-        shell: bash
-        run: |
-          set -euo pipefail
-          xz -t epic05-fix-diagnostic.tar.xz
-          tar -tJf epic05-fix-diagnostic.tar.xz >/dev/null
-          tar -xJf epic05-fix-diagnostic.tar.xz
+          cat .epic05-fix2/chunk-* | base64 -d > /tmp/epic05-fix2.tar.xz
+          echo "9a99093829e7b65fe747ebfd0b1975a504de1322a0e8d79c65754c9df6d5c169  /tmp/epic05-fix2.tar.xz" | sha256sum --check
+          test "$(stat -c %s /tmp/epic05-fix2.tar.xz)" = "30040"
+          xz -t /tmp/epic05-fix2.tar.xz
+          tar -tJf /tmp/epic05-fix2.tar.xz >/dev/null
+          tar -xJf /tmp/epic05-fix2.tar.xz
       - name: Install Tauri Linux build dependencies
         run: |
           sudo apt-get update
@@ -121,7 +105,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf .epic05-overlay .epic05-fix
+          rm -rf .epic05-overlay .epic05-fix .epic05-fix2
           rm -f .github/workflows/epic05-bootstrap.yml epic05-base-overlay.tar.xz epic05-fix-diagnostic.tar.xz
           git config user.name "LifeTrace EPIC-05 Agent"
           git config user.email "actions@users.noreply.github.com"
