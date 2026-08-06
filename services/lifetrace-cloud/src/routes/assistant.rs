@@ -4,6 +4,7 @@
 //! compact personal context through an authenticated, CSRF-protected endpoint;
 //! no provider secret is ever returned to JavaScript.
 
+use std::process::Stdio;
 use std::time::Duration;
 
 use axum::extract::State;
@@ -12,6 +13,8 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 
 use crate::auth::security::cookie_value;
 use crate::error::ApiError;
@@ -88,71 +91,113 @@ async fn assistant(
             provider: "local",
         }));
     };
+    if api_key.contains(['\r', '\n']) {
+        return Ok(Json(AssistantResponse {
+            reply: fallback,
+            provider: "local",
+        }));
+    }
 
     let base_url = env_non_empty("DEEPSEEK_BASE_URL")
         .unwrap_or_else(|| "https://api.deepseek.com".to_owned());
     let model = env_non_empty("DEEPSEEK_MODEL").unwrap_or_else(|| "deepseek-chat".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let context_text = serde_json::to_string(&context).unwrap_or_else(|_| "{}".to_owned());
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(45))
-        .build();
-    let Ok(client) = client else {
-        return Ok(Json(AssistantResponse {
-            reply: fallback,
-            provider: "local",
-        }));
-    };
+    let provider_request = json!({
+        "model": model,
+        "temperature": 0.35,
+        "stream": false,
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是 LifeTrace 个人管理平台中的 AI 管家。只根据用户提供的记录进行分析，不编造不存在的数据。回答使用中文，先给结论，再给最多三条具体建议。涉及健康、金融或安全时明确说明局限，不替代专业意见。"
+            },
+            {
+                "role": "user",
+                "content": format!("用户问题：\n{}\n\n近期 LifeTrace 记录（JSON）：\n{}", prompt, context_text)
+            }
+        ]
+    });
 
-    let provider = client
-        .post(endpoint)
-        .bearer_auth(api_key)
-        .json(&json!({
-            "model": model,
-            "temperature": 0.35,
-            "stream": false,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "你是 LifeTrace 个人管理平台中的 AI 管家。只根据用户提供的记录进行分析，不编造不存在的数据。回答使用中文，先给结论，再给最多三条具体建议。涉及健康、金融或安全时明确说明局限，不替代专业意见。"
-                },
-                {
-                    "role": "user",
-                    "content": format!("用户问题：\n{}\n\n近期 LifeTrace 记录（JSON）：\n{}", prompt, context_text)
-                }
-            ]
-        }))
-        .send()
-        .await;
-
-    let Ok(response) = provider else {
-        return Ok(Json(AssistantResponse {
-            reply: format!("AI 服务暂时不可用。\n\n{fallback}"),
-            provider: "local",
-        }));
+    let provider = tokio::time::timeout(
+        Duration::from_secs(50),
+        call_provider(&endpoint, &api_key, &provider_request),
+    )
+    .await;
+    let parsed = match provider {
+        Ok(Ok(value)) => Some(value),
+        Ok(Err(_)) | Err(_) => None,
     };
-    if !response.status().is_success() {
-        return Ok(Json(AssistantResponse {
-            reply: format!("AI 服务暂时不可用。\n\n{fallback}"),
-            provider: "local",
-        }));
-    }
-    let parsed = response.json::<ProviderResponse>().await;
     let reply = parsed
-        .ok()
         .and_then(|value| value.choices.into_iter().next())
         .map(|choice| choice.message.content.trim().to_owned())
         .filter(|value| !value.is_empty());
+
     Ok(Json(match reply {
         Some(reply) => AssistantResponse {
             reply,
             provider: "deepseek",
         },
         None => AssistantResponse {
-            reply: fallback,
+            reply: format!("AI 服务暂时不可用。\n\n{fallback}"),
             provider: "local",
         },
     }))
+}
+
+async fn call_provider(
+    endpoint: &str,
+    api_key: &str,
+    request: &Value,
+) -> Result<ProviderResponse, String> {
+    let payload = serde_json::to_vec(request).map_err(|error| error.to_string())?;
+    let mut child = Command::new("curl")
+        .arg("--silent")
+        .arg("--show-error")
+        .arg("--fail-with-body")
+        .arg("--max-time")
+        .arg("45")
+        .arg("--request")
+        .arg("POST")
+        .arg("--url")
+        .arg(endpoint)
+        .arg("--header")
+        .arg(format!("Authorization: Bearer {api_key}"))
+        .arg("--header")
+        .arg("Content-Type: application/json")
+        .arg("--header")
+        .arg("Accept: application/json")
+        .arg("--data-binary")
+        .arg("@-")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| error.to_string())?;
+
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "无法打开 AI 请求输入流".to_owned())?;
+    stdin
+        .write_all(&payload)
+        .await
+        .map_err(|error| error.to_string())?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        return Err(if message.is_empty() {
+            format!("AI 服务返回状态 {}", output.status)
+        } else {
+            message
+        });
+    }
+    serde_json::from_slice::<ProviderResponse>(&output.stdout).map_err(|error| error.to_string())
 }
 
 fn compact_context(value: Value) -> Value {
@@ -241,5 +286,11 @@ mod tests {
         let compact = compact_context(context);
         assert_eq!(compact["truncated"], true);
         assert_eq!(compact["summary"]["note.note"], 1);
+    }
+
+    #[test]
+    fn provider_key_rejects_header_injection() {
+        assert!("safe-key".contains(['\r', '\n']) == false);
+        assert!("unsafe\nkey".contains(['\r', '\n']));
     }
 }
