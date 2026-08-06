@@ -1,10 +1,9 @@
-name: Apply Complete Local Vault Implementation
+name: Clean Local Vault Bootstrap Files
 
 on:
   push:
     branches: [agent/local-encrypted-album]
     paths:
-      - "tools/local-vault-v2.part*"
       - ".github/workflows/bootstrap-local-vault.yml"
   workflow_dispatch:
 
@@ -12,44 +11,26 @@ permissions:
   contents: write
 
 jobs:
-  apply:
+  cleanup:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/local-encrypted-album
           fetch-depth: 0
-      - name: Verify and expand complete private album implementation
+      - name: Remove one-time implementation artifacts
         run: |
-          wc -c tools/local-vault-v2.part*
-          sha256sum tools/local-vault-v2.part*
-          cat tools/local-vault-v2.part* | base64 --decode > /tmp/local-vault-v2.zip
-          sha256sum /tmp/local-vault-v2.zip
-          unzip -t /tmp/local-vault-v2.zip
-          python3 - <<'PY'
-          import zipfile
-          with zipfile.ZipFile('/tmp/local-vault-v2.zip') as archive:
-              archive.extractall('.')
-          PY
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: rustfmt
-      - name: Format Rust and update lockfile
-        run: |
-          cargo fmt --manifest-path src-tauri/Cargo.toml
-          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
-      - name: Commit complete implementation
+          rm -f tools/local-vault-patch.part* \
+            tools/local-vault-v2.part* \
+            tools/fix-vault-compile.py
+      - name: Commit cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/local-vault.css \
-            src/components/LocalVaultModule.tsx src/types/electron.d.ts \
-            src-tauri/src/vault.rs src-tauri/src/lib.rs src-tauri/Cargo.lock \
-            tauri-ui/vaultBridge.ts
+          git add -A tools
           if git diff --cached --quiet; then
-            echo "Complete implementation already applied."
+            echo "No bootstrap artifacts remain."
           else
-            git commit -m "feat: complete local encrypted album workflows"
+            git commit -m "chore: remove local vault bootstrap artifacts"
             git push origin HEAD:agent/local-encrypted-album
           fi
