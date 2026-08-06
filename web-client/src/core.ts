@@ -332,6 +332,7 @@ export class AuthApi {
 export class WebSyncStore {
   private state: PersistedState;
   private readonly key: string;
+  private csrfToken = "";
 
   constructor(
     private readonly userId: string,
@@ -366,6 +367,10 @@ export class WebSyncStore {
 
   snapshot(): PersistedState {
     return cloneState(this.state);
+  }
+
+  setCsrfToken(token: string): void {
+    this.csrfToken = token.trim();
   }
 
   clear(): void {
@@ -445,10 +450,12 @@ export class WebSyncStore {
   }
 
   private async post<T>(url: string, body: unknown): Promise<T> {
+    const headers: Record<string, string> = { "content-type": "application/json" };
+    if (this.csrfToken) headers["x-csrf-token"] = this.csrfToken;
     const response = await this.fetcher(url, {
       method: "POST",
       credentials: "include",
-      headers: { "content-type": "application/json" },
+      headers,
       body: JSON.stringify(body),
     });
     const payload = await readJson(response);
@@ -505,7 +512,8 @@ export class WebSyncStore {
       }
     }
     this.state.outbox = this.state.outbox.filter((change) => !completed.has(change.changeId));
-    if (response.latestCursor) this.state.cursor = response.latestCursor;
+    // `latestCursor` is informational for push. Advancing the pull cursor here
+    // would skip remote changes committed after our last successful pull.
     this.save();
     if (this.state.outbox.length && completed.size > 0) await this.push();
   }

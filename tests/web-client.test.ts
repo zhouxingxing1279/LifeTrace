@@ -73,14 +73,14 @@ test("offline changes persist and are restored", () => {
 
 test("sync accepts local changes then applies server pull in cursor order", async () => {
   const storage = new MemoryStorage();
-  const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const requests: Array<{ url: string; body: Record<string, unknown>; headers: Headers }> = [];
   const note = createNote("user-1", "device-1", "本地", "待同步");
   const serverVocabulary = createVocabulary("user-1", "server-device", "steady", "稳定的");
 
   const fetcher = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    requests.push({ url, body });
+    requests.push({ url, body, headers: new Headers(init?.headers) });
     if (url.endsWith("/push")) {
       const changes = body.changes as Array<Record<string, unknown>>;
       return jsonResponse({
@@ -118,11 +118,15 @@ test("sync accepts local changes then applies server pull in cursor order", asyn
   };
 
   const store = new WebSyncStore("user-1", "device-1", storage, fetcher);
+  store.setCsrfToken("csrf-token");
   store.queueUpsert("note.note", note);
   const result = await store.sync();
 
   assert.equal(requests[0]?.url, "/api/v1/sync/push");
   assert.equal(requests[1]?.url, "/api/v1/sync/pull");
+  assert.equal(requests[0]?.headers.get("x-csrf-token"), "csrf-token");
+  assert.equal(requests[1]?.headers.get("x-csrf-token"), "csrf-token");
+  assert.equal(requests[1]?.body.afterCursor, null, "push latestCursor must not skip unseen remote changes");
   assert.equal(result.outbox.length, 0);
   assert.equal(result.cursor, "11");
   assert.equal(result.entities["note.note"]?.[note.meta.id]?.meta.serverVersion, "3");

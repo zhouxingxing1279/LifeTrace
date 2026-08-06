@@ -30,6 +30,10 @@ function readCachedSession(): WebSession | null {
     const raw = localStorage.getItem(SESSION_CACHE_KEY);
     if (!raw) return null;
     const cached = JSON.parse(raw) as CachedSession;
+    if (cached.session.publicDevice) {
+      localStorage.removeItem(SESSION_CACHE_KEY);
+      return null;
+    }
     return { user: cached.user, session: cached.session, csrfToken: "" };
   } catch {
     return null;
@@ -37,6 +41,10 @@ function readCachedSession(): WebSession | null {
 }
 
 function cacheSession(value: WebSession): void {
+  if (value.session.publicDevice) {
+    localStorage.removeItem(SESSION_CACHE_KEY);
+    return;
+  }
   localStorage.setItem(
     SESSION_CACHE_KEY,
     JSON.stringify({ user: value.user, session: value.session, cachedAt: new Date().toISOString() }),
@@ -111,8 +119,10 @@ export default function App() {
       storeRef.current = null;
       return;
     }
-    const deviceId = getOrCreateDeviceId(localStorage);
-    const store = new WebSyncStore(session.user.id, deviceId, localStorage);
+    const storage = session.session.publicDevice ? sessionStorage : localStorage;
+    const deviceId = getOrCreateDeviceId(storage);
+    const store = new WebSyncStore(session.user.id, deviceId, storage);
+    store.setCsrfToken(session.csrfToken);
     storeRef.current = store;
     setState(store.snapshot());
   }, [session]);
@@ -127,13 +137,14 @@ export default function App() {
     setSyncing(true);
     setSyncError("");
     try {
-      const next = await store.sync();
-      setState(next);
       if (!session?.csrfToken) {
         const current = await auth.session();
         cacheSession(current);
+        store.setCsrfToken(current.csrfToken);
         setSession(current);
       }
+      const next = await store.sync();
+      setState(next);
     } catch (error) {
       setSyncError(error instanceof Error ? error.message : "同步失败");
     } finally {
@@ -173,6 +184,7 @@ export default function App() {
   if (authLoading) return <LoadingScreen />;
   if (!session) return <LoginScreen error={authError} onLogin={handleLogin} />;
 
+  const activeStorage = session.session.publicDevice ? sessionStorage : localStorage;
   const accounts = Object.values(state.entities["finance.account"] ?? {});
   const transactions = Object.values(state.entities["finance.transaction"] ?? {});
   const notes = Object.values(state.entities["note.note"] ?? {});
@@ -219,7 +231,7 @@ export default function App() {
           {view === "finance" && (
             <FinanceView
               userId={session.user.id}
-              deviceId={getOrCreateDeviceId(localStorage)}
+              deviceId={getOrCreateDeviceId(activeStorage)}
               accounts={accounts}
               transactions={transactions}
               onChanged={refresh}
@@ -229,7 +241,7 @@ export default function App() {
           {view === "notes" && (
             <NotesView
               userId={session.user.id}
-              deviceId={getOrCreateDeviceId(localStorage)}
+              deviceId={getOrCreateDeviceId(activeStorage)}
               notes={notes}
               onChanged={refresh}
               store={storeRef.current}
@@ -238,7 +250,7 @@ export default function App() {
           {view === "english" && (
             <EnglishView
               userId={session.user.id}
-              deviceId={getOrCreateDeviceId(localStorage)}
+              deviceId={getOrCreateDeviceId(activeStorage)}
               articles={articles}
               vocabulary={vocabulary}
               onChanged={refresh}
