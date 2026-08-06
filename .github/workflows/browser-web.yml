@@ -1,0 +1,115 @@
+name: Browser Web
+
+on:
+  pull_request:
+    paths:
+      - "web-client/**"
+      - "app/**"
+      - "public/**"
+      - "vite.browser.config.ts"
+      - "tests/web-*.test.ts"
+      - "tests/browser-*.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "services/lifetrace-cloud/**"
+      - ".github/workflows/browser-web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web-client/**"
+      - "app/**"
+      - "public/**"
+      - "vite.browser.config.ts"
+      - "tests/web-*.test.ts"
+      - "tests/browser-*.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "services/lifetrace-cloud/**"
+      - ".github/workflows/browser-web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: browser-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Typecheck, unit tests and browser build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Enforce browser cloud-only and no-photo boundaries
+        shell: bash
+        run: |
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' web-client/src; then
+            echo "Business data must not be persisted in browser storage"
+            exit 1
+          fi
+          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' web-client vite.browser.config.ts package.json; then
+            echo "Photo/PWA-only code must not enter the browser application"
+            exit 1
+          fi
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run browser:build
+      - name: Verify browser artifact
+        shell: bash
+        run: |
+          test -f dist-browser/index.html
+          test ! -e dist-browser/manifest.webmanifest
+          test ! -e dist-browser/sw.js
+          SIZE=$(du -sk dist-browser | cut -f1)
+          echo "dist-browser size: ${SIZE} KB"
+          test "$SIZE" -lt 12000
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifetrace-browser-web
+          path: dist-browser
+          if-no-files-found: error
+          retention-days: 7
+
+  cloud:
+    name: Cloud assistant and auth regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lifetrace
+          POSTGRES_PASSWORD: lifetrace_test_password
+          POSTGRES_DB: lifetrace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lifetrace -d lifetrace_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      TEST_DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      AUTH_PASSWORD_PEPPER: browser-ci-password-pepper
+      AUTH_TOKEN_HASH_PEPPER: browser-ci-token-pepper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/lifetrace-cloud
+      - run: cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml -- --check
+      - run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
+      - run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
