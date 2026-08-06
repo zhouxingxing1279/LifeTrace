@@ -1,5 +1,6 @@
 //! HTTP routes.
 
+pub mod assistant;
 pub mod auth;
 pub mod finance;
 pub mod health;
@@ -17,6 +18,7 @@ pub fn router(_state: AppState) -> Router<AppState> {
         .merge(health::router())
         .merge(auth::router())
         .merge(web_auth::router())
+        .merge(assistant::router())
         .merge(meta::router())
         .merge(finance::router())
         .merge(sync::router())
