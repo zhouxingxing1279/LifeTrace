@@ -4,7 +4,7 @@ on:
   push:
     branches: [agent/local-encrypted-album]
     paths:
-      - "tools/local-vault-patch.b64"
+      - "tools/local-vault-patch.part*"
       - ".github/workflows/bootstrap-local-vault.yml"
   workflow_dispatch:
 
@@ -22,7 +22,7 @@ jobs:
       - name: Decode implementation patch
         run: |
           cp src/components/PhotoSyncModule.tsx src/components/PhotoSyncDashboard.tsx
-          base64 --decode tools/local-vault-patch.b64 > /tmp/local-vault-patch.zip
+          cat tools/local-vault-patch.part* | base64 --decode > /tmp/local-vault-patch.zip
           python3 - <<'PY'
           import zipfile
           with zipfile.ZipFile('/tmp/local-vault-patch.zip') as archive:
