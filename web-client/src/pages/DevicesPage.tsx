@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import type { AuthApi, DeviceInstallation, ManagedSession, WebSession } from "../core";
+import type { DeviceInstallation, ManagedSession, WebManagementApi, WebSession } from "../core";
 import { Empty, Notice, PageStack, Panel } from "../ui";
 
-export function DevicesPage({ session, auth, online }: { session: WebSession; auth: AuthApi; online: boolean }) {
+export function DevicesPage({ session, management, online }: { session: WebSession; management: WebManagementApi; online: boolean }) {
   const [devices, setDevices] = useState<DeviceInstallation[]>([]);
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
   const [error, setError] = useState("");
@@ -12,31 +12,31 @@ export function DevicesPage({ session, auth, online }: { session: WebSession; au
     if (!online) return;
     setLoading(true); setError("");
     try {
-      const [nextDevices, nextSessions] = await Promise.all([auth.devices(), auth.sessions()]);
+      const [nextDevices, nextSessions] = await Promise.all([management.devices(), management.sessions()]);
       setDevices(nextDevices); setSessions(nextSessions);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "设备信息加载失败");
     } finally { setLoading(false); }
-  }, [auth, online]);
+  }, [management, online]);
 
   useEffect(() => { void load(); }, [load]);
 
   async function rename(device: DeviceInstallation) {
     const name = window.prompt("设备名称", device.deviceName);
     if (!name?.trim()) return;
-    try { await auth.renameDevice(device.id, name, session.csrfToken); await load(); }
+    try { await management.renameDevice(device.id, name, session.csrfToken); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "重命名失败"); }
   }
 
   async function revokeDevice(device: DeviceInstallation) {
     if (!window.confirm(`撤销设备“${device.deviceName}”？该设备需要重新登录。`)) return;
-    try { await auth.revokeDevice(device.id, session.csrfToken); await load(); }
+    try { await management.revokeDevice(device.id, session.csrfToken); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "撤销失败"); }
   }
 
   async function revokeSession(item: ManagedSession) {
     if (!window.confirm("退出该登录会话？")) return;
-    try { await auth.revokeSession(item.id, session.csrfToken); await load(); }
+    try { await management.revokeSession(item.id, session.csrfToken); await load(); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "退出会话失败"); }
   }
 
