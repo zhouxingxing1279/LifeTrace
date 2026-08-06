@@ -1,7 +1,7 @@
 //! Sync protocol v1 endpoints with application-scope authorization.
 
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{header, HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use lifetrace_contracts::registry::REGISTRY;
@@ -12,7 +12,8 @@ use lifetrace_contracts::sync::v1::{
 use lifetrace_contracts::{EntityType, ErrorCode};
 
 use crate::auth::scope;
-use crate::auth::AuthenticatedPrincipal;
+use crate::auth::security::cookie_value;
+use crate::auth::{AuthCredential, AuthenticatedPrincipal};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -28,6 +29,35 @@ async fn capabilities(
     State(state): State<AppState>,
 ) -> Result<Json<CapabilitiesResponseV1>, ApiError> {
     state.store.capabilities().await.map(Json)
+}
+
+/// Native clients authenticate with a Bearer token. Browser clients authenticate
+/// with the HttpOnly web-session cookie and must prove same-origin intent with
+/// the existing CSRF token on every POST-based sync endpoint.
+async fn sync_principal(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<AuthenticatedPrincipal, ApiError> {
+    let authorization = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok());
+    if authorization.is_some() {
+        return state
+            .auth
+            .authenticate(AuthCredential::Bearer(authorization))
+            .await;
+    }
+
+    let raw_session = cookie_value(headers, &state.config.auth_cookie_name).unwrap_or_default();
+    let csrf = headers
+        .get("x-csrf-token")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default();
+    let origin = headers.get("origin").and_then(|value| value.to_str().ok());
+    state
+        .auth_service
+        .verify_web_csrf(&raw_session, csrf, origin)
+        .await
 }
 
 fn authorize_client(principal: &AuthenticatedPrincipal, app_id: &str) -> Result<(), ApiError> {
@@ -95,9 +125,10 @@ fn authorized_entity_filter(
 
 async fn push(
     State(state): State<AppState>,
-    principal: AuthenticatedPrincipal,
+    headers: HeaderMap,
     Json(request): Json<PushRequestV1>,
 ) -> Result<Json<PushResponseV1>, ApiError> {
+    let principal = sync_principal(&state, &headers).await?;
     principal.require_scope("sync:write")?;
     authorize_client(&principal, request.client.app_id.as_str())?;
     for change in &request.changes {
@@ -131,9 +162,10 @@ async fn push(
 
 async fn pull(
     State(state): State<AppState>,
-    principal: AuthenticatedPrincipal,
+    headers: HeaderMap,
     Json(mut request): Json<PullRequestV1>,
 ) -> Result<Json<PullResponseV1>, ApiError> {
+    let principal = sync_principal(&state, &headers).await?;
     principal.require_scope("sync:read")?;
     authorize_client(&principal, request.client.app_id.as_str())?;
     request.entity_types = authorized_entity_filter(&principal, request.entity_types)?;
@@ -146,9 +178,10 @@ async fn pull(
 
 async fn snapshot(
     State(state): State<AppState>,
-    principal: AuthenticatedPrincipal,
+    headers: HeaderMap,
     Json(mut request): Json<SnapshotRequestV1>,
 ) -> Result<Json<SnapshotResponseV1>, ApiError> {
+    let principal = sync_principal(&state, &headers).await?;
     principal.require_scope("sync:read")?;
     authorize_client(&principal, request.client.app_id.as_str())?;
     request.entity_types = authorized_entity_filter(&principal, request.entity_types)?;

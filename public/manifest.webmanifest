@@ -1,0 +1,24 @@
+{
+  "name": "LifeTrace 个人管理平台",
+  "short_name": "LifeTrace",
+  "description": "通过浏览器访问 LifeTrace 云端财务、笔记与英语数据",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f4f1e9",
+  "theme_color": "#24362e",
+  "lang": "zh-CN",
+  "categories": ["productivity", "finance", "education"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    { "name": "快速记账", "short_name": "记账", "url": "/finance/transactions?quick=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "新建笔记", "short_name": "笔记", "url": "/notes?new=1", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "英语阅读", "short_name": "英语", "url": "/english/articles", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] },
+    { "name": "全局搜索", "short_name": "搜索", "url": "/search", "icons": [{ "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" }] }
+  ]
+}

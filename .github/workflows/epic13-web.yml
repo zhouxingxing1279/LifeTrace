@@ -1,0 +1,77 @@
+name: EPIC13 Web PWA
+
+on:
+  pull_request:
+    paths:
+      - "web-client/**"
+      - "public/**"
+      - "vite.web.config.ts"
+      - "tests/web-client.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "docs/epic13/**"
+      - ".github/workflows/epic13-web.yml"
+  push:
+    branches: [main]
+    paths:
+      - "web-client/**"
+      - "public/**"
+      - "vite.web.config.ts"
+      - "tests/web-client.test.ts"
+      - "package.json"
+      - "package-lock.json"
+      - "tsconfig.json"
+      - "docs/epic13/**"
+      - ".github/workflows/epic13-web.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epic13-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, unit tests and builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Enforce cloud-only storage policy
+        run: |
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' web-client/src; then
+            echo "Business data must not be persisted in browser storage"
+            exit 1
+          fi
+          if grep -q 'addEventListener("fetch"' public/sw.js; then
+            echo "Service Worker must not intercept or cache Web/API requests"
+            exit 1
+          fi
+      - run: npm run lint
+      - run: npm run test:unit
+      - run: npm run web:build
+      - run: npm run pwa:build
+      - name: Verify PWA artifacts
+        run: |
+          test -f dist-web/index.html
+          test -f dist-web/manifest.webmanifest
+          test -f dist-web/sw.js
+          test -f dist-web/icon-192.png
+          test -f dist-web/icon-512.png
+          SIZE=$(du -sk dist-web | cut -f1)
+          echo "dist-web size: ${SIZE} KB"
+          test "$SIZE" -lt 5120
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lifetrace-web-pwa
+          path: dist-web
+          if-no-files-found: error
+          retention-days: 7
