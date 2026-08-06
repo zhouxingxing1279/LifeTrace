@@ -898,7 +898,6 @@ impl VaultState {
                 if let Err(error) = self.save_manifest(master_key, &manifest) {
                     let _ = fs::remove_file(&target);
                     let _ = fs::remove_file(self.thumbnail_path(&asset_id));
-                    manifest = previous_manifest;
                     return Err(error);
                 }
                 if move_source {
@@ -1457,8 +1456,10 @@ mod tests {
     const NEW_PASSWORD: &str = "A-New-Private-Album-Password";
 
     fn test_state() -> (VaultState, PathBuf) {
-        let root = std::env::temp_dir().join(format!("lifetrace-vault-test-{}", Uuid::new_v4()));
-        (VaultState::new(root.clone()).expect("state"), root)
+        let workspace =
+            std::env::temp_dir().join(format!("lifetrace-vault-test-{}", Uuid::new_v4()));
+        let vault_root = workspace.join("vault");
+        (VaultState::new(vault_root).expect("state"), workspace)
     }
 
     fn sample_file(root: &Path, name: &str, content: &[u8]) -> PathBuf {
@@ -1659,6 +1660,21 @@ mod tests {
     }
 
     #[test]
+    fn importing_from_the_vault_directory_is_rejected() {
+        let (state, root) = test_state();
+        state.initialize(PASSWORD).expect("initialize");
+        let source = sample_file(
+            &root.join("vault").join("nested"),
+            "already-private.bin",
+            b"must not be imported recursively",
+        );
+        assert!(state
+            .import_files(vec![source.to_string_lossy().into_owned()], false, None)
+            .is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn temporary_files_are_removed_on_startup() {
         let root = std::env::temp_dir().join(format!("lifetrace-vault-test-{}", Uuid::new_v4()));
         let temp = root.join("temp");
@@ -1700,6 +1716,6 @@ mod tests {
         assert!(state.delete_all("delete").is_err());
         assert!(state.config_path().exists());
         state.delete_all(DELETE_CONFIRMATION).expect("delete vault");
-        assert!(!root.exists());
+        assert!(!root.join("vault").exists());
     }
 }
