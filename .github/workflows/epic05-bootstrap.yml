@@ -22,6 +22,7 @@ jobs:
         with:
           ref: agent/epic-05-windows-sync-core
           fetch-depth: 0
+
       - name: Verify and apply implementation overlays
         shell: bash
         run: |
@@ -135,7 +136,27 @@ jobs:
           if old_profile not in profile_source:
               raise SystemExit('active_profile_id did not match the expected pre-fix source')
           profile_path.write_text(profile_source.replace(old_profile, new_profile, 1), encoding='utf-8')
+
+          notes_path = Path('src-tauri/src/database/repositories/notes.rs')
+          notes_source = notes_path.read_text(encoding='utf-8')
+          old_notes_sql = ") VALUES(?1,'local',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,NULL)"
+          new_notes_sql = ") VALUES(?1,?21,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,NULL)"
+          if notes_source.count(old_notes_sql) != 1:
+              raise SystemExit('notes insert SQL did not match the expected pre-fix source')
+          old_notes_params = '''                deleted_at,
+                version
+            ],'''
+          new_notes_params = '''                deleted_at,
+                version,
+                text(object, "userId").ok_or_else(|| "笔记缺少当前资料归属".to_owned())?
+            ],'''
+          if notes_source.count(old_notes_params) != 1:
+              raise SystemExit('notes insert parameters did not match the expected pre-fix source')
+          notes_source = notes_source.replace(old_notes_sql, new_notes_sql, 1)
+          notes_source = notes_source.replace(old_notes_params, new_notes_params, 1)
+          notes_path.write_text(notes_source, encoding='utf-8')
           PY
+
       - name: Install Tauri Linux build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -146,6 +167,7 @@ jobs:
             -o Acquire::https::Timeout=20
           sudo timeout 240s apt-get install -y --no-install-recommends \
             libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
       - name: Create required bundled dictionary resource
         run: |
           python3 - <<'PY'
@@ -157,29 +179,36 @@ jobs:
               db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
               db.execute("INSERT OR REPLACE INTO dictionary_meta(key, value) VALUES ('generated_for_ci', 'true')")
           PY
+
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
           components: rustfmt, clippy
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             crates/lifetrace-contracts
             crates/lifetrace-sync-client
             src-tauri
+
       - name: Format and resolve lockfiles
         run: |
           cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml
           cargo fmt --manifest-path src-tauri/Cargo.toml
           cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+
       - name: Pure sync core tests
         run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
+
       - name: Desktop database and adapter tests
         id: desktop-tests
         shell: bash
@@ -187,6 +216,7 @@ jobs:
         run: |
           set -o pipefail
           cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1 2>&1 | tee epic05-desktop-test.log
+
       - name: Upload desktop test diagnostics
         if: always() && steps.desktop-tests.outcome != 'skipped'
         uses: actions/upload-artifact@v4
@@ -195,19 +225,24 @@ jobs:
           path: epic05-desktop-test.log
           if-no-files-found: error
           retention-days: 1
+
       - name: Stop after desktop test failure
         if: steps.desktop-tests.outcome == 'failure'
         run: exit 1
+
       - name: Clippy pure sync core
         run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
+
       - name: Clippy desktop library
         run: cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- -D warnings
+
       - name: Frontend install and validation
         run: |
           npm ci
           npm run lint
           npm run test:unit
           npm run web:build
+
       - name: Publish validated implementation
         shell: bash
         run: |
