@@ -398,7 +398,7 @@ impl SyncStore for SqliteSyncStore {
             change_id,
             entity_type,
             entity_id,
-            operation,
+            mut operation,
             base,
             schema,
             payload,
@@ -412,26 +412,45 @@ impl SyncStore for SqliteSyncStore {
                 params![owner, lease_expires, now.to_rfc3339(), change_id],
             ).map_err(Self::db_error)?;
             let payload_value = if operation == ChangeOperation::UPSERT && payload.is_none() {
-                let legacy =
-                    Self::load_local_entity(&tx, profile.as_str(), &entity_type, &entity_id)?
-                        .ok_or_else(|| {
-                            Self::db_error(format!(
-                                "local entity missing for outbox {entity_type}:{entity_id}"
-                            ))
-                        })?;
-                let wire = super::payload::legacy_to_wire(
-                    &entity_type,
-                    &legacy,
-                    profile.as_str(),
-                    Some(&base),
-                )
-                .map_err(Self::db_error)?;
-                tx.execute(
-                    "UPDATE sync_outbox SET payload_json=?1,updated_at=?2 WHERE change_id=?3",
-                    params![wire.to_string(), now.to_rfc3339(), change_id],
-                )
-                .map_err(Self::db_error)?;
-                Some(wire)
+                match Self::load_local_entity(&tx, profile.as_str(), &entity_type, &entity_id) {
+                    Ok(Some(legacy)) => {
+                        let wire = super::payload::legacy_to_wire(
+                            &entity_type,
+                            &legacy,
+                            profile.as_str(),
+                            Some(&base),
+                        )
+                        .map_err(Self::db_error)?;
+                        tx.execute(
+                            "UPDATE sync_outbox SET payload_json=?1,updated_at=?2 WHERE change_id=?3",
+                            params![wire.to_string(), now.to_rfc3339(), change_id],
+                        )
+                        .map_err(Self::db_error)?;
+                        Some(wire)
+                    }
+                    Ok(None) => {
+                        // 本地实体已不存在（硬删除/档案切换等导致 outbox 过期）：
+                        // 从未上传过则丢弃；已上传过则转为删除，保持云端一致，
+                        // 避免一条过期变更永久阻塞 Push/Pull。
+                        if base == "0" {
+                            tx.execute(
+                                "DELETE FROM sync_outbox WHERE change_id=?1",
+                                [&change_id],
+                            )
+                            .map_err(Self::db_error)?;
+                            continue;
+                        }
+                        tx.execute(
+                            "UPDATE sync_outbox SET operation='delete', payload_json=NULL, updated_at=?1
+                             WHERE change_id=?2",
+                            params![now.to_rfc3339(), change_id],
+                        )
+                        .map_err(Self::db_error)?;
+                        operation = ChangeOperation::DELETE.to_owned();
+                        None
+                    }
+                    Err(error) => return Err(error),
+                }
             } else {
                 payload
                     .as_ref()
