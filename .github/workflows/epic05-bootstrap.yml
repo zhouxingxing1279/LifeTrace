@@ -153,6 +153,81 @@ jobs:
           owner_param = ',\n                text(object, "userId").ok_or_else(|| "笔记缺少当前资料归属".to_owned())?'
           notes_source = notes_source[:params_end] + owner_param + notes_source[params_end:]
           notes_path.write_text(notes_source, encoding='utf-8')
+
+          finance_path = Path('src-tauri/src/database/repositories/finance.rs')
+          finance_source = finance_path.read_text(encoding='utf-8')
+          finance_replacements = [
+              (
+                  '''for account in accounts {
+        let row = account_from_legacy_json(account)?;
+        upsert_account(transaction, &row)?;
+    }''',
+                  '''for account in accounts {
+        let owned = crate::database::profile::assign_active_owner(transaction, account)?;
+        let row = account_from_legacy_json(&owned)?;
+        upsert_account(transaction, &row)?;
+    }''',
+              ),
+              (
+                  '''for item in transactions {
+        let row = transaction_from_legacy_json(transaction, item, None, None)?;
+        upsert_transaction(transaction, &row, None)?;
+    }''',
+                  '''for item in transactions {
+        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
+        let row = transaction_from_legacy_json(transaction, &owned, None, None)?;
+        upsert_transaction(transaction, &row, None)?;
+    }''',
+              ),
+          ]
+          for old, new in finance_replacements:
+              if finance_source.count(old) != 1:
+                  raise SystemExit('finance restore owner patch did not match expected source')
+              finance_source = finance_source.replace(old, new, 1)
+          finance_path.write_text(finance_source, encoding='utf-8')
+
+          habits_path = Path('src-tauri/src/database/repositories/habits.rs')
+          habits_source = habits_path.read_text(encoding='utf-8')
+          habits_replacements = [
+              (
+                  '''for activity in activities {
+        let row = activity_from_legacy_json(activity)?;
+        upsert_activity(transaction, &row)?;
+    }''',
+                  '''for activity in activities {
+        let owned = crate::database::profile::assign_active_owner(transaction, activity)?;
+        let row = activity_from_legacy_json(&owned)?;
+        upsert_activity(transaction, &row)?;
+    }''',
+              ),
+              (
+                  '''for item in logs {
+        let row = activity_log_from_legacy_json(transaction, item, None, None)?;
+        upsert_activity_log(transaction, &row)?;
+    }''',
+                  '''for item in logs {
+        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
+        let row = activity_log_from_legacy_json(transaction, &owned, None, None)?;
+        upsert_activity_log(transaction, &row)?;
+    }''',
+              ),
+              (
+                  '''for review in reviews {
+        let row = daily_review_from_legacy_json(review, None, None)?;
+        upsert_daily_review(transaction, &row)?;
+    }''',
+                  '''for review in reviews {
+        let owned = crate::database::profile::assign_active_owner(transaction, review)?;
+        let row = daily_review_from_legacy_json(&owned, None, None)?;
+        upsert_daily_review(transaction, &row)?;
+    }''',
+              ),
+          ]
+          for old, new in habits_replacements:
+              if habits_source.count(old) != 1:
+                  raise SystemExit('habits restore owner patch did not match expected source')
+              habits_source = habits_source.replace(old, new, 1)
+          habits_path.write_text(habits_source, encoding='utf-8')
           PY
 
       - name: Install Tauri Linux build dependencies
