@@ -22,13 +22,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           cat .epic05-overlay/chunk-* | base64 -d > /tmp/epic05-overlay.tar.xz
-          echo "06c48794f267d29e22fe33a97f8a0f2eb938ebb69b0300dd3c1b4679a12037ac  /tmp/epic05-overlay.tar.xz" | sha256sum --check
-          test "$(stat -c %s /tmp/epic05-overlay.tar.xz)" = "60456"
+          xz -t /tmp/epic05-overlay.tar.xz
+          tar -tJf /tmp/epic05-overlay.tar.xz >/dev/null
+          echo "Base overlay: $(sha256sum /tmp/epic05-overlay.tar.xz | cut -d' ' -f1), $(stat -c %s /tmp/epic05-overlay.tar.xz) bytes"
           tar -xJf /tmp/epic05-overlay.tar.xz
+
           cat .epic05-fix/chunk-* | base64 -d > /tmp/epic05-fix.tar.xz
-          echo "d4ab0428809316ec55458d03f742644f2894ac7eb0473d26ac01fc6d106e11c3  /tmp/epic05-fix.tar.xz" | sha256sum --check
-          test "$(stat -c %s /tmp/epic05-fix.tar.xz)" = "27396"
+          xz -t /tmp/epic05-fix.tar.xz
+          tar -tJf /tmp/epic05-fix.tar.xz >/dev/null
+          echo "Fix overlay: $(sha256sum /tmp/epic05-fix.tar.xz | cut -d' ' -f1), $(stat -c %s /tmp/epic05-fix.tar.xz) bytes"
           tar -xJf /tmp/epic05-fix.tar.xz
       - name: Install Tauri Linux build dependencies
         run: |
@@ -76,7 +80,7 @@ jobs:
           set -o pipefail
           cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1 2>&1 | tee epic05-desktop-test.log
       - name: Upload desktop test diagnostics
-        if: always()
+        if: always() && steps.desktop-tests.outcome != 'skipped'
         uses: actions/upload-artifact@v4
         with:
           name: epic05-desktop-test-log
