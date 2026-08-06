@@ -362,13 +362,33 @@ jobs:
         run: exit 1
 
       - name: Publish validated implementation
+        id: publish-implementation
         shell: bash
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          rm -rf .epic05-overlay .epic05-fix .epic05-fix2
-          rm -f .github/workflows/epic05-bootstrap.yml epic05-base-overlay.tar.xz epic05-fix-diagnostic.tar.xz
-          git config user.name "LifeTrace EPIC-05 Agent"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git commit -m "feat(epic05): implement Windows profile-aware offline sync"
-          git push origin HEAD:agent/epic-05-windows-sync-core
+          set -o pipefail
+          {
+            set -euxo pipefail
+            rm -rf .epic05-overlay .epic05-fix .epic05-fix2
+            rm -f epic05-base-overlay.tar.xz epic05-fix-diagnostic.tar.xz
+            git config user.name "LifeTrace EPIC-05 Agent"
+            git config user.email "actions@users.noreply.github.com"
+            git status --short
+            git add -A
+            git diff --cached --stat
+            git commit -m "feat(epic05): implement Windows profile-aware offline sync"
+            git push origin HEAD:agent/epic-05-windows-sync-core
+          } 2>&1 | tee epic05-publish.log
+
+      - name: Upload publish diagnostics
+        if: always() && steps.publish-implementation.outcome != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic05-publish-log
+          path: epic05-publish.log
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Stop after publish failure
+        if: steps.publish-implementation.outcome == 'failure'
+        run: exit 1
