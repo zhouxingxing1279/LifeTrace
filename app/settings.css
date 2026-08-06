@@ -1,0 +1,28 @@
+.hx-settings-grid > style{display:none}
+.hx-settings-grid > .hx-settings-section:not(.hx-settings-basic){border-top:1px solid var(--hx-line)!important}
+.hx-local-ownership{border:1px solid var(--hx-line);border-radius:14px;background:var(--hx-soft);padding:16px 17px;display:grid;gap:13px}
+.hx-local-ownership-title{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.hx-local-ownership-title>div{display:flex;align-items:center;gap:10px}
+.hx-local-ownership-title>div>svg{width:19px;color:var(--hx-accent)}
+.hx-local-ownership-title span{display:grid;gap:3px}
+.hx-local-ownership-title strong{font-size:12px}
+.hx-local-ownership-title small{font-size:9px;color:var(--hx-muted);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+.hx-local-ownership-title>b{padding:6px 9px;border-radius:99px;background:var(--hx-accent-soft);color:var(--hx-accent2);font-size:9px;white-space:nowrap}
+.hx-local-ownership>p{margin:0;color:var(--hx-muted);font-size:10px;line-height:1.7}
+.hx-ownership-rules{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.hx-ownership-rules>span{padding:10px;border:1px solid var(--hx-line);border-radius:10px;background:var(--hx-panel)}
+.hx-ownership-rules strong{display:block;font-size:10px;margin-bottom:4px}
+.hx-ownership-rules small{display:block;color:var(--hx-muted);font-size:8px;line-height:1.55}
+.hx-cloud-account .hx-cloud-local-note{margin:0;display:flex;align-items:center;gap:8px;color:var(--hx-muted);font-size:10px}
+.hx-cloud-account .hx-cloud-local-note svg{width:16px;color:var(--hx-accent)}
+.hx-cloud-account .hx-cloud-user,.hx-cloud-account .hx-sync-status,.hx-cloud-account .hx-cloud-binding,.hx-cloud-account .hx-sync-conflicts{border:1px solid var(--hx-line);border-radius:12px;background:var(--hx-soft);padding:14px}
+.hx-cloud-account .hx-cloud-user{display:grid;gap:4px}
+.hx-cloud-account .hx-cloud-user small,.hx-cloud-account .hx-cloud-user span{color:var(--hx-muted);font-size:9px}
+.hx-cloud-account .hx-cloud-binding>strong,.hx-cloud-account .hx-sync-status>div{display:flex;align-items:center;gap:7px}
+.hx-cloud-account .hx-cloud-binding svg,.hx-cloud-account .hx-sync-status svg{width:17px}
+.hx-cloud-account .hx-cloud-binding p{color:var(--hx-muted);font-size:10px;line-height:1.65}
+.hx-cloud-account .hx-sync-status{display:grid;gap:8px}
+.hx-cloud-account .hx-sync-status>span,.hx-cloud-account .hx-sync-status>small{color:var(--hx-muted);font-size:9px}
+.hx-cloud-account .hx-sync-conflicts{display:grid;gap:10px}
+.hx-cloud-account .hx-sync-conflicts>div{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--hx-line);padding-top:10px}
+@media(max-width:760px){.hx-local-ownership-title{align-items:flex-start;flex-direction:column}.hx-ownership-rules{grid-template-columns:1fr}.hx-cloud-account .hx-sync-conflicts>div{align-items:flex-start;flex-direction:column}}

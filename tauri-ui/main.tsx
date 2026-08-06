@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
+import { installAppPreferences } from "@/src/services/appPreferences";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 
 import "@/app/globals.css";
@@ -13,9 +14,12 @@ import "@/app/notes.css";
 import "@/app/redesign.css";
 import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
+import "@/app/settings.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
+
+installAppPreferences();
 
 async function start() {
   installTauriApiBridge();
