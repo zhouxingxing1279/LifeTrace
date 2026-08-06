@@ -1,0 +1,34 @@
+name: EPIC13 Bootstrap
+
+on:
+  push:
+    branches: [feat/epic-13-web-pwa]
+    paths:
+      - "epic13-payload/READY"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/epic-13-web-pwa
+          fetch-depth: 0
+      - name: Materialize EPIC13 source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat epic13-payload/chunk-* | base64 --decode > /tmp/epic13-payload.tar.gz
+          tar -xzf /tmp/epic13-payload.tar.gz
+          rm -rf epic13-payload
+          rm -f .github/workflows/epic13-bootstrap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat(epic13): implement Web PWA client"
+          git push origin HEAD:feat/epic-13-web-pwa
