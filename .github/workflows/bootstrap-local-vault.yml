@@ -1,0 +1,53 @@
+name: Bootstrap Local Vault Patch
+
+on:
+  push:
+    branches: [agent/local-encrypted-album]
+    paths:
+      - "tools/local-vault-patch.b64"
+      - ".github/workflows/bootstrap-local-vault.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/local-encrypted-album
+          fetch-depth: 0
+      - name: Decode implementation patch
+        run: |
+          cp src/components/PhotoSyncModule.tsx src/components/PhotoSyncDashboard.tsx
+          base64 --decode tools/local-vault-patch.b64 > /tmp/local-vault-patch.zip
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('/tmp/local-vault-patch.zip') as archive:
+              archive.extractall('.')
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Format Rust and update lockfile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Commit generated implementation
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/local-encrypted-album.yml app/local-vault.css \
+            src/components/LocalVaultModule.tsx src/components/PhotoSyncDashboard.tsx \
+            src/components/PhotoSyncModule.tsx src/types/electron.d.ts \
+            src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/lib.rs src-tauri/src/vault.rs \
+            tauri-ui/main.tsx tauri-ui/vaultBridge.ts
+          if git diff --cached --quiet; then
+            echo "Patch already applied."
+          else
+            git commit -m "feat: add local encrypted album"
+            git push origin HEAD:agent/local-encrypted-album
+          fi
