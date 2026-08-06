@@ -1,5 +1,6 @@
 import type { DeviceInstallation, FetchLike, ManagedSession } from "./types";
 import { API_BASE } from "./base";
+import { browserFetch } from "./http";
 
 async function parseResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
@@ -18,7 +19,7 @@ async function parseResponse<T>(response: Response): Promise<T> {
 }
 
 export class WebManagementApi {
-  constructor(private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
+  constructor(private readonly fetcher: FetchLike = browserFetch) {}
 
   private async request<T>(url: string, init: RequestInit = {}, csrfToken?: string): Promise<T> {
     const headers = new Headers(init.headers);
