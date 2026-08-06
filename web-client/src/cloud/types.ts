@@ -3,11 +3,20 @@ export const APP_ID = "lifetrace-web";
 export const PROTOCOL_VERSION = 1;
 export const SCHEMA_VERSION = 1;
 
+/**
+ * Every cloud-syncable LifeTrace domain used by the browser application.
+ * Photos, the encrypted local album, credentials and local import uploads are
+ * deliberately absent because the contract registry marks them device-local or
+ * secret-local-only.
+ */
 export const ENTITY_TYPES = [
-  "finance.account", "finance.category", "finance.transaction",
-  "note.folder", "note.note", "note.tag", "note.tag_relation",
-  "english.article", "english.highlight", "english.learning_record",
-  "english.vocabulary", "file.metadata", "user.preference",
+  "finance.account", "finance.category", "finance.transaction", "finance.transaction_evidence",
+  "habit.activity", "habit.log", "review.daily",
+  "note.folder", "note.note", "note.tag", "note.tag_relation", "note.relation", "note.revision",
+  "english.article", "english.highlight", "english.note", "english.learning_record",
+  "english.vocabulary", "english.vocabulary_occurrence", "english.vocabulary_review_state",
+  "workout.import", "workout.workout", "workout.exercise", "workout.set", "workout.training_note",
+  "file.metadata", "entity.link", "user.preference",
 ] as const;
 
 export type EntityType = (typeof ENTITY_TYPES)[number];
@@ -95,7 +104,9 @@ export const REQUESTED_SCOPES = [
   "account:read", "account:write", "devices:read", "devices:write",
   "sessions:read", "sessions:write", "sync:read", "sync:write",
   "finance:read", "finance:write", "notes:read", "notes:write",
-  "english:read", "english:write", "files:read", "files:write",
+  "english:read", "english:write", "habits:read", "habits:write",
+  "reviews:read", "reviews:write", "workouts:read", "workouts:write",
+  "files:read", "files:write",
 ] as const;
 
 export const EMPTY_CLOUD_STATE: CloudState = { cursor: null, entities: {}, conflicts: [], lastLoadedAt: null };
@@ -138,4 +149,8 @@ export function formatMoney(cents: number, currency = "CNY", masked = false): st
 
 export function entityText(entity: JsonEntity, key: string): string {
   return typeof entity[key] === "string" ? String(entity[key]) : "";
+}
+
+export function entityNumber(entity: JsonEntity, key: string): number {
+  return typeof entity[key] === "number" ? Number(entity[key]) : 0;
 }
