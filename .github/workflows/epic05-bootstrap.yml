@@ -158,26 +158,12 @@ jobs:
           finance_source = finance_path.read_text(encoding='utf-8')
           finance_replacements = [
               (
-                  '''for account in accounts {
-        let row = account_from_legacy_json(account)?;
-        upsert_account(transaction, &row)?;
-    }''',
-                  '''for account in accounts {
-        let owned = crate::database::profile::assign_active_owner(transaction, account)?;
-        let row = account_from_legacy_json(&owned)?;
-        upsert_account(transaction, &row)?;
-    }''',
+                  "for account in accounts {\n        let row = account_from_legacy_json(account)?;\n        upsert_account(transaction, &row)?;\n    }",
+                  "for account in accounts {\n        let owned = crate::database::profile::assign_active_owner(transaction, account)?;\n        let row = account_from_legacy_json(&owned)?;\n        upsert_account(transaction, &row)?;\n    }",
               ),
               (
-                  '''for item in transactions {
-        let row = transaction_from_legacy_json(transaction, item, None, None)?;
-        upsert_transaction(transaction, &row, None)?;
-    }''',
-                  '''for item in transactions {
-        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
-        let row = transaction_from_legacy_json(transaction, &owned, None, None)?;
-        upsert_transaction(transaction, &row, None)?;
-    }''',
+                  "for item in transactions {\n        let row = transaction_from_legacy_json(transaction, item, None, None)?;\n        upsert_transaction(transaction, &row, None)?;\n    }",
+                  "for item in transactions {\n        let owned = crate::database::profile::assign_active_owner(transaction, item)?;\n        let row = transaction_from_legacy_json(transaction, &owned, None, None)?;\n        upsert_transaction(transaction, &row, None)?;\n    }",
               ),
           ]
           for old, new in finance_replacements:
@@ -190,37 +176,16 @@ jobs:
           habits_source = habits_path.read_text(encoding='utf-8')
           habits_replacements = [
               (
-                  '''for activity in activities {
-        let row = activity_from_legacy_json(activity)?;
-        upsert_activity(transaction, &row)?;
-    }''',
-                  '''for activity in activities {
-        let owned = crate::database::profile::assign_active_owner(transaction, activity)?;
-        let row = activity_from_legacy_json(&owned)?;
-        upsert_activity(transaction, &row)?;
-    }''',
+                  "for activity in activities {\n        let row = activity_from_legacy_json(activity)?;\n        upsert_activity(transaction, &row)?;\n    }",
+                  "for activity in activities {\n        let owned = crate::database::profile::assign_active_owner(transaction, activity)?;\n        let row = activity_from_legacy_json(&owned)?;\n        upsert_activity(transaction, &row)?;\n    }",
               ),
               (
-                  '''for item in logs {
-        let row = activity_log_from_legacy_json(transaction, item, None, None)?;
-        upsert_activity_log(transaction, &row)?;
-    }''',
-                  '''for item in logs {
-        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
-        let row = activity_log_from_legacy_json(transaction, &owned, None, None)?;
-        upsert_activity_log(transaction, &row)?;
-    }''',
+                  "for item in logs {\n        let row = activity_log_from_legacy_json(transaction, item, None, None)?;\n        upsert_activity_log(transaction, &row)?;\n    }",
+                  "for item in logs {\n        let owned = crate::database::profile::assign_active_owner(transaction, item)?;\n        let row = activity_log_from_legacy_json(transaction, &owned, None, None)?;\n        upsert_activity_log(transaction, &row)?;\n    }",
               ),
               (
-                  '''for review in reviews {
-        let row = daily_review_from_legacy_json(review, None, None)?;
-        upsert_daily_review(transaction, &row)?;
-    }''',
-                  '''for review in reviews {
-        let owned = crate::database::profile::assign_active_owner(transaction, review)?;
-        let row = daily_review_from_legacy_json(&owned, None, None)?;
-        upsert_daily_review(transaction, &row)?;
-    }''',
+                  "for review in reviews {\n        let row = daily_review_from_legacy_json(review, None, None)?;\n        upsert_daily_review(transaction, &row)?;\n    }",
+                  "for review in reviews {\n        let owned = crate::database::profile::assign_active_owner(transaction, review)?;\n        let row = daily_review_from_legacy_json(&owned, None, None)?;\n        upsert_daily_review(transaction, &row)?;\n    }",
               ),
           ]
           for old, new in habits_replacements:
