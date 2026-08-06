@@ -14,6 +14,7 @@ import "@/app/notes.css";
 import "@/app/redesign.css";
 import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
+import "@/app/settings.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
