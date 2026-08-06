@@ -108,7 +108,7 @@ export function mapImportRows(
 export async function importBillFile(userId: string, deviceId: string, file: File, accountId?: string | null): Promise<ImportPreview> {
   let rows: unknown[][];
   if (/\.xlsx?$/i.test(file.name)) {
-    const { default: readXlsxFile } = await import("read-excel-file");
+    const { default: readXlsxFile } = await import("read-excel-file/browser");
     rows = await readXlsxFile(file);
   } else {
     const text = await file.text();
