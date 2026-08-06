@@ -57,8 +57,18 @@ struct VaultConfig {
     kdf: KdfConfig,
     wrapped_master_key: EncryptedBlob,
     auto_lock_seconds: u64,
+    #[serde(default)]
+    lock_on_blur: bool,
     created_at: String,
     updated_at: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum VaultAssetState {
+    #[default]
+    Active,
+    Trash,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -70,6 +80,20 @@ pub struct VaultAsset {
     pub size: u64,
     pub imported_at: String,
     pub has_thumbnail: bool,
+    #[serde(default)]
+    pub state: VaultAssetState,
+    #[serde(default)]
+    pub album_ids: Vec<String>,
+    #[serde(default)]
+    pub deleted_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultAlbum {
+    pub id: String,
+    pub name: String,
+    pub created_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,6 +101,8 @@ pub struct VaultAsset {
 struct VaultManifest {
     version: u32,
     assets: Vec<VaultAsset>,
+    #[serde(default)]
+    albums: Vec<VaultAlbum>,
 }
 
 impl Default for VaultManifest {
@@ -84,6 +110,7 @@ impl Default for VaultManifest {
         Self {
             version: VAULT_VERSION,
             assets: Vec::new(),
+            albums: Vec::new(),
         }
     }
 }
@@ -94,7 +121,18 @@ pub struct VaultStatus {
     pub configured: bool,
     pub unlocked: bool,
     pub asset_count: Option<usize>,
+    pub trash_count: Option<usize>,
+    pub album_count: Option<usize>,
     pub auto_lock_seconds: u64,
+    pub lock_on_blur: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultIntegrityReport {
+    pub checked: usize,
+    pub healthy: usize,
+    pub corrupted_asset_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -132,11 +170,25 @@ pub struct VaultState {
 
 impl VaultState {
     pub fn new(root: PathBuf) -> Result<Self> {
-        Ok(Self {
+        let state = Self {
             root,
             session: Mutex::new(None),
             attempts: Mutex::new(AttemptState::default()),
-        })
+        };
+        state.cleanup_temporary_files()?;
+        Ok(state)
+    }
+
+    fn cleanup_temporary_files(&self) -> Result<()> {
+        let temp = self.temp_dir();
+        if temp.exists() {
+            fs::remove_dir_all(&temp).context("failed to clean private album temporary files")?;
+        }
+        if self.root.exists() {
+            fs::create_dir_all(&temp)
+                .context("failed to recreate private album temporary directory")?;
+        }
+        Ok(())
     }
 
     fn config_path(&self) -> PathBuf {
@@ -378,6 +430,7 @@ impl VaultState {
             kdf,
             wrapped_master_key,
             auto_lock_seconds: DEFAULT_AUTO_LOCK_SECONDS,
+            lock_on_blur: false,
             created_at: now.clone(),
             updated_at: now,
         };
@@ -462,29 +515,77 @@ impl VaultState {
                 configured: false,
                 unlocked: false,
                 asset_count: None,
+                trash_count: None,
+                album_count: None,
                 auto_lock_seconds: DEFAULT_AUTO_LOCK_SECONDS,
+                lock_on_blur: false,
             });
         }
         let config = self.read_config()?;
         let unlocked = self.is_unlocked();
-        let asset_count = if unlocked {
-            Some(self.session_key(|key| Ok(self.load_manifest(key)?.assets.len()))?)
+        let (asset_count, trash_count, album_count) = if unlocked {
+            self.session_key(|key| {
+                let manifest = self.load_manifest(key)?;
+                Ok((
+                    Some(
+                        manifest
+                            .assets
+                            .iter()
+                            .filter(|asset| asset.state == VaultAssetState::Active)
+                            .count(),
+                    ),
+                    Some(
+                        manifest
+                            .assets
+                            .iter()
+                            .filter(|asset| asset.state == VaultAssetState::Trash)
+                            .count(),
+                    ),
+                    Some(manifest.albums.len()),
+                ))
+            })?
         } else {
-            None
+            (None, None, None)
         };
         Ok(VaultStatus {
             configured,
             unlocked,
             asset_count,
+            trash_count,
+            album_count,
             auto_lock_seconds: config.auto_lock_seconds,
+            lock_on_blur: config.lock_on_blur,
         })
     }
 
-    fn list_assets(&self) -> Result<Vec<VaultAsset>> {
+    fn list_assets(&self, trashed: bool, album_id: Option<&str>) -> Result<Vec<VaultAsset>> {
         self.session_key(|key| {
-            let mut assets = self.load_manifest(key)?.assets;
+            let expected = if trashed {
+                VaultAssetState::Trash
+            } else {
+                VaultAssetState::Active
+            };
+            let mut assets: Vec<_> = self
+                .load_manifest(key)?
+                .assets
+                .into_iter()
+                .filter(|asset| asset.state == expected)
+                .filter(|asset| {
+                    album_id
+                        .map(|id| asset.album_ids.iter().any(|candidate| candidate == id))
+                        .unwrap_or(true)
+                })
+                .collect();
             assets.sort_by(|left, right| right.imported_at.cmp(&left.imported_at));
             Ok(assets)
+        })
+    }
+
+    fn list_albums(&self) -> Result<Vec<VaultAlbum>> {
+        self.session_key(|key| {
+            let mut albums = self.load_manifest(key)?.albums;
+            albums.sort_by(|left, right| left.name.cmp(&right.name));
+            Ok(albums)
         })
     }
 
@@ -563,13 +664,14 @@ impl VaultState {
         result
     }
 
-    fn decrypt_file(
+    fn process_encrypted_file(
         &self,
         source: &Path,
         asset_id: &str,
         master_key: &[u8],
-        maximum_bytes: u64,
-    ) -> Result<Zeroizing<Vec<u8>>> {
+        maximum_bytes: Option<u64>,
+        mut consume: impl FnMut(&[u8]) -> Result<()>,
+    ) -> Result<u64> {
         let cipher =
             Aes256Gcm::new_from_slice(master_key).context("invalid private album master key")?;
         let mut input = File::open(source).context("encrypted private file is missing")?;
@@ -588,7 +690,7 @@ impl VaultState {
         }
         let mut nonce_prefix = [0_u8; 8];
         input.read_exact(&mut nonce_prefix)?;
-        let mut output = Zeroizing::new(Vec::new());
+        let mut total = 0_u64;
         let mut index = 0_u32;
         loop {
             let mut first = [0_u8; 1];
@@ -614,8 +716,10 @@ impl VaultState {
             {
                 bail!("encrypted private file chunk is invalid");
             }
-            let next_total = output.len() as u64 + plaintext_len as u64;
-            if next_total > maximum_bytes {
+            total = total
+                .checked_add(plaintext_len as u64)
+                .ok_or_else(|| anyhow!("private file is too large"))?;
+            if maximum_bytes.is_some_and(|maximum| total > maximum) {
                 bail!("private file is too large to preview safely");
             }
             let mut ciphertext = vec![0_u8; ciphertext_len];
@@ -635,18 +739,74 @@ impl VaultState {
                     },
                 )
                 .map_err(|_| anyhow!("private file integrity verification failed"))?;
+            ciphertext.zeroize();
             if plaintext.len() != plaintext_len {
                 plaintext.zeroize();
                 bail!("private file chunk length is invalid");
             }
-            output.extend_from_slice(&plaintext);
+            let consume_result = consume(&plaintext);
             plaintext.zeroize();
-            ciphertext.zeroize();
+            consume_result?;
             index = index
                 .checked_add(1)
                 .ok_or_else(|| anyhow!("private file is too large"))?;
         }
+        Ok(total)
+    }
+
+    fn decrypt_file(
+        &self,
+        source: &Path,
+        asset_id: &str,
+        master_key: &[u8],
+        maximum_bytes: u64,
+    ) -> Result<Zeroizing<Vec<u8>>> {
+        let mut output = Zeroizing::new(Vec::new());
+        self.process_encrypted_file(source, asset_id, master_key, Some(maximum_bytes), |chunk| {
+            output.extend_from_slice(chunk);
+            Ok(())
+        })?;
         Ok(output)
+    }
+
+    fn verify_encrypted_file(
+        &self,
+        source: &Path,
+        asset_id: &str,
+        master_key: &[u8],
+        expected_size: u64,
+    ) -> Result<()> {
+        let actual = self.process_encrypted_file(source, asset_id, master_key, None, |_| Ok(()))?;
+        if actual != expected_size {
+            bail!("private file size does not match encrypted metadata");
+        }
+        Ok(())
+    }
+
+    fn decrypt_to_file(
+        &self,
+        source: &Path,
+        target: &Path,
+        asset_id: &str,
+        master_key: &[u8],
+        expected_size: u64,
+    ) -> Result<()> {
+        let mut output = File::create(target).context("failed to create exported private file")?;
+        let result = self.process_encrypted_file(source, asset_id, master_key, None, |chunk| {
+            output
+                .write_all(chunk)
+                .context("failed to write exported private file")
+        });
+        match result {
+            Ok(actual) if actual == expected_size => {
+                output
+                    .sync_all()
+                    .context("failed to flush exported private file")?;
+                Ok(())
+            }
+            Ok(_) => bail!("private file size does not match encrypted metadata"),
+            Err(error) => Err(error),
+        }
     }
 
     fn create_thumbnail(&self, source: &Path, asset_id: &str, master_key: &[u8]) -> Result<bool> {
@@ -666,13 +826,23 @@ impl VaultState {
         Ok(true)
     }
 
-    fn import_files(&self, source_paths: Vec<String>) -> Result<Vec<VaultAsset>> {
+    fn import_files(
+        &self,
+        source_paths: Vec<String>,
+        move_source: bool,
+        album_id: Option<String>,
+    ) -> Result<Vec<VaultAsset>> {
         if source_paths.is_empty() {
             return Ok(Vec::new());
         }
         self.ensure_directories()?;
         self.session_key(|master_key| {
             let mut manifest = self.load_manifest(master_key)?;
+            if let Some(id) = album_id.as_deref() {
+                if !manifest.albums.iter().any(|album| album.id == id) {
+                    bail!("private album was not found");
+                }
+            }
             let mut imported = Vec::new();
             for source_path in source_paths {
                 let source = PathBuf::from(&source_path);
@@ -680,6 +850,13 @@ impl VaultState {
                     .with_context(|| format!("无法读取所选文件：{source_path}"))?;
                 if !metadata.is_file() {
                     bail!("所选路径不是文件：{source_path}");
+                }
+                if source
+                    .canonicalize()
+                    .ok()
+                    .is_some_and(|path| path.starts_with(&self.root))
+                {
+                    bail!("不能从私密相册内部目录重复导入文件");
                 }
                 let original_name = source
                     .file_name()
@@ -689,6 +866,12 @@ impl VaultState {
                 let asset_id = Uuid::new_v4().to_string();
                 let target = self.object_path(&asset_id);
                 self.encrypt_file(&source, &target, &asset_id, master_key)?;
+                if let Err(error) =
+                    self.verify_encrypted_file(&target, &asset_id, master_key, metadata.len())
+                {
+                    let _ = fs::remove_file(&target);
+                    return Err(error);
+                }
                 let mime_type = mime_guess::from_path(&source)
                     .first_or_octet_stream()
                     .essence_str()
@@ -706,13 +889,27 @@ impl VaultState {
                     size: metadata.len(),
                     imported_at: Utc::now().to_rfc3339(),
                     has_thumbnail,
+                    state: VaultAssetState::Active,
+                    album_ids: album_id.iter().cloned().collect(),
+                    deleted_at: None,
                 };
+                let previous_manifest = manifest.clone();
                 manifest.assets.push(asset.clone());
                 if let Err(error) = self.save_manifest(master_key, &manifest) {
                     let _ = fs::remove_file(&target);
                     let _ = fs::remove_file(self.thumbnail_path(&asset_id));
-                    manifest.assets.retain(|candidate| candidate.id != asset_id);
+                    manifest = previous_manifest;
                     return Err(error);
+                }
+                if move_source {
+                    if let Err(error) = fs::remove_file(&source) {
+                        manifest = previous_manifest;
+                        let rollback = self.save_manifest(master_key, &manifest);
+                        let _ = fs::remove_file(&target);
+                        let _ = fs::remove_file(self.thumbnail_path(&asset_id));
+                        rollback?;
+                        return Err(error).context("加密成功，但无法删除原文件，已回滚此次移入");
+                    }
                 }
                 imported.push(asset);
             }
@@ -763,18 +960,239 @@ impl VaultState {
         })
     }
 
-    fn delete_asset(&self, asset_id: &str) -> Result<()> {
+    fn unique_export_path(directory: &Path, original_name: &str) -> Result<PathBuf> {
+        let safe_name = Path::new(original_name)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("private asset filename is invalid"))?;
+        let direct = directory.join(safe_name);
+        if !direct.exists() {
+            return Ok(direct);
+        }
+        let path = Path::new(safe_name);
+        let stem = path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("file");
+        let extension = path.extension().and_then(|value| value.to_str());
+        for index in 1..=9_999 {
+            let name = match extension {
+                Some(extension) => format!("{stem} ({index}).{extension}"),
+                None => format!("{stem} ({index})"),
+            };
+            let candidate = directory.join(name);
+            if !candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+        bail!("无法为导出文件生成不冲突的文件名")
+    }
+
+    fn export_asset(
+        &self,
+        asset_id: &str,
+        target_directory: &str,
+        remove_from_vault: bool,
+    ) -> Result<String> {
+        let directory = PathBuf::from(target_directory);
+        if !directory.is_dir() {
+            bail!("请选择有效的本地导出目录");
+        }
         self.session_key(|master_key| {
             let mut manifest = self.load_manifest(master_key)?;
-            let before = manifest.assets.len();
-            manifest.assets.retain(|asset| asset.id != asset_id);
-            if manifest.assets.len() == before {
-                bail!("private asset was not found");
+            let asset = manifest
+                .assets
+                .iter()
+                .find(|asset| asset.id == asset_id && asset.state == VaultAssetState::Active)
+                .cloned()
+                .ok_or_else(|| anyhow!("private asset was not found"))?;
+            let target = Self::unique_export_path(&directory, &asset.original_name)?;
+            let temporary = directory.join(format!(".lifetrace-{}.partial", Uuid::new_v4()));
+            let result = self.decrypt_to_file(
+                &self.object_path(asset_id),
+                &temporary,
+                asset_id,
+                master_key,
+                asset.size,
+            );
+            if let Err(error) = result {
+                let _ = fs::remove_file(&temporary);
+                return Err(error);
             }
+            if let Err(error) = fs::rename(&temporary, &target) {
+                let _ = fs::remove_file(&temporary);
+                return Err(error).context("failed to commit exported private file");
+            }
+            if remove_from_vault {
+                manifest.assets.retain(|candidate| candidate.id != asset_id);
+                if let Err(error) = self.save_manifest(master_key, &manifest) {
+                    let _ = fs::remove_file(&target);
+                    return Err(error);
+                }
+                let _ = fs::remove_file(self.object_path(asset_id));
+                let _ = fs::remove_file(self.thumbnail_path(asset_id));
+            }
+            Ok(target.to_string_lossy().into_owned())
+        })
+    }
+
+    fn move_to_trash(&self, asset_id: &str) -> Result<()> {
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            let asset = manifest
+                .assets
+                .iter_mut()
+                .find(|asset| asset.id == asset_id)
+                .ok_or_else(|| anyhow!("private asset was not found"))?;
+            asset.state = VaultAssetState::Trash;
+            asset.deleted_at = Some(Utc::now().to_rfc3339());
+            self.save_manifest(master_key, &manifest)
+        })
+    }
+
+    fn restore_asset(&self, asset_id: &str) -> Result<()> {
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            let asset = manifest
+                .assets
+                .iter_mut()
+                .find(|asset| asset.id == asset_id && asset.state == VaultAssetState::Trash)
+                .ok_or_else(|| anyhow!("private trash item was not found"))?;
+            asset.state = VaultAssetState::Active;
+            asset.deleted_at = None;
+            self.save_manifest(master_key, &manifest)
+        })
+    }
+
+    fn delete_asset_permanently(&self, asset_id: &str) -> Result<()> {
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            let index = manifest
+                .assets
+                .iter()
+                .position(|asset| asset.id == asset_id && asset.state == VaultAssetState::Trash)
+                .ok_or_else(|| anyhow!("private trash item was not found"))?;
+            manifest.assets.remove(index);
             self.save_manifest(master_key, &manifest)?;
             let _ = fs::remove_file(self.object_path(asset_id));
             let _ = fs::remove_file(self.thumbnail_path(asset_id));
             Ok(())
+        })
+    }
+
+    fn create_album(&self, name: &str) -> Result<VaultAlbum> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            bail!("子相册名称需要 1 到 80 个字符");
+        }
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            if manifest.albums.iter().any(|album| album.name == name) {
+                bail!("已存在同名私密子相册");
+            }
+            let album = VaultAlbum {
+                id: Uuid::new_v4().to_string(),
+                name: name.to_string(),
+                created_at: Utc::now().to_rfc3339(),
+            };
+            manifest.albums.push(album.clone());
+            self.save_manifest(master_key, &manifest)?;
+            Ok(album)
+        })
+    }
+
+    fn rename_album(&self, album_id: &str, name: &str) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 {
+            bail!("子相册名称需要 1 到 80 个字符");
+        }
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            if manifest
+                .albums
+                .iter()
+                .any(|album| album.id != album_id && album.name == name)
+            {
+                bail!("已存在同名私密子相册");
+            }
+            let album = manifest
+                .albums
+                .iter_mut()
+                .find(|album| album.id == album_id)
+                .ok_or_else(|| anyhow!("private album was not found"))?;
+            album.name = name.to_string();
+            self.save_manifest(master_key, &manifest)
+        })
+    }
+
+    fn delete_album(&self, album_id: &str) -> Result<()> {
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            let before = manifest.albums.len();
+            manifest.albums.retain(|album| album.id != album_id);
+            if manifest.albums.len() == before {
+                bail!("private album was not found");
+            }
+            for asset in &mut manifest.assets {
+                asset.album_ids.retain(|id| id != album_id);
+            }
+            self.save_manifest(master_key, &manifest)
+        })
+    }
+
+    fn set_asset_album(&self, asset_id: &str, album_id: &str, assigned: bool) -> Result<()> {
+        self.session_key(|master_key| {
+            let mut manifest = self.load_manifest(master_key)?;
+            if !manifest.albums.iter().any(|album| album.id == album_id) {
+                bail!("private album was not found");
+            }
+            let asset = manifest
+                .assets
+                .iter_mut()
+                .find(|asset| asset.id == asset_id)
+                .ok_or_else(|| anyhow!("private asset was not found"))?;
+            if assigned {
+                if !asset.album_ids.iter().any(|id| id == album_id) {
+                    asset.album_ids.push(album_id.to_string());
+                }
+            } else {
+                asset.album_ids.retain(|id| id != album_id);
+            }
+            self.save_manifest(master_key, &manifest)
+        })
+    }
+
+    fn verify_integrity(&self) -> Result<VaultIntegrityReport> {
+        self.session_key(|master_key| {
+            let manifest = self.load_manifest(master_key)?;
+            let mut corrupted_asset_ids = Vec::new();
+            for asset in &manifest.assets {
+                let object_result = self.verify_encrypted_file(
+                    &self.object_path(&asset.id),
+                    &asset.id,
+                    master_key,
+                    asset.size,
+                );
+                let thumbnail_result = if asset.has_thumbnail {
+                    (|| {
+                        let bytes = fs::read(self.thumbnail_path(&asset.id))?;
+                        let encrypted: EncryptedBlob = serde_json::from_slice(&bytes)?;
+                        let aad = format!("lifetrace-vault-thumbnail-v1:{}", asset.id);
+                        Self::decrypt_blob(master_key, &encrypted, aad.as_bytes()).map(|_| ())
+                    })()
+                } else {
+                    Ok(())
+                };
+                if object_result.is_err() || thumbnail_result.is_err() {
+                    corrupted_asset_ids.push(asset.id.clone());
+                }
+            }
+            let checked = manifest.assets.len();
+            Ok(VaultIntegrityReport {
+                checked,
+                healthy: checked.saturating_sub(corrupted_asset_ids.len()),
+                corrupted_asset_ids,
+            })
         })
     }
 
@@ -821,6 +1239,15 @@ impl VaultState {
                 session.last_activity = Instant::now();
             }
         }
+        self.status()
+    }
+
+    fn set_lock_on_blur(&self, enabled: bool) -> Result<VaultStatus> {
+        self.session_key(|_| Ok(()))?;
+        let mut config = self.read_config()?;
+        config.lock_on_blur = enabled;
+        config.updated_at = Utc::now().to_rfc3339();
+        self.write_json_atomic(&self.config_path(), &config)?;
         self.status()
     }
 
@@ -873,17 +1300,28 @@ pub fn vault_lock(state: State<'_, VaultState>) -> std::result::Result<VaultStat
 
 #[tauri::command]
 pub fn vault_list_assets(
+    trashed: bool,
+    album_id: Option<String>,
     state: State<'_, VaultState>,
 ) -> std::result::Result<Vec<VaultAsset>, String> {
-    command_result(state.list_assets())
+    command_result(state.list_assets(trashed, album_id.as_deref()))
+}
+
+#[tauri::command]
+pub fn vault_list_albums(
+    state: State<'_, VaultState>,
+) -> std::result::Result<Vec<VaultAlbum>, String> {
+    command_result(state.list_albums())
 }
 
 #[tauri::command]
 pub fn vault_import_files(
     source_paths: Vec<String>,
+    move_source: bool,
+    album_id: Option<String>,
     state: State<'_, VaultState>,
 ) -> std::result::Result<Vec<VaultAsset>, String> {
-    command_result(state.import_files(source_paths))
+    command_result(state.import_files(source_paths, move_source, album_id))
 }
 
 #[tauri::command]
@@ -903,11 +1341,79 @@ pub fn vault_read_thumbnail(
 }
 
 #[tauri::command]
-pub fn vault_delete_asset(
+pub fn vault_export_asset(
+    asset_id: String,
+    target_directory: String,
+    remove_from_vault: bool,
+    state: State<'_, VaultState>,
+) -> std::result::Result<String, String> {
+    command_result(state.export_asset(&asset_id, &target_directory, remove_from_vault))
+}
+
+#[tauri::command]
+pub fn vault_move_to_trash(
     asset_id: String,
     state: State<'_, VaultState>,
 ) -> std::result::Result<(), String> {
-    command_result(state.delete_asset(&asset_id))
+    command_result(state.move_to_trash(&asset_id))
+}
+
+#[tauri::command]
+pub fn vault_restore_asset(
+    asset_id: String,
+    state: State<'_, VaultState>,
+) -> std::result::Result<(), String> {
+    command_result(state.restore_asset(&asset_id))
+}
+
+#[tauri::command]
+pub fn vault_delete_asset_permanently(
+    asset_id: String,
+    state: State<'_, VaultState>,
+) -> std::result::Result<(), String> {
+    command_result(state.delete_asset_permanently(&asset_id))
+}
+
+#[tauri::command]
+pub fn vault_create_album(
+    name: String,
+    state: State<'_, VaultState>,
+) -> std::result::Result<VaultAlbum, String> {
+    command_result(state.create_album(&name))
+}
+
+#[tauri::command]
+pub fn vault_rename_album(
+    album_id: String,
+    name: String,
+    state: State<'_, VaultState>,
+) -> std::result::Result<(), String> {
+    command_result(state.rename_album(&album_id, &name))
+}
+
+#[tauri::command]
+pub fn vault_delete_album(
+    album_id: String,
+    state: State<'_, VaultState>,
+) -> std::result::Result<(), String> {
+    command_result(state.delete_album(&album_id))
+}
+
+#[tauri::command]
+pub fn vault_set_asset_album(
+    asset_id: String,
+    album_id: String,
+    assigned: bool,
+    state: State<'_, VaultState>,
+) -> std::result::Result<(), String> {
+    command_result(state.set_asset_album(&asset_id, &album_id, assigned))
+}
+
+#[tauri::command]
+pub fn vault_verify_integrity(
+    state: State<'_, VaultState>,
+) -> std::result::Result<VaultIntegrityReport, String> {
+    command_result(state.verify_integrity())
 }
 
 #[tauri::command]
@@ -925,6 +1431,14 @@ pub fn vault_set_auto_lock(
     state: State<'_, VaultState>,
 ) -> std::result::Result<VaultStatus, String> {
     command_result(state.set_auto_lock(seconds))
+}
+
+#[tauri::command]
+pub fn vault_set_lock_on_blur(
+    enabled: bool,
+    state: State<'_, VaultState>,
+) -> std::result::Result<VaultStatus, String> {
+    command_result(state.set_lock_on_blur(enabled))
 }
 
 #[tauri::command]
@@ -954,6 +1468,13 @@ mod tests {
         path
     }
 
+    fn import_one(state: &VaultState, source: &Path) -> VaultAsset {
+        state
+            .import_files(vec![source.to_string_lossy().into_owned()], false, None)
+            .expect("import")
+            .remove(0)
+    }
+
     #[test]
     fn initialization_requires_a_strong_password() {
         let (state, root) = test_state();
@@ -979,11 +1500,7 @@ mod tests {
         state.initialize(PASSWORD).expect("initialize");
         let plaintext = b"private image bytes that must not appear on disk";
         let source = sample_file(&root.join("source"), "secret-photo.jpg", plaintext);
-        let imported = state
-            .import_files(vec![source.to_string_lossy().into_owned()])
-            .expect("import");
-        assert_eq!(imported.len(), 1);
-        let asset = &imported[0];
+        let asset = import_one(&state, &source);
         let encrypted = fs::read(state.object_path(&asset.id)).expect("encrypted object");
         assert!(!encrypted
             .windows(plaintext.len())
@@ -1009,10 +1526,14 @@ mod tests {
         state.initialize(PASSWORD).expect("initialize");
         let source = sample_file(&root.join("source"), "same.bin", b"same plaintext");
         let imported = state
-            .import_files(vec![
-                source.to_string_lossy().into_owned(),
-                source.to_string_lossy().into_owned(),
-            ])
+            .import_files(
+                vec![
+                    source.to_string_lossy().into_owned(),
+                    source.to_string_lossy().into_owned(),
+                ],
+                false,
+                None,
+            )
             .expect("import");
         let first = fs::read(state.object_path(&imported[0].id)).expect("first");
         let second = fs::read(state.object_path(&imported[1].id)).expect("second");
@@ -1025,15 +1546,15 @@ mod tests {
         let (state, root) = test_state();
         state.initialize(PASSWORD).expect("initialize");
         let source = sample_file(&root.join("source"), "tamper.bin", b"authenticated content");
-        let imported = state
-            .import_files(vec![source.to_string_lossy().into_owned()])
-            .expect("import");
-        let path = state.object_path(&imported[0].id);
+        let asset = import_one(&state, &source);
+        let path = state.object_path(&asset.id);
         let mut bytes = fs::read(&path).expect("read");
         let last = bytes.len() - 1;
         bytes[last] ^= 0x55;
         fs::write(&path, bytes).expect("write");
-        assert!(state.read_asset(&imported[0].id).is_err());
+        assert!(state.read_asset(&asset.id).is_err());
+        let report = state.verify_integrity().expect("integrity report");
+        assert_eq!(report.corrupted_asset_ids, vec![asset.id]);
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1045,7 +1566,106 @@ mod tests {
         let status = state.status().expect("status");
         assert!(!status.unlocked);
         assert_eq!(status.asset_count, None);
-        assert!(state.list_assets().is_err());
+        assert!(state.list_assets(false, None).is_err());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn move_import_removes_source_only_after_encrypted_commit() {
+        let (state, root) = test_state();
+        state.initialize(PASSWORD).expect("initialize");
+        let source = sample_file(&root.join("source"), "move.bin", b"move me safely");
+        let imported = state
+            .import_files(vec![source.to_string_lossy().into_owned()], true, None)
+            .expect("move import");
+        assert!(!source.exists());
+        assert_eq!(
+            BASE64
+                .decode(
+                    state
+                        .read_asset(&imported[0].id)
+                        .expect("read moved asset")
+                        .data_base64,
+                )
+                .expect("base64"),
+            b"move me safely"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn export_round_trips_and_can_remove_from_vault() {
+        let (state, root) = test_state();
+        state.initialize(PASSWORD).expect("initialize");
+        let source = sample_file(&root.join("source"), "export.bin", b"exported content");
+        let asset = import_one(&state, &source);
+        let export_dir = root.join("export");
+        fs::create_dir_all(&export_dir).expect("export directory");
+        let exported = state
+            .export_asset(&asset.id, &export_dir.to_string_lossy(), true)
+            .expect("export");
+        assert_eq!(
+            fs::read(exported).expect("exported file"),
+            b"exported content"
+        );
+        assert!(state.list_assets(false, None).expect("assets").is_empty());
+        assert!(!state.object_path(&asset.id).exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn trash_restore_and_permanent_delete_are_separate() {
+        let (state, root) = test_state();
+        state.initialize(PASSWORD).expect("initialize");
+        let source = sample_file(&root.join("source"), "trash.bin", b"trash content");
+        let asset = import_one(&state, &source);
+        state.move_to_trash(&asset.id).expect("trash");
+        assert!(state.list_assets(false, None).expect("active").is_empty());
+        assert_eq!(state.list_assets(true, None).expect("trash").len(), 1);
+        state.restore_asset(&asset.id).expect("restore");
+        assert_eq!(state.list_assets(false, None).expect("active").len(), 1);
+        state.move_to_trash(&asset.id).expect("trash again");
+        state
+            .delete_asset_permanently(&asset.id)
+            .expect("permanent delete");
+        assert!(!state.object_path(&asset.id).exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn album_names_and_membership_are_encrypted() {
+        let (state, root) = test_state();
+        state.initialize(PASSWORD).expect("initialize");
+        let album = state.create_album("Only In Ciphertext").expect("album");
+        let source = sample_file(&root.join("source"), "album.bin", b"album content");
+        let asset = import_one(&state, &source);
+        state
+            .set_asset_album(&asset.id, &album.id, true)
+            .expect("assign album");
+        assert_eq!(
+            state
+                .list_assets(false, Some(&album.id))
+                .expect("album assets")
+                .len(),
+            1
+        );
+        let manifest = fs::read(state.manifest_path()).expect("manifest");
+        assert!(!manifest
+            .windows(b"Only In Ciphertext".len())
+            .any(|window| window == b"Only In Ciphertext"));
+        state.delete_album(&album.id).expect("delete album");
+        assert!(state.list_albums().expect("albums").is_empty());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn temporary_files_are_removed_on_startup() {
+        let root = std::env::temp_dir().join(format!("lifetrace-vault-test-{}", Uuid::new_v4()));
+        let temp = root.join("temp");
+        fs::create_dir_all(&temp).expect("temp");
+        fs::write(temp.join("leaked.partial"), b"temporary plaintext").expect("temporary");
+        let _state = VaultState::new(root.clone()).expect("state");
+        assert!(!temp.join("leaked.partial").exists());
         let _ = fs::remove_dir_all(root);
     }
 
@@ -1054,21 +1674,19 @@ mod tests {
         let (state, root) = test_state();
         state.initialize(PASSWORD).expect("initialize");
         let source = sample_file(&root.join("source"), "preserved.bin", b"preserved content");
-        let imported = state
-            .import_files(vec![source.to_string_lossy().into_owned()])
-            .expect("import");
-        let before = fs::read(state.object_path(&imported[0].id)).expect("before");
+        let asset = import_one(&state, &source);
+        let before = fs::read(state.object_path(&asset.id)).expect("before");
         state
             .change_password(PASSWORD, NEW_PASSWORD)
             .expect("change password");
-        let after = fs::read(state.object_path(&imported[0].id)).expect("after");
+        let after = fs::read(state.object_path(&asset.id)).expect("after");
         assert_eq!(before, after);
         state.lock_internal().expect("lock");
         assert!(state.unlock(PASSWORD).is_err());
         assert!(state.unlock(NEW_PASSWORD).is_ok());
         assert_eq!(
             BASE64
-                .decode(state.read_asset(&imported[0].id).expect("read").data_base64)
+                .decode(state.read_asset(&asset.id).expect("read").data_base64)
                 .expect("base64"),
             b"preserved content"
         );

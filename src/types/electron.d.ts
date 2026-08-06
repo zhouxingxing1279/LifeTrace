@@ -46,13 +46,23 @@ declare global {
       initialize(password:string):Promise<VaultStatus>;
       unlock(password:string):Promise<VaultStatus>;
       lock():Promise<VaultStatus>;
-      listAssets():Promise<VaultAsset[]>;
-      importFiles():Promise<VaultAsset[]>;
+      listAssets(options?:{trashed?:boolean;albumId?:string|null}):Promise<VaultAsset[]>;
+      listAlbums():Promise<VaultAlbum[]>;
+      importFiles(options?:{moveSource?:boolean;albumId?:string|null}):Promise<VaultAsset[]>;
       readAsset(assetId:string):Promise<VaultAssetPayload>;
       readThumbnail(assetId:string):Promise<VaultThumbnailPayload>;
-      deleteAsset(assetId:string):Promise<void>;
+      exportAsset(assetId:string,removeFromVault:boolean):Promise<string|null>;
+      moveToTrash(assetId:string):Promise<void>;
+      restoreAsset(assetId:string):Promise<void>;
+      deleteAssetPermanently(assetId:string):Promise<void>;
+      createAlbum(name:string):Promise<VaultAlbum>;
+      renameAlbum(albumId:string,name:string):Promise<void>;
+      deleteAlbum(albumId:string):Promise<void>;
+      setAssetAlbum(assetId:string,albumId:string,assigned:boolean):Promise<void>;
+      verifyIntegrity():Promise<VaultIntegrityReport>;
       changePassword(oldPassword:string,newPassword:string):Promise<VaultStatus>;
       setAutoLock(seconds:number):Promise<VaultStatus>;
+      setLockOnBlur(enabled:boolean):Promise<VaultStatus>;
       deleteAll(confirmation:string):Promise<void>;
     };
   }
@@ -61,8 +71,13 @@ declare global {
     configured:boolean;
     unlocked:boolean;
     assetCount?:number;
+    trashCount?:number;
+    albumCount?:number;
     autoLockSeconds:number;
+    lockOnBlur:boolean;
   };
+
+  type VaultAssetState = "active" | "trash";
 
   type VaultAsset = {
     id:string;
@@ -71,6 +86,21 @@ declare global {
     size:number;
     importedAt:string;
     hasThumbnail:boolean;
+    state:VaultAssetState;
+    albumIds:string[];
+    deletedAt?:string|null;
+  };
+
+  type VaultAlbum = {
+    id:string;
+    name:string;
+    createdAt:string;
+  };
+
+  type VaultIntegrityReport = {
+    checked:number;
+    healthy:number;
+    corruptedAssetIds:string[];
   };
 
   type VaultAssetPayload = {

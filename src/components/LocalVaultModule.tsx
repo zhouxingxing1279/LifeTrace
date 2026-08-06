@@ -1,295 +1,202 @@
 "use client";
+/* eslint-disable @next/next/no-img-element -- decrypted local object URLs are not compatible with the image optimizer */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle, FileVideo, Image as ImageIcon, KeyRound, LoaderCircle,
-  Lock, LockKeyhole, ShieldCheck, Trash2, Upload, X,
+  AlertTriangle, ArchiveRestore, CheckCircle2, Download, Eye, FileLock2, FolderPlus,
+  Image as ImageIcon, KeyRound, LoaderCircle, LockKeyhole, LogOut, Pencil, ShieldCheck,
+  Trash2, Upload, X,
 } from "lucide-react";
 
 const DELETE_CONFIRMATION = "永久删除私密相册";
 
-function readableSize(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 ** 2) return `${(value / 1024).toFixed(1)} KB`;
-  if (value < 1024 ** 3) return `${(value / 1024 ** 2).toFixed(1)} MB`;
-  return `${(value / 1024 ** 3).toFixed(1)} GB`;
-}
+const formatBytes = (value:number) => new Intl.NumberFormat("zh-CN", {
+  style:"unit", unit:value >= 1024 ** 2 ? "megabyte" : "kilobyte", maximumFractionDigits:1,
+}).format(value / (value >= 1024 ** 2 ? 1024 ** 2 : 1024));
 
-function dataUrl(mimeType: string, dataBase64: string) {
-  return `data:${mimeType};base64,${dataBase64}`;
-}
-
-function passwordIssue(password: string) {
-  if ([...password].length < 12) return "密码至少需要 12 个字符";
-  if (/^\d+$/.test(password)) return "密码不能只包含数字";
-  return "";
+function base64ObjectUrl(dataBase64:string,mimeType:string) {
+  const binary = window.atob(dataBase64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index=0; index<binary.length; index+=1) bytes[index]=binary.charCodeAt(index);
+  return URL.createObjectURL(new Blob([bytes],{type:mimeType}));
 }
 
 export default function LocalVaultModule() {
-  const api = window.vaultApi;
-  const [status, setStatus] = useState<VaultStatus | null>(null);
-  const [assets, setAssets] = useState<VaultAsset[]>([]);
-  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
-  const [password, setPassword] = useState("");
-  const [passwordAgain, setPasswordAgain] = useState("");
-  const [oldPassword, setOldPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [newPasswordAgain, setNewPasswordAgain] = useState("");
-  const [deleteConfirmation, setDeleteConfirmation] = useState("");
-  const [showDangerZone, setShowDangerZone] = useState(false);
-  const [showPasswordChange, setShowPasswordChange] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [selected, setSelected] = useState<{ asset: VaultAsset; url: string } | null>(null);
-  const passwordInput = useRef<HTMLInputElement>(null);
+  const api=typeof window!=="undefined"?window.vaultApi:undefined;
+  const [status,setStatus]=useState<VaultStatus|null>(null);
+  const [assets,setAssets]=useState<VaultAsset[]>([]);
+  const [albums,setAlbums]=useState<VaultAlbum[]>([]);
+  const [view,setView]=useState<"active"|"trash">("active");
+  const [albumId,setAlbumId]=useState<string|null>(null);
+  const [thumbnails,setThumbnails]=useState<Record<string,string>>({});
+  const [preview,setPreview]=useState<{asset:VaultAsset;url:string}|null>(null);
+  const [loading,setLoading]=useState(true);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState("");
+  const [message,setMessage]=useState("");
+  const [password,setPassword]=useState("");
+  const [confirmation,setConfirmation]=useState("");
+  const [setupPassword,setSetupPassword]=useState("");
+  const [setupRepeat,setSetupRepeat]=useState("");
+  const [setupAccepted,setSetupAccepted]=useState(false);
+  const [showPasswordForm,setShowPasswordForm]=useState(false);
+  const [oldPassword,setOldPassword]=useState("");
+  const [newPassword,setNewPassword]=useState("");
+  const [repeatPassword,setRepeatPassword]=useState("");
+  const objectUrls=useRef(new Set<string>());
 
-  const clearDecryptedState = useCallback(() => {
-    setAssets([]);
-    setThumbnails({});
-    setSelected(null);
-  }, []);
+  const trackUrl=useCallback((url:string)=>{objectUrls.current.add(url);return url},[]);
+  const clearSensitive=useCallback(()=>{
+    for(const url of objectUrls.current)URL.revokeObjectURL(url);
+    objectUrls.current.clear();
+    setThumbnails({});setPreview(null);setAssets([]);setAlbums([]);setAlbumId(null);
+  },[]);
 
-  const loadAssets = useCallback(async () => {
-    if (!api) return;
-    const nextAssets = await api.listAssets();
-    setAssets(nextAssets);
-    const nextThumbnails: Record<string, string> = {};
-    await Promise.all(nextAssets.filter((asset) => asset.hasThumbnail).map(async (asset) => {
-      try {
-        const thumbnail = await api.readThumbnail(asset.id);
-        nextThumbnails[asset.id] = dataUrl(thumbnail.mimeType, thumbnail.dataBase64);
-      } catch {
-        // A missing/corrupted thumbnail must not prevent access to the encrypted original.
-      }
+  const loadStatus=useCallback(async()=>{
+    if(!api)return;
+    const next=await api.status();setStatus(next);
+  },[api]);
+
+  const refresh=useCallback(async()=>{
+    if(!api||!status?.unlocked)return;
+    const [nextAssets,nextAlbums]=await Promise.all([
+      api.listAssets({trashed:view==="trash",albumId:view==="active"?albumId:null}),
+      api.listAlbums(),
+    ]);
+    setAssets(nextAssets);setAlbums(nextAlbums);
+    const nextThumbs:Record<string,string>={};
+    await Promise.all(nextAssets.filter(asset=>asset.hasThumbnail).map(async asset=>{
+      try{
+        const payload=await api.readThumbnail(asset.id);
+        nextThumbs[asset.id]=trackUrl(base64ObjectUrl(payload.dataBase64,payload.mimeType));
+      }catch{/* A damaged thumbnail is reported by integrity check; keep the placeholder here. */}
     }));
-    setThumbnails(nextThumbnails);
-  }, [api]);
-
-  const refresh = useCallback(async () => {
-    if (!api) {
-      setError("当前运行环境不支持本地私密相册");
-      return;
-    }
-    try {
-      const nextStatus = await api.status();
-      setStatus(nextStatus);
-      if (nextStatus.unlocked) await loadAssets();
-      else clearDecryptedState();
-    } catch (reason) {
-      setError(String(reason));
-    }
-  }, [api, clearDecryptedState, loadAssets]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
-    if (status?.configured && !status.unlocked) passwordInput.current?.focus();
-  }, [status?.configured, status?.unlocked]);
-
-  const run = useCallback(async (operation: () => Promise<void>) => {
-    setBusy(true);
-    setError("");
-    setMessage("");
-    try {
-      await operation();
-    } catch (reason) {
-      setError(String(reason).replace(/^Error:\s*/, ""));
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  const initialize = () => void run(async () => {
-    if (!api) return;
-    const issue = passwordIssue(password);
-    if (issue) throw new Error(issue);
-    if (password !== passwordAgain) throw new Error("两次输入的密码不一致");
-    const nextStatus = await api.initialize(password);
-    setStatus(nextStatus);
-    setPassword("");
-    setPasswordAgain("");
-    setMessage("私密相册已创建。请牢记密码，系统无法找回。 ");
-    await loadAssets();
-  });
-
-  const unlock = () => void run(async () => {
-    if (!api) return;
-    const nextStatus = await api.unlock(password);
-    setStatus(nextStatus);
-    setPassword("");
-    await loadAssets();
-  });
-
-  const lock = () => void run(async () => {
-    if (!api) return;
-    const nextStatus = await api.lock();
-    clearDecryptedState();
-    setStatus(nextStatus);
-    setMessage("私密相册已锁定，解密内容已从界面清除。");
-  });
-
-  const importFiles = () => void run(async () => {
-    if (!api) return;
-    const imported = await api.importFiles();
-    if (!imported.length) return;
-    const nextStatus = await api.status();
-    setStatus(nextStatus);
-    await loadAssets();
-    setMessage(`已在本机加密导入 ${imported.length} 个文件。原文件不会上传到任何云端。`);
-  });
-
-  const openAsset = (asset: VaultAsset) => void run(async () => {
-    if (!api) return;
-    const payload = await api.readAsset(asset.id);
-    setSelected({ asset: payload.asset, url: dataUrl(payload.asset.mimeType, payload.dataBase64) });
-  });
-
-  const deleteAsset = (asset: VaultAsset) => void run(async () => {
-    if (!api) return;
-    if (!window.confirm(`确定永久删除“${asset.originalName}”吗？此操作不可恢复。`)) return;
-    await api.deleteAsset(asset.id);
-    if (selected?.asset.id === asset.id) setSelected(null);
-    await loadAssets();
-    const nextStatus = await api.status();
-    setStatus(nextStatus);
-  });
-
-  const changePassword = () => void run(async () => {
-    if (!api) return;
-    const issue = passwordIssue(newPassword);
-    if (issue) throw new Error(issue);
-    if (newPassword !== newPasswordAgain) throw new Error("两次输入的新密码不一致");
-    const nextStatus = await api.changePassword(oldPassword, newPassword);
-    setStatus(nextStatus);
-    setOldPassword("");
-    setNewPassword("");
-    setNewPasswordAgain("");
-    setShowPasswordChange(false);
-    setMessage("私密相册密码已修改。旧密码已失效。 ");
-  });
-
-  const deleteVault = () => void run(async () => {
-    if (!api) return;
-    if (deleteConfirmation !== DELETE_CONFIRMATION) throw new Error("请输入完整的删除确认文本");
-    await api.deleteAll(deleteConfirmation);
-    clearDecryptedState();
-    setDeleteConfirmation("");
-    setShowDangerZone(false);
+    setThumbnails(current=>{
+      for(const url of Object.values(current) as string[]){URL.revokeObjectURL(url);objectUrls.current.delete(url)}
+      return nextThumbs;
+    });
     setStatus(await api.status());
-    setMessage("私密相册及其本地密文已永久删除。");
+  },[albumId,api,status?.unlocked,trackUrl,view]);
+
+  useEffect(()=>{void (async()=>{try{await loadStatus()}catch(cause){setError(String(cause))}finally{setLoading(false)}})()},[loadStatus]);
+  useEffect(()=>{if(status?.unlocked)void refresh()},[refresh,status?.unlocked]);
+  useEffect(()=>()=>clearSensitive(),[clearSensitive]);
+
+  const lock=useCallback(async()=>{
+    if(!api)return;
+    try{setStatus(await api.lock())}finally{clearSensitive();setPassword("");setShowPasswordForm(false)}
+  },[api,clearSensitive]);
+
+  useEffect(()=>{
+    if(!status?.unlocked||!status.lockOnBlur||busy)return;
+    const hide=()=>{if(document.visibilityState==="hidden")void lock()};
+    const blur=()=>void lock();
+    window.addEventListener("blur",blur);document.addEventListener("visibilitychange",hide);
+    return()=>{window.removeEventListener("blur",blur);document.removeEventListener("visibilitychange",hide)};
+  },[busy,lock,status?.lockOnBlur,status?.unlocked]);
+
+  const perform=useCallback(async(task:()=>Promise<void>,success?:string)=>{
+    setBusy(true);setError("");setMessage("");
+    try{await task();if(success)setMessage(success)}catch(cause){setError(cause instanceof Error?cause.message:String(cause))}
+    finally{setBusy(false)}
+  },[]);
+
+  const setup=async(event:FormEvent)=>{event.preventDefault();if(!api)return;
+    await perform(async()=>{
+      if(!setupAccepted)throw new Error("请先确认密码丢失后无法恢复");
+      if(setupPassword!==setupRepeat)throw new Error("两次输入的密码不一致");
+      setStatus(await api.initialize(setupPassword));setSetupPassword("");setSetupRepeat("");
+    },"私密相册已创建，所有内容只保存在当前电脑。")
+  };
+  const unlock=async(event:FormEvent)=>{event.preventDefault();if(!api)return;
+    await perform(async()=>{setStatus(await api.unlock(password));setPassword("")})
+  };
+  const importFiles=(moveSource:boolean)=>perform(async()=>{
+    if(!api)return;const imported=await api.importFiles({moveSource,albumId});
+    if(imported.length===0)return;await refresh();
+  },moveSource?"文件已加密移入，原文件已在验证成功后删除。":"文件已复制并加密到私密相册。");
+  const openPreview=(asset:VaultAsset)=>perform(async()=>{
+    if(!api)return;const payload=await api.readAsset(asset.id);
+    if(preview){URL.revokeObjectURL(preview.url);objectUrls.current.delete(preview.url)}
+    setPreview({asset:payload.asset,url:trackUrl(base64ObjectUrl(payload.dataBase64,payload.asset.mimeType))});
   });
-
-  const setAutoLock = (seconds: number) => void run(async () => {
-    if (!api) return;
-    setStatus(await api.setAutoLock(seconds));
-    setMessage("自动锁定时间已更新。");
+  const closePreview=()=>{if(preview){URL.revokeObjectURL(preview.url);objectUrls.current.delete(preview.url)}setPreview(null)};
+  const exportAsset=(asset:VaultAsset,remove:boolean)=>perform(async()=>{
+    if(!api)return;const path=await api.exportAsset(asset.id,remove);if(!path)return;
+    if(remove){closePreview();await refresh()}setMessage(`${remove?"已移出":"已导出"}到：${path}`);
   });
+  const moveToTrash=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.moveToTrash(asset.id);await refresh()},"已移入私密回收站。");
+  const restore=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.restoreAsset(asset.id);await refresh()},"已恢复到私密相册。");
+  const permanentDelete=(asset:VaultAsset)=>{
+    if(!window.confirm(`永久删除“${asset.originalName}”？此操作无法撤销。`))return;
+    void perform(async()=>{if(!api)return;await api.deleteAssetPermanently(asset.id);await refresh()},"已永久删除密文和索引记录。");
+  };
+  const createAlbum=()=>{const name=window.prompt("新建私密子相册名称");if(!name)return;
+    void perform(async()=>{if(!api)return;const album=await api.createAlbum(name);setAlbumId(album.id);await refresh()},"私密子相册已创建。")};
+  const renameAlbum=()=>{const album=albums.find(item=>item.id===albumId);if(!album)return;const name=window.prompt("重命名私密子相册",album.name);if(!name)return;
+    void perform(async()=>{if(!api)return;await api.renameAlbum(album.id,name);await refresh()},"子相册已重命名。")};
+  const deleteAlbum=()=>{const album=albums.find(item=>item.id===albumId);if(!album||!window.confirm(`删除子相册“${album.name}”？照片不会被删除。`))return;
+    void perform(async()=>{if(!api)return;await api.deleteAlbum(album.id);setAlbumId(null);await refresh()},"子相册已删除，照片仍保留在私密相册。")};
+  const assignAlbum=(asset:VaultAsset,nextAlbumId:string)=>{if(!nextAlbumId)return;
+    void perform(async()=>{if(!api)return;await api.setAssetAlbum(asset.id,nextAlbumId,true);await refresh()},"照片已加入子相册。")};
+  const removeFromCurrentAlbum=(asset:VaultAsset)=>{if(!albumId)return;
+    void perform(async()=>{if(!api)return;await api.setAssetAlbum(asset.id,albumId,false);await refresh()},"照片已移出当前子相册。")};
+  const verify=()=>perform(async()=>{if(!api)return;const report=await api.verifyIntegrity();
+    setMessage(report.corruptedAssetIds.length===0?`完整性检查通过：${report.healthy}/${report.checked} 项健康。`:`发现 ${report.corruptedAssetIds.length} 个损坏对象，请勿删除现有备份。`)
+  });
+  const changePassword=async(event:FormEvent)=>{event.preventDefault();if(!api)return;
+    await perform(async()=>{if(newPassword!==repeatPassword)throw new Error("两次输入的新密码不一致");setStatus(await api.changePassword(oldPassword,newPassword));setOldPassword("");setNewPassword("");setRepeatPassword("");setShowPasswordForm(false)},"密码已修改，照片文件无需重新加密。")
+  };
+  const deleteAll=()=>{if(!api||confirmation!==DELETE_CONFIRMATION)return;
+    void perform(async()=>{await api.deleteAll(confirmation);clearSensitive();setStatus(await api.status());setConfirmation("")},"私密相册已永久删除。")};
 
-  const photoCount = useMemo(() => assets.filter((asset) => asset.mimeType.startsWith("image/")).length, [assets]);
-  const videoCount = useMemo(() => assets.filter((asset) => asset.mimeType.startsWith("video/")).length, [assets]);
+  const currentAlbum=useMemo(()=>albums.find(album=>album.id===albumId)??null,[albumId,albums]);
+  if(!api)return <div className="local-vault unavailable"><LockKeyhole/><h3>私密相册仅在 LifeTrace 桌面端提供</h3><p>该模块不会通过网页或局域网接口开放。</p></div>;
+  if(loading||!status)return <div className="local-vault loading"><LoaderCircle className="spin"/><p>正在检查本地加密空间…</p></div>;
 
-  if (!api) {
-    return <section className="local-vault unavailable"><AlertTriangle/><h2>私密相册不可用</h2><p>该功能只在 LifeTrace 桌面端本地运行。</p></section>;
-  }
+  if(!status.configured)return <div className="local-vault vault-gate"><form className="vault-gate-card" onSubmit={setup}>
+    <span className="vault-gate-icon"><FileLock2/></span><p className="vault-kicker">仅本机 · 零恢复</p><h2>创建私密相册</h2>
+    <p>原图、视频、缩略图和名称都会在当前电脑上加密，不会进入同步、分享或任何云端服务。</p>
+    <div className="vault-warning"><AlertTriangle/><span>系统没有找回密码、恢复密钥或管理员后门。忘记密码后，只能永久删除整个私密相册。</span></div>
+    <label>私密相册密码<input type="password" minLength={12} value={setupPassword} onChange={event=>setSetupPassword(event.target.value)} required autoComplete="new-password"/></label>
+    <label>再次输入密码<input type="password" minLength={12} value={setupRepeat} onChange={event=>setSetupRepeat(event.target.value)} required autoComplete="new-password"/></label>
+    <label className="vault-confirm"><input type="checkbox" checked={setupAccepted} onChange={event=>setSetupAccepted(event.target.checked)}/><span>我确认密码丢失后，任何人都无法恢复其中内容。</span></label>
+    {error&&<p className="vault-error">{error}</p>}<button className="vault-primary" disabled={busy||!setupAccepted}><KeyRound/>创建本地加密空间</button>
+  </form></div>;
 
-  if (!status) {
-    return <section className="local-vault loading"><LoaderCircle className="spin"/><p>正在读取本地私密相册状态…</p></section>;
-  }
+  if(!status.unlocked)return <div className="local-vault vault-gate"><form className="vault-gate-card" onSubmit={unlock}>
+    <span className="vault-gate-icon"><LockKeyhole/></span><p className="vault-kicker">已锁定</p><h2>私密相册</h2>
+    <p>锁定状态不加载数量、封面、文件名或任何私密元数据。</p>
+    <label>密码<input type="password" value={password} onChange={event=>setPassword(event.target.value)} required autoFocus autoComplete="current-password"/></label>
+    {error&&<p className="vault-error">{error}</p>}<button className="vault-primary" disabled={busy}><KeyRound/>解锁</button>
+    <button type="button" className="vault-danger-link" onClick={()=>setConfirmation(current=>current?"":" ")}>忘记密码后永久删除私密相册</button>
+    {confirmation!==""&&<div className="vault-danger-zone"><p>输入“{DELETE_CONFIRMATION}”后删除所有密文。此操作不需要密码，但无法撤销。</p><input value={confirmation.trimStart()} onChange={event=>setConfirmation(event.target.value)} placeholder={DELETE_CONFIRMATION}/><button type="button" className="vault-danger" disabled={confirmation.trim()!==DELETE_CONFIRMATION||busy} onClick={deleteAll}><Trash2/>永久删除</button></div>}
+  </form></div>;
 
-  if (!status.configured) {
-    return <section className="local-vault vault-gate">
-      <div className="vault-gate-card">
-        <span className="vault-gate-icon"><LockKeyhole/></span>
-        <p className="vault-kicker">仅本机 · 零恢复</p>
-        <h2>创建私密相册</h2>
-        <p>照片、视频、缩略图和元数据只会保存在当前电脑，并使用你的密码派生密钥进行加密。</p>
-        <div className="vault-warning"><AlertTriangle/><span>不提供密码找回、恢复密钥或管理员重置。忘记密码后，全部内容永久无法恢复。</span></div>
-        <label>设置独立密码<input type="password" autoComplete="new-password" value={password} onChange={(event)=>setPassword(event.target.value)} placeholder="至少 12 个字符，不能是纯数字"/></label>
-        <label>再次输入密码<input type="password" autoComplete="new-password" value={passwordAgain} onChange={(event)=>setPasswordAgain(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter")initialize()}}/></label>
-        {error && <p className="vault-error">{error}</p>}
-        <button className="vault-primary" disabled={busy} onClick={initialize}>{busy?<LoaderCircle className="spin"/>:<ShieldCheck/>}创建本地加密相册</button>
-      </div>
-    </section>;
-  }
-
-  if (!status.unlocked) {
-    return <section className="local-vault vault-gate">
-      <div className="vault-gate-card">
-        <span className="vault-gate-icon"><Lock/></span>
-        <p className="vault-kicker">私密相册已锁定</p>
-        <h2>输入密码解锁</h2>
-        <p>锁定状态下不会显示照片数量、封面、文件名或访问记录。</p>
-        <label>私密相册密码<input ref={passwordInput} type="password" autoComplete="current-password" value={password} onChange={(event)=>setPassword(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter")unlock()}}/></label>
-        {error && <p className="vault-error">{error}</p>}
-        {message && <p className="vault-message">{message}</p>}
-        <button className="vault-primary" disabled={busy||!password} onClick={unlock}>{busy?<LoaderCircle className="spin"/>:<KeyRound/>}解锁</button>
-        <button className="vault-danger-link" onClick={()=>setShowDangerZone((value)=>!value)}>忘记密码，只能永久删除</button>
-        {showDangerZone && <div className="vault-danger-zone">
-          <strong>永久删除私密相册</strong>
-          <p>无需密码即可删除，但所有密文、缩略图和加密清单都会永久消失。</p>
-          <label>输入“{DELETE_CONFIRMATION}”<input value={deleteConfirmation} onChange={(event)=>setDeleteConfirmation(event.target.value)}/></label>
-          <button className="vault-danger" disabled={busy||deleteConfirmation!==DELETE_CONFIRMATION} onClick={deleteVault}><Trash2/>永久删除</button>
-        </div>}
-      </div>
-    </section>;
-  }
-
-  return <section className="local-vault vault-open">
-    <header className="vault-header">
-      <div><p className="vault-kicker">仅本机加密存储</p><h2><ShieldCheck/>私密相册</h2><p>所有内容均由 Rust 本地进程加解密，不进入照片同步、云端备份或远程 AI。</p></div>
-      <div className="vault-actions">
-        <button onClick={importFiles} disabled={busy}><Upload/>导入本地文件</button>
-        <button onClick={()=>setShowPasswordChange((value)=>!value)}><KeyRound/>修改密码</button>
-        <button className="vault-lock" onClick={lock}><Lock/>锁定</button>
-      </div>
-    </header>
-
-    {(error||message) && <div className={error?"vault-notice error":"vault-notice"}>{error||message}<button onClick={()=>{setError("");setMessage("")}}><X/></button></div>}
-
-    <div className="vault-summary">
-      <div><strong>{status.assetCount??assets.length}</strong><span>加密文件</span></div>
-      <div><strong>{photoCount}</strong><span>照片</span></div>
-      <div><strong>{videoCount}</strong><span>视频</span></div>
-      <label>自动锁定<select value={status.autoLockSeconds} onChange={(event)=>setAutoLock(Number(event.target.value))}>
-        <option value={30}>30 秒</option><option value={60}>1 分钟</option><option value={300}>5 分钟</option><option value={600}>10 分钟</option><option value={1800}>30 分钟</option>
-      </select></label>
-    </div>
-
-    {showPasswordChange && <div className="vault-inline-form">
-      <h3>修改密码</h3><p>必须验证当前密码。没有当前密码无法保留数据重置。</p>
-      <input type="password" autoComplete="current-password" value={oldPassword} onChange={(event)=>setOldPassword(event.target.value)} placeholder="当前密码"/>
-      <input type="password" autoComplete="new-password" value={newPassword} onChange={(event)=>setNewPassword(event.target.value)} placeholder="新密码（至少 12 个字符）"/>
-      <input type="password" autoComplete="new-password" value={newPasswordAgain} onChange={(event)=>setNewPasswordAgain(event.target.value)} placeholder="再次输入新密码"/>
-      <div><button onClick={()=>setShowPasswordChange(false)}>取消</button><button className="vault-primary" onClick={changePassword} disabled={busy}>确认修改</button></div>
-    </div>}
-
-    {busy && <div className="vault-progress"><LoaderCircle className="spin"/>正在执行本地加密操作…</div>}
-
-    {!assets.length&&!busy ? <div className="vault-empty"><LockKeyhole/><h3>私密相册为空</h3><p>选择本机照片或视频后，文件会先加密再写入私密目录。</p><button className="vault-primary" onClick={importFiles}><Upload/>导入文件</button></div> : <div className="vault-grid">
-      {assets.map((asset)=><article key={asset.id} className="vault-card">
-        <button className="vault-card-preview" onClick={()=>openAsset(asset)} aria-label={`查看 ${asset.originalName}`}>
-          {thumbnails[asset.id]?<img src={thumbnails[asset.id]} alt=""/>:asset.mimeType.startsWith("video/")?<FileVideo/>:<ImageIcon/>}
-          <span><Lock/>本地密文</span>
-        </button>
-        <div><strong title={asset.originalName}>{asset.originalName}</strong><small>{readableSize(asset.size)} · {new Date(asset.importedAt).toLocaleString("zh-CN",{hour12:false})}</small></div>
-        <button className="vault-card-delete" onClick={()=>deleteAsset(asset)} aria-label={`删除 ${asset.originalName}`}><Trash2/></button>
-      </article>)}
-    </div>}
-
-    <footer className="vault-footer"><ShieldCheck/><span>私密数据不会上传、同步、分享或发送给远程 AI 服务。</span><button className="vault-danger-link" onClick={()=>setShowDangerZone((value)=>!value)}>删除整个私密相册</button></footer>
-    {showDangerZone && <div className="vault-danger-zone open-danger">
-      <strong>永久删除整个私密相册</strong><p>此操作不需要密码，但不可撤销。输入“{DELETE_CONFIRMATION}”确认。</p>
-      <input value={deleteConfirmation} onChange={(event)=>setDeleteConfirmation(event.target.value)}/>
-      <button className="vault-danger" disabled={busy||deleteConfirmation!==DELETE_CONFIRMATION} onClick={deleteVault}><Trash2/>永久删除全部内容</button>
-    </div>}
-
-    {selected && <div className="vault-modal" role="dialog" aria-modal="true" aria-label={selected.asset.originalName} onMouseDown={(event)=>{if(event.target===event.currentTarget)setSelected(null)}}>
-      <div><header><strong>{selected.asset.originalName}</strong><button onClick={()=>setSelected(null)}><X/></button></header>
-        {selected.asset.mimeType.startsWith("video/")?<video src={selected.url} controls autoPlay/>:<img src={selected.url} alt={selected.asset.originalName}/>} 
-      </div>
-    </div>}
-  </section>;
+  return <div className="local-vault vault-open">
+    <header className="vault-header"><div><p className="vault-kicker">LOCAL ENCRYPTED STORAGE</p><h2><ShieldCheck/>私密相册</h2><p>仅本机加解密；与手机同步、云同步、分享链接和远程分析完全隔离。</p></div><div className="vault-actions">
+      <button onClick={()=>importFiles(false)} disabled={busy}><Upload/>复制导入</button><button onClick={()=>importFiles(true)} disabled={busy}><FileLock2/>安全移入</button><button onClick={verify} disabled={busy}><ShieldCheck/>完整性检查</button><button className="vault-lock" onClick={()=>void lock()}><LogOut/>锁定</button>
+    </div></header>
+    {(message||error)&&<div className={`vault-notice${error?" error":""}`} role="status"><span>{error||message}</span><button onClick={()=>{setError("");setMessage("")}}><X/></button></div>}
+    <section className="vault-summary"><div><span>私密照片和视频</span><strong>{status.assetCount??0}</strong></div><div><span>回收站</span><strong>{status.trashCount??0}</strong></div><div><span>子相册</span><strong>{status.albumCount??0}</strong></div>
+      <label>空闲自动锁定<select value={status.autoLockSeconds} onChange={event=>void perform(async()=>setStatus(await api.setAutoLock(Number(event.target.value))))}><option value={30}>30 秒</option><option value={60}>1 分钟</option><option value={300}>5 分钟</option><option value={600}>10 分钟</option><option value={1800}>30 分钟</option></select></label>
+      <label className="vault-switch"><input type="checkbox" checked={status.lockOnBlur} onChange={event=>void perform(async()=>setStatus(await api.setLockOnBlur(event.target.checked)))}/><span>离开窗口立即锁定</span></label>
+    </section>
+    <div className="vault-workspace"><aside className="vault-sidebar"><div className="vault-sidebar-head"><strong>浏览</strong><button onClick={createAlbum}><FolderPlus/></button></div>
+      <button className={view==="active"&&!albumId?"active":""} onClick={()=>{setView("active");setAlbumId(null)}}>全部私密内容</button>
+      {albums.map(album=><button key={album.id} className={view==="active"&&albumId===album.id?"active":""} onClick={()=>{setView("active");setAlbumId(album.id)}}>{album.name}</button>)}
+      <button className={view==="trash"?"active danger":"danger"} onClick={()=>{setView("trash");setAlbumId(null)}}><Trash2/>私密回收站</button>
+      {currentAlbum&&<div className="vault-album-actions"><button onClick={renameAlbum}><Pencil/>重命名</button><button onClick={deleteAlbum}><Trash2/>删除子相册</button></div>}
+    </aside><main className="vault-content"><div className="vault-content-head"><div><span>{view==="trash"?"回收站":currentAlbum?.name||"全部内容"}</span><strong>{assets.length} 项</strong></div>{busy&&<LoaderCircle className="spin"/>}</div>
+      {assets.length===0?<div className="vault-empty"><ImageIcon/><h3>{view==="trash"?"回收站为空":"还没有私密内容"}</h3><p>{view==="trash"?"删除的内容会先进入这里。":"可以复制导入，也可以验证加密成功后删除原文件。"}</p>{view==="active"&&<button className="vault-primary" onClick={()=>importFiles(true)}><FileLock2/>安全移入文件</button>}</div>:
+      <div className="vault-grid">{assets.map(asset=><article className="vault-card" key={asset.id}><button className="vault-card-preview" onClick={()=>openPreview(asset)}>{thumbnails[asset.id]?<img src={thumbnails[asset.id]} alt=""/>:<ImageIcon/>}{asset.mimeType.startsWith("video/")&&<span>视频</span>}</button>
+        <div className="vault-card-copy"><strong title={asset.originalName}>{asset.originalName}</strong><small>{formatBytes(asset.size)} · {new Date(asset.importedAt).toLocaleString("zh-CN",{hour12:false})}</small></div>
+        {view==="active"?<div className="vault-card-actions"><button title="预览" onClick={()=>openPreview(asset)}><Eye/></button><button title="导出副本" onClick={()=>exportAsset(asset,false)}><Download/></button><button title="移出私密相册" onClick={()=>exportAsset(asset,true)}><LogOut/></button><button title="移入回收站" onClick={()=>moveToTrash(asset)}><Trash2/></button>
+          {albums.length>0&&<select aria-label="添加到子相册" value="" onChange={event=>assignAlbum(asset,event.target.value)}><option value="">加入子相册…</option>{albums.filter(album=>!asset.albumIds.includes(album.id)).map(album=><option key={album.id} value={album.id}>{album.name}</option>)}</select>}{albumId&&<button className="wide" onClick={()=>removeFromCurrentAlbum(asset)}>移出当前子相册</button>}
+        </div>:<div className="vault-card-actions"><button className="wide" onClick={()=>restore(asset)}><ArchiveRestore/>恢复</button><button className="wide danger" onClick={()=>permanentDelete(asset)}><Trash2/>永久删除</button></div>}
+      </article>)}</div>}
+    </main></div>
+    <section className="vault-settings"><button onClick={()=>setShowPasswordForm(current=>!current)}><KeyRound/>修改密码</button>{showPasswordForm&&<form className="vault-inline-form" onSubmit={changePassword}><h3>修改私密相册密码</h3><p>必须验证旧密码；只重新加密主密钥，不重新处理所有照片。</p><input type="password" placeholder="当前密码" value={oldPassword} onChange={event=>setOldPassword(event.target.value)} required/><input type="password" placeholder="新密码（至少 12 个字符）" value={newPassword} onChange={event=>setNewPassword(event.target.value)} required minLength={12}/><input type="password" placeholder="再次输入新密码" value={repeatPassword} onChange={event=>setRepeatPassword(event.target.value)} required minLength={12}/><div><button type="button" onClick={()=>setShowPasswordForm(false)}>取消</button><button className="vault-primary" disabled={busy}>确认修改</button></div></form>}</section>
+    {preview&&<div className="vault-preview-modal" role="dialog" aria-modal="true" aria-label={preview.asset.originalName}><div className="vault-preview-panel"><header><div><strong>{preview.asset.originalName}</strong><small>{formatBytes(preview.asset.size)}</small></div><button onClick={closePreview}><X/></button></header>{preview.asset.mimeType.startsWith("video/")?<video src={preview.url} controls autoPlay/>:<img src={preview.url} alt={preview.asset.originalName}/>}<footer><button onClick={()=>exportAsset(preview.asset,false)}><Download/>导出副本</button><button onClick={()=>exportAsset(preview.asset,true)}><LogOut/>移出私密相册</button></footer></div></div>}
+  </div>;
 }
