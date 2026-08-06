@@ -1,233 +1,170 @@
-# EPIC-13 Web / PWA 客户端完整执行方案
+# EPIC-13 Web / PWA 客户端执行方案
 
-> 状态：实施中  
-> 目标分支：`feat/epic-13-web-pwa`  
-> 基线：`main`  
-> 需求来源：`docs/LifeTrace_Complete_Roadmap_v2.md` 的 EPIC-13 以及已完成的 EPIC-03/04/05 公共云、认证和同步协议。
+> 状态：实施与 CI 验收中  
+> 分支：`feat/epic-13-web-pwa`  
+> PR：`#5`  
+> 需求来源：`docs/LifeTrace_Complete_Roadmap_v2.md` 的 EPIC-13。
 
-## 1. 目标与边界
+## 1. 已确认的产品决策
 
-EPIC-03 已完成 PostgreSQL 云端数据层、认证基础设施和 `/api/v1/sync/*` 协议；EPIC-04/05 已完成统一账户与多端同步。本 EPIC 不重复建设后端，而是在这些能力上交付可部署、可安装、可离线工作的 Web/PWA 客户端。
+EPIC-13 原路线图包含离线壳、本地草稿和 IndexedDB Outbox。产品决策已经调整为：
 
-本次必须交付：
+- Web 端只能联网使用；
+- 页面首次进入时直接从 LifeTrace Cloud 加载完整云端快照；
+- 财务、笔记、英语等业务数据不写入 IndexedDB、localStorage 或 sessionStorage；
+- 新增、编辑、删除和批量导入直接调用 `/api/v1/sync/push`；
+- 只有服务器返回 accepted/duplicate 后，页面内存状态才更新；
+- 网络或服务器失败时保留当前表单内容，并明确显示“数据未保存”；
+- PWA 仅提供安装、快捷入口和版本更新提示，不提供离线业务能力；
+- Service Worker 不缓存页面、静态资源或 API 响应。
 
-1. React + TypeScript + Vite 的独立 Web 入口；
-2. Cookie 会话登录、恢复、退出和 CSRF 防护；
-3. 财务账户与流水管理；
-4. 笔记创建、编辑、搜索、置顶和删除；
-5. 英语文章阅读与词汇管理；
-6. 本地缓存、离线 outbox、联网同步和冲突处理；
-7. PWA manifest、Service Worker、响应式移动端体验；
-8. 单元测试、双前端构建回归、独立 GitHub Actions；
-9. 部署、回滚和验收文档。
+这一决策优先于原路线图中的离线子任务，避免同时维护浏览器副本、Outbox、冲突重放和隐私清理逻辑。
 
-明确不在本 EPIC 内实现：用户注册、密码找回、富文本协同编辑、财务导入、英语文章后台生产、附件离线缓存、服务端部署自动化。上述能力继续由对应后续 EPIC 承担。
-
-## 2. 需求到实现的映射
-
-| 路线图任务 | 实现 | 验收证据 |
-|---|---|---|
-| T13.1 Web 工程基础 | `web-client/`、`vite.web.config.ts`、独立构建输出 `dist-web/` | `npm run pwa:build` |
-| T13.2 登录/登出/会话 | `AuthApi` 调用 `/api/v1/web/session/*`；HttpOnly Cookie；CSRF Header | Auth API 单元测试、浏览器联调 |
-| T13.3 财务 Web | 账户创建、收入/支出记录、列表、删除、金额分转化 | Schema 工厂测试、交互验收 |
-| T13.4 笔记 Web | 创建、编辑、搜索、置顶、删除 | 离线队列测试、交互验收 |
-| T13.5 英语学习 Web | 只读文章目录/阅读器、生词添加、掌握状态切换 | Schema 工厂测试、交互验收 |
-| T13.6 离线最低可用 | localStorage 实体缓存 + outbox；Service Worker App Shell；online/offline 状态 | 离线恢复测试、PWA 产物检查 |
-| T13.7 性能/兼容/部署 | 无新增运行时依赖、按路由单入口轻量构建、5 MB 产物门禁、部署文档 | CI 构建及体积门禁 |
-
-## 3. 技术架构
-
-### 3.1 目录
+## 2. 目标架构
 
 ```text
-web-client/
-├── index.html
-└── src/
-    ├── main.tsx          # React 入口与全局样式
-    ├── App.tsx           # 页面、模块和响应式导航
-    ├── core.ts           # Auth、同步、离线仓库、实体工厂
-    └── styles.css        # 桌面/移动端样式
-public/
-├── manifest.webmanifest
-└── sw.js
-vite.web.config.ts
+React / TypeScript Web UI
+        |
+        | HttpOnly Cookie + CSRF
+        v
+LifeTrace Cloud /api/v1
+        |
+        +-- /web/session/*
+        +-- /auth/devices
+        +-- /auth/sessions
+        +-- /sync/snapshot
+        +-- /sync/pull
+        +-- /sync/push
+        |
+        v
+PostgreSQL / 对象存储（EPIC-12）
 ```
 
-Web 与 Tauri 前端共用根 `package.json` 和 React 依赖，但使用独立 Vite root 和输出目录，避免改动桌面端入口与发布流程。
+浏览器内只保存当前 React 内存状态。刷新页面后重新进行会话恢复和云端快照加载。
 
-### 3.2 认证
+## 3. 需求映射
 
-- 登录：`POST /api/v1/web/session/login`；
-- 恢复：`GET /api/v1/web/session`；
-- 退出：`POST /api/v1/web/session/logout`；
-- Cookie 始终使用 `credentials: include`；
-- 退出等状态修改请求携带 `x-csrf-token`；
-- 页面不持久化访问令牌，不读取 HttpOnly Cookie；
-- 本地仅缓存非敏感会话显示信息，用于断网后进入已缓存工作区；
-- 在线退出后清理业务缓存，确保不能继续访问本地数据。
+| 路线图能力 | 实现位置 | 状态 |
+|---|---|---|
+| 独立 Web 入口 | `web-client/`、`vite.web.config.ts` | 已实现 |
+| 响应式应用壳 | `App.tsx`、`styles.css`、`epic13.css` | 已实现 |
+| 登录 / 安全 Session | `cloud/api.ts`、Web Cookie 路由 | 已实现 |
+| 设备与会话管理 | `/devices`、`AuthApi` | 已实现 |
+| 隐私模式 | 金额遮罩与界面模糊 | 已实现 |
+| 全局搜索 | `cloud/search.ts`、`/search` | 已实现 |
+| 快速记账 / 账单列表 | 财务页面 | 已实现 |
+| 账户 / 分类 / 预算 | 正式同步实体；预算使用 `user.preference` | 已实现 |
+| CSV/XLSX 导入 | `importer.ts` | 已实现 |
+| 对账确认 | candidate / confirmed / ignored + 重复检测 | 已实现 |
+| 笔记列表 | `/notes` | 已实现 |
+| Tiptap / Markdown | `RichTextEditor.tsx`、Markdown 双模式 | 已实现 |
+| 文件夹 / 标签 | `note.folder`、`note.tag`、`note.tag_relation` | 已实现 |
+| 冲突处理 | 服务器实体覆盖并显示冲突提示 | 已实现 |
+| 文章 / 生词 / 高亮 | 英语页面及正式同步实体 | 已实现 |
+| 阅读总结 / 统计 | `english.learning_record` | 已实现 |
+| Manifest / 安装 | `public/manifest.webmanifest` | 已实现 |
+| PWA 快捷入口 | 记账、笔记、英语、搜索 shortcuts | 已实现 |
+| 更新提示 | Service Worker waiting worker 提示 | 已实现 |
+| 附件上传 | 依赖 EPIC-12 签名上传接口 | 阻塞依赖 |
+| 离线壳 / 草稿 / Outbox | 产品决策取消 | 不实施 |
 
-### 3.3 同步与本地数据
+## 4. 云端数据流程
 
-Web 客户端身份固定为：
+### 4.1 初始加载
 
-```json
-{
-  "appId": "lifetrace-web",
-  "platform": "web",
-  "clientVersion": "0.2.1",
-  "protocolVersion": 1,
-  "schemaVersion": 1
-}
-```
+1. `GET /api/v1/web/session` 恢复 HttpOnly Cookie 会话；
+2. 创建 `CloudDataStore`；
+3. 分页调用 `POST /api/v1/sync/snapshot`；
+4. 完整应用所有页面后设置 `snapshotCursor`；
+5. 数据仅存放于当前页面内存。
 
-同步顺序：
+### 4.2 保存
 
-1. 本地修改立即写入实体缓存；
-2. 为每次修改生成唯一 `changeId` 并追加 outbox；
-3. 联网后先 push，防止 pull 覆盖本地未提交修改；
-4. push 成功后记录 `serverVersion` 并移除对应 outbox；
-5. 再按服务器 cursor 顺序 pull；
-6. 完整应用一批后才保存 `nextCursor`；
-7. 若发生乐观锁冲突，采用服务器当前实体，并在本地记录冲突摘要；
-8. 删除使用 tombstone 语义，本地立即隐藏实体。
+1. UI 根据正式 Schema 创建实体 payload；
+2. 使用现有 `serverVersion` 作为 `baseServerVersion`；新实体使用 `"0"`；
+3. 立即调用 `/api/v1/sync/push`；
+4. accepted/duplicate：写入服务器版本并更新界面；
+5. rejected：界面不更新，表单不清空；
+6. conflict：应用服务器当前实体，记录冲突并要求用户检查后重试。
 
-同步实体范围：
+### 4.3 刷新
 
-- `finance.account`
-- `finance.transaction`
-- `note.note`
-- `english.article`（只读）
-- `english.vocabulary`
-
-所有 payload 使用 EPIC-02 JSON Schema 的 camelCase 字段；金额使用整数分；`serverVersion` 和 cursor 使用字符串。
-
-### 3.4 离线与 PWA
-
-- Service Worker 缓存 App Shell、manifest 和图标；
-- 导航请求优先网络，失败后回退缓存首页；
-- 静态资源 cache-first，API 请求不进入 Service Worker 缓存；
-- localStorage 按 `userId` 隔离业务缓存；
-- 稳定 deviceId 单独保存；
-- 离线编辑只进入 outbox，不伪造服务器版本；
-- 页面显示在线状态和待同步数量；
-- 公共设备退出时同样清理本地缓存。
-
-## 4. 分阶段执行
-
-### 阶段 A：契约核对
-
-- 核对 EPIC-03 完成报告和路由；
-- 核对 Web Cookie/CSRF 认证端点；
-- 核对 AppId、scope、sync v1 DTO；
-- 核对五类实体 Schema 和读写方向。
-
-完成条件：代码不使用猜测的端点、实体名或字段。
-
-### 阶段 B：工程和核心能力
-
-- 建立独立 Web Vite 入口；
-- 实现 `AuthApi`；
-- 实现本地仓库、outbox、push/pull 和冲突处理；
-- 为核心金额、日期和实体创建函数编写测试。
-
-完成条件：核心 TypeScript 通过静态检查和单元测试。
-
-### 阶段 C：业务页面
-
-- 概览：跨模块统计和最近动态；
-- 财务：账户、收入/支出、删除；
-- 笔记：创建、编辑、搜索、置顶、删除；
-- 英语：文章阅读、生词、掌握状态；
-- 桌面侧栏和移动底部导航。
-
-完成条件：桌面和 360 px 移动视口均无阻断操作。
-
-### 阶段 D：PWA 与质量门禁
-
-- manifest 和 Service Worker；
-- 独立构建命令；
-- CI 执行 typecheck、unit、桌面 Web build、PWA build；
-- 校验 PWA 关键产物和 5 MB 体积门禁；
-- 上传 `dist-web` artifact。
-
-完成条件：PR 上所有 GitHub Actions 通过。
-
-### 阶段 E：合入
-
-- 检查 PR diff、未解决 review 和 CI；
-- 仅在 head SHA 未变化且检查全部通过时 squash merge；
-- 合入后检查 `main` workflow；
-- 若主分支回归失败，优先修复；无法安全修复时 revert 合并提交。
+页面内刷新使用 `/sync/pull` 按 cursor 顺序应用增量。浏览器刷新或重新登录使用新的完整 snapshot。
 
 ## 5. 安全要求
 
-1. 不在 localStorage/sessionStorage 保存密码、access token 或 refresh token；
-2. API 默认 same-origin；生产环境由反向代理转发 `/api`；
-3. 状态修改使用 CSRF token；
-4. 所有用户数据缓存按 userId 隔离；
-5. 退出清理用户缓存；
-6. 文章正文以纯文本呈现，不直接注入不可信 HTML；
-7. 金额仅接受最多两位小数并转换为安全整数分；
-8. 不由客户端修改 `english.article`；
-9. 冲突不静默覆盖服务器数据，记录本地冲突摘要；
-10. Service Worker 不缓存 API 响应。
+- 密码、access token、refresh token和业务实体不得写入浏览器存储；
+- Cookie 始终使用 `credentials: include`；
+- Browser sync 写请求携带 `x-csrf-token`；
+- Service Worker 不拦截 API 请求；
+- 公共设备退出后清空全部 React 内存状态；
+- 英语文章正文按文本渲染，不注入不可信 HTML；
+- 金额以整数分处理；
+- 跨用户实体由云端再次校验所有权和 scope；
+- 客户端不得伪造附件上传成功。
 
-## 6. 测试策略
+## 6. 模块边界
 
-### 自动测试
+### 云端核心
 
-- 金额解析边界；
-- 实体工厂必填字段；
-- 登录端点、Cookie 和 scope；
-- 离线写入与重启恢复；
-- push accepted + pull cursor；
-- optimistic conflict；
-- TypeScript 全量静态检查；
-- 现有 Tauri Web 构建回归；
-- 新 PWA 构建与产物检查。
+```text
+web-client/src/cloud/
+├── types.ts       # 协议、实体类型和公共工具
+├── factories.ts   # Schema 对齐的实体工厂
+├── api.ts         # Cookie Auth、snapshot/pull/push
+└── search.ts      # 全局搜索和导入重复检测
+```
 
-### 手工联调
+### 页面
 
-- 有效/无效登录；
-- 登录刷新后恢复会话；
-- 在线创建后桌面端可见；
-- 桌面端修改后 Web pull 可见；
-- 离线创建三类数据，刷新仍存在，恢复联网后同步；
-- 两端同时修改同一实体，Web 显示冲突提示且采用服务器版本；
-- 退出后刷新无法进入工作区；
-- Chromium、Edge、Safari 移动视口；
-- PWA 安装和离线启动。
+```text
+web-client/src/pages/
+├── FinancePages.tsx
+├── NotesPage.tsx
+├── EnglishPages.tsx
+└── DevicesPage.tsx
+```
 
-详见 `docs/epic13/test-matrix.md`。
+## 7. 自动化门禁
 
-## 7. 性能预算
+PR 必须通过：
 
-- `dist-web` 总体积小于 5 MB（CI 硬门禁）；
-- 首屏不加载富文本编辑器、Excel、二维码等桌面端重依赖；
-- 首屏仅一次 session 请求，业务同步在会话恢复后执行；
-- 目标生产环境 LCP ≤ 3 秒（正常 4G、冷缓存）；
-- API 与静态资源启用 HTTPS、HTTP/2/3、Brotli/Gzip 和长期 hash 缓存。
+```bash
+npm ci
+npm run lint
+npm run test:unit
+npm run web:build
+npm run pwa:build
+```
 
-## 8. 风险与缓解
+同时执行 PostgreSQL browser-cookie sync 集成测试和 Windows/Tauri 回归构建。
 
-| 风险 | 缓解 |
-|---|---|
-| 浏览器 Cookie 跨域失败 | 生产采用同源 `/api` 反向代理；开发由 Vite proxy 转发 |
-| 离线修改后版本冲突 | 严格使用 `baseServerVersion`，冲突采用服务器实体并可见提示 |
-| localStorage 容量不足 | 本 EPIC 只缓存核心文本数据；附件和大正文离线缓存后续迁移 IndexedDB |
-| 首次全量 pull 过大 | 每批 500、最多 25 批；超限提示再次同步；后续可接 snapshot |
-| Service Worker 旧版本滞留 | cache name 版本化，activate 删除旧缓存 |
-| Web 改动破坏桌面端 | `npm test` 同时构建 Tauri Web 和 PWA |
+## 8. 附件依赖说明
+
+当前 Cloud 路由只有 auth、finance、health、meta、sync 和 web auth，尚无 EPIC-12 所需的签名上传 URL、对象存储写入和下载端点。当前页面展示明确的不可用说明，不创建本地附件副本，也不只同步 `file.metadata` 后声称上传成功。
+
+EPIC-12 完成后接入顺序：
+
+1. 计算 SHA-256；
+2. 请求签名上传 URL；
+3. 直接上传对象存储；
+4. 云端确认后同步 `file.metadata`；
+5. 创建笔记与文件关联；
+6. 失败时不修改笔记附件状态。
 
 ## 9. Definition of Done
 
-- [x] 需求与后端契约完成核对；
-- [x] Web/PWA 工程和业务功能实现；
-- [x] 离线同步和冲突策略实现；
-- [x] 自动测试和 CI workflow 加入；
-- [x] 部署与测试文档加入；
-- [x] 本地核心 TypeScript 编译和可执行冒烟测试通过；
-- [ ] GitHub Actions 全部通过；
-- [ ] PR 无未解决阻断项；
+- [x] 独立 Web 入口与响应式壳；
+- [x] Cookie 会话和 CSRF browser sync；
+- [x] 云端 snapshot / pull / push 数据层；
+- [x] 设备、隐私和全局搜索；
+- [x] 财务核心页面、导入和对账；
+- [x] 笔记 Tiptap、Markdown、文件夹和标签；
+- [x] 英语阅读、生词、高亮、总结和统计；
+- [x] PWA manifest、快捷入口和更新提示；
+- [x] 不使用 IndexedDB/localStorage 保存业务数据；
+- [x] 自动测试与独立 CI；
+- [ ] PR 全部检查通过；
 - [ ] 合入 `main`；
-- [ ] `main` 合入后检查通过。
+- [ ] `main` 合入后检查通过；
+- [ ] EPIC-12 完成后接入真实附件上传。
