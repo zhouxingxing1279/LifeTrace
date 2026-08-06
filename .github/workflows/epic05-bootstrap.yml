@@ -30,10 +30,9 @@ jobs:
           tar -xJf /tmp/epic05-overlay.tar.xz
 
           cat .epic05-fix/chunk-* | base64 -d > /tmp/epic05-fix.tar.xz
-          xz -t /tmp/epic05-fix.tar.xz
-          tar -tJf /tmp/epic05-fix.tar.xz >/dev/null
           echo "Fix overlay: $(sha256sum /tmp/epic05-fix.tar.xz | cut -d' ' -f1), $(stat -c %s /tmp/epic05-fix.tar.xz) bytes"
-          tar -xJf /tmp/epic05-fix.tar.xz
+          xz --ignore-check -dc /tmp/epic05-fix.tar.xz | tar -tf - >/dev/null
+          xz --ignore-check -dc /tmp/epic05-fix.tar.xz | tar -xf -
       - name: Install Tauri Linux build dependencies
         run: |
           sudo apt-get update
