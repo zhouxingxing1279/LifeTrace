@@ -471,18 +471,19 @@ fn activity_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 
 /// 习惯列表（DTO）。
 pub fn list_activities(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, name, activity_type, unit, minimum_target, normal_target,
                     target_period, target_days_json, icon, color, schedule_type, start_date,
                     checkin_method, sync_source, description, is_archived, created_at, updated_at
              FROM activities
-             WHERE deleted_at IS NULL
+             WHERE deleted_at IS NULL AND user_id=?1
              ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], activity_to_dto)
+        .query_map([profile_id], activity_to_dto)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -509,17 +510,18 @@ fn activity_log_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 
 /// 打卡列表（DTO）。
 pub fn list_activity_logs(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, activity_id, log_date, value, status, note, metadata_json,
                     created_at, updated_at
              FROM activity_logs
-             WHERE deleted_at IS NULL
+             WHERE deleted_at IS NULL AND user_id=?1
              ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], activity_log_to_dto)
+        .query_map([profile_id], activity_log_to_dto)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -544,17 +546,18 @@ fn daily_review_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 
 /// 复盘列表（DTO）。
 pub fn list_daily_reviews(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, review_date, energy, mood, completion_score, best_thing,
                     problem, tomorrow_priority, note, created_at, updated_at
              FROM daily_reviews
-             WHERE deleted_at IS NULL
+             WHERE deleted_at IS NULL AND user_id=?1
              ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], daily_review_to_dto)
+        .query_map([profile_id], daily_review_to_dto)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -574,6 +577,8 @@ fn existing_version(connection: &Connection, table: &str, id: &str) -> Result<i6
 
 /// 保存习惯 DTO（写路径）。
 pub fn save_activity(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "习惯数据")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -588,6 +593,8 @@ pub fn save_activity(connection: &Connection, dto: &Value) -> Result<(), String>
 
 /// 保存打卡 DTO（写路径）。
 pub fn save_activity_log(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "打卡数据")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -602,6 +609,8 @@ pub fn save_activity_log(connection: &Connection, dto: &Value) -> Result<(), Str
 
 /// 保存复盘 DTO（写路径）；同日已有其他活跃复盘时软删除旧记录。
 pub fn save_daily_review(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "复盘数据")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -639,15 +648,18 @@ pub fn replace_all(
         .execute("DELETE FROM activities", [])
         .map_err(|error| error.to_string())?;
     for activity in activities {
-        let row = activity_from_legacy_json(activity)?;
+        let owned = crate::database::profile::assign_active_owner(transaction, activity)?;
+        let row = activity_from_legacy_json(&owned)?;
         upsert_activity(transaction, &row)?;
     }
     for item in logs {
-        let row = activity_log_from_legacy_json(transaction, item, None, None)?;
+        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
+        let row = activity_log_from_legacy_json(transaction, &owned, None, None)?;
         upsert_activity_log(transaction, &row)?;
     }
     for review in reviews {
-        let row = daily_review_from_legacy_json(review, None, None)?;
+        let owned = crate::database::profile::assign_active_owner(transaction, review)?;
+        let row = daily_review_from_legacy_json(&owned, None, None)?;
         upsert_daily_review(transaction, &row)?;
     }
     Ok(())

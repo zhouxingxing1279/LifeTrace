@@ -467,17 +467,18 @@ fn account_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 
 /// 账户列表（DTO，amount 已从分转回元）。
 pub fn list_accounts(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, name, account_type, opening_balance_cents, balance_at, last4,
                     color, icon, is_archived, created_at, updated_at
              FROM finance_accounts
-             WHERE deleted_at IS NULL
+             WHERE deleted_at IS NULL AND user_id=?1
              ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], account_to_dto)
+        .query_map([profile_id], account_to_dto)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -512,6 +513,7 @@ fn transaction_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
 /// 交易列表（DTO）。`category`/`account` 优先返回解析后的名称，
 /// 缺失时回退到 legacy 名称，保证旧 UI 兼容。
 pub fn list_transactions(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT t.id, t.user_id, t.transaction_type, t.amount_cents, t.currency,
@@ -527,12 +529,12 @@ pub fn list_transactions(connection: &Connection) -> Result<Vec<Value>, String> 
              LEFT JOIN transaction_categories c ON c.id = t.category_id
              LEFT JOIN finance_accounts a ON a.id = t.account_id
              LEFT JOIN finance_accounts a2 ON a2.id = t.to_account_id
-             WHERE t.deleted_at IS NULL
+             WHERE t.deleted_at IS NULL AND t.user_id=?1
              ORDER BY t.updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], transaction_to_dto)
+        .query_map([profile_id], transaction_to_dto)
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -552,6 +554,8 @@ fn existing_version(connection: &Connection, table: &str, id: &str) -> Result<i6
 
 /// 保存账户 DTO（写路径）。
 pub fn save_account(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "账户数据")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -566,6 +570,8 @@ pub fn save_account(connection: &Connection, dto: &Value) -> Result<(), String> 
 
 /// 保存交易 DTO（写路径）。
 pub fn save_transaction(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "交易数据")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -616,11 +622,13 @@ pub fn replace_all(
         .execute("DELETE FROM finance_accounts", [])
         .map_err(|error| error.to_string())?;
     for account in accounts {
-        let row = account_from_legacy_json(account)?;
+        let owned = crate::database::profile::assign_active_owner(transaction, account)?;
+        let row = account_from_legacy_json(&owned)?;
         upsert_account(transaction, &row)?;
     }
     for item in transactions {
-        let row = transaction_from_legacy_json(transaction, item, None, None)?;
+        let owned = crate::database::profile::assign_active_owner(transaction, item)?;
+        let row = transaction_from_legacy_json(transaction, &owned, None, None)?;
         upsert_transaction(transaction, &row, None)?;
     }
     Ok(())

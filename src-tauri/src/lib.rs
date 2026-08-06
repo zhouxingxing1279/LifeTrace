@@ -5,6 +5,7 @@ pub mod contracts;
 mod database;
 mod desktop;
 mod server;
+mod sync;
 
 use tauri::Manager;
 
@@ -32,6 +33,16 @@ pub fn run() {
             desktop::note_show_attachment,
             desktop::write_text_file,
             desktop::read_text_file,
+            sync::commands::sync_set_session,
+            sync::commands::sync_clear_session,
+            sync::commands::sync_bind_current_profile,
+            sync::commands::sync_create_cloud_profile,
+            sync::commands::sync_profiles,
+            sync::commands::sync_set_active_profile,
+            sync::commands::sync_status,
+            sync::commands::sync_now,
+            sync::commands::sync_conflicts,
+            sync::commands::sync_resolve_conflict,
         ])
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
@@ -41,8 +52,16 @@ pub fn run() {
                 data_dir: data_dir.clone(),
                 photo_runtime: photo_runtime.clone(),
             });
+            let sync_state = sync::SyncDesktopState::new(data_dir.clone());
+            app.manage(sync_state.clone());
+            let scheduler_state = sync_state.clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(error) = server::serve(data_dir, resource_dir, photo_runtime).await {
+                scheduler_state.scheduler().await;
+            });
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) =
+                    server::serve(data_dir, resource_dir, photo_runtime, sync_state).await
+                {
                     eprintln!("LifeTrace local service stopped: {error}");
                 }
             });

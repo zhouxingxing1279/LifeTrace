@@ -15,7 +15,14 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::{extract::State, http::StatusCode, response::IntoResponse, routing::get, Json, Router};
+use axum::{
+    extract::{Request, State},
+    http::{Method, StatusCode},
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
+    routing::get,
+    Json, Router,
+};
 use rusqlite::Connection;
 use serde::Serialize;
 use tokio::net::TcpListener;
@@ -39,6 +46,22 @@ struct Health {
     data_dir: String,
 }
 
+async fn signal_local_sync(
+    State(sync_state): State<crate::sync::SyncDesktopState>,
+    request: Request,
+    next: Next,
+) -> Response {
+    let mutating = matches!(
+        request.method(),
+        &Method::POST | &Method::PUT | &Method::PATCH | &Method::DELETE
+    );
+    let response = next.run(request).await;
+    if mutating && response.status().is_success() {
+        sync_state.signal_local_change();
+    }
+    response
+}
+
 async fn health(State(state): State<AppState>) -> impl IntoResponse {
     (
         StatusCode::OK,
@@ -54,6 +77,7 @@ pub async fn serve(
     data_dir: PathBuf,
     resource_dir: PathBuf,
     photo_runtime: Arc<photo::Runtime>,
+    sync_state: crate::sync::SyncDesktopState,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     tokio::fs::create_dir_all(&data_dir).await?;
     let database_path = data_dir.join("lifetrace.db");
@@ -163,6 +187,10 @@ pub async fn serve(
             "/api/photo-sync/dashboard",
             get(photo::dashboard_get).post(photo::dashboard_post),
         )
+        .layer(middleware::from_fn_with_state(
+            sync_state,
+            signal_local_sync,
+        ))
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)

@@ -42,6 +42,18 @@ export function installTauriApiBridge() {
     get: () => invoke<string | null>("cloud_credential_get"),
     clear: () => invoke<void>("cloud_credential_clear"),
   };
+  window.syncApi = {
+    setSession: (origin, accessToken, deviceId) => invoke("sync_set_session", { origin, accessToken, deviceId }),
+    clearSession: () => invoke<void>("sync_clear_session"),
+    bindCurrentProfile: () => invoke<string>("sync_bind_current_profile"),
+    createCloudProfile: (displayName) => invoke<string>("sync_create_cloud_profile", { displayName }),
+    profiles: () => invoke("sync_profiles"),
+    setActiveProfile: (profileId) => invoke<void>("sync_set_active_profile", { profileId }),
+    status: () => invoke("sync_status"),
+    now: (forceSnapshot = false) => invoke("sync_now", { forceSnapshot }),
+    conflicts: () => invoke("sync_conflicts"),
+    resolveConflict: (conflictId, resolution) => invoke<void>("sync_resolve_conflict", { conflictId, resolution }),
+  };
   const photoStatus = () => invoke<PhotoSyncDesktopResponse>("photo_status");
   window.mobileUploadApi = {
     status: () => invoke<MobileUploadResponse>("mobile_upload_status"),

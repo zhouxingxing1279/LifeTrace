@@ -1,3 +1,5 @@
+import type { SessionBindingResult } from "@/src/services/cloudSync";
+
 export type CloudAuthUser = {
   id: string;
   email: string;
@@ -31,6 +33,7 @@ export type CloudAuthSnapshot = {
   session?: CloudAuthSession;
   scopes: string[];
   authenticated: boolean;
+  binding?: SessionBindingResult;
 };
 
 type CredentialApi = {
@@ -116,8 +119,12 @@ export class CloudAuthClient {
   private async acceptTokens(tokens: CloudTokenResponse): Promise<CloudAuthSnapshot> {
     this.accessToken = tokens.accessToken;
     if (tokens.refreshToken) await credentialApi().set(tokens.refreshToken);
+    const binding = window.syncApi
+      ? await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId())
+      : undefined;
     this.snapshot = {
       authenticated: true,
+      binding,
       user: tokens.user,
       session: tokens.session,
       scopes: tokens.scopes,
@@ -189,6 +196,7 @@ export class CloudAuthClient {
     this.accessToken = undefined;
     this.snapshot = { scopes: [], authenticated: false };
     await credentialApi().clear();
+    if (window.syncApi) await window.syncApi.clearSession().catch(() => undefined);
   }
 }
 

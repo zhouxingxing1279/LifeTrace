@@ -2,6 +2,18 @@ export {};
 
 declare global {
   interface Window {
+    syncApi?: {
+      setSession(origin:string,accessToken:string,deviceId:string):Promise<import("@/src/services/cloudSync").SessionBindingResult>;
+      clearSession():Promise<void>;
+      bindCurrentProfile():Promise<string>;
+      createCloudProfile(displayName:string):Promise<string>;
+      profiles():Promise<import("@/src/services/cloudSync").LocalProfile[]>;
+      setActiveProfile(profileId:string):Promise<void>;
+      status():Promise<import("@/src/services/cloudSync").SyncStatusView>;
+      now(forceSnapshot?:boolean):Promise<import("@/src/services/cloudSync").SyncRunReport>;
+      conflicts():Promise<import("@/src/services/cloudSync").SyncConflictView[]>;
+      resolveConflict(conflictId:string,resolution:"accept_remote"|"keep_local"|"discard"):Promise<void>;
+    };
     cloudCredentialApi?: {
       set(refreshToken:string):Promise<void>;
       get():Promise<string|null>;

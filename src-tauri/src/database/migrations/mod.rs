@@ -9,6 +9,8 @@ mod m0003_habits_reviews;
 mod m0004_notes;
 mod m0005_english;
 mod m0006_workouts;
+mod m0007_sync_client;
+mod m0008_sync_triggers;
 
 pub use m0001_framework::M0001Framework;
 pub use m0002_finance::M0002Finance;
@@ -16,6 +18,8 @@ pub use m0003_habits_reviews::M0003HabitsReviews;
 pub use m0004_notes::M0004Notes;
 pub use m0005_english::M0005English;
 pub use m0006_workouts::M0006Workouts;
+pub use m0007_sync_client::M0007SyncClient;
+pub use m0008_sync_triggers::M0008SyncTriggers;
 
 use crate::database::migration_runner::Migration;
 
@@ -28,5 +32,7 @@ pub fn all() -> Vec<Box<dyn Migration>> {
         Box::new(M0004Notes),
         Box::new(M0005English),
         Box::new(M0006Workouts),
+        Box::new(M0007SyncClient),
+        Box::new(M0008SyncTriggers),
     ]
 }

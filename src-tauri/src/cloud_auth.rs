@@ -1,21 +1,36 @@
 const CREDENTIAL_TARGET: &str = "LifeTrace/cloud/lifetrace-desktop/refresh-token";
 
+pub(crate) fn credential_set_internal(refresh_token: &str) -> Result<(), String> {
+    if refresh_token.is_empty() || refresh_token.len() > 4096 {
+        return Err("invalid refresh token length".to_owned());
+    }
+    platform::set(refresh_token)
+}
+
+pub(crate) fn credential_get_internal() -> Result<Option<String>, String> {
+    platform::get()
+}
+
+pub(crate) fn credential_clear_internal() -> Result<(), String> {
+    platform::clear()
+}
+
 #[tauri::command]
 pub fn cloud_credential_set(refresh_token: String) -> Result<(), String> {
     if refresh_token.is_empty() || refresh_token.len() > 4096 {
         return Err("invalid refresh token length".to_owned());
     }
-    platform::set(&refresh_token)
+    credential_set_internal(&refresh_token)
 }
 
 #[tauri::command]
 pub fn cloud_credential_get() -> Result<Option<String>, String> {
-    platform::get()
+    credential_get_internal()
 }
 
 #[tauri::command]
 pub fn cloud_credential_clear() -> Result<(), String> {
-    platform::clear()
+    credential_clear_internal()
 }
 
 #[cfg(windows)]
