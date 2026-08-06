@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:3103 http://localhost:8787 http://127.0.0.1:8787 https://github.com; img-src 'self' asset: http://asset.localhost http://127.0.0.1:3444 data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
+      "csp": "default-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:3103 http://localhost:8787 http://127.0.0.1:8787 http://*:8787 https: https://github.com; img-src 'self' asset: http://asset.localhost http://127.0.0.1:3444 data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:"
     }
   },
   "bundle": {
