@@ -91,7 +91,7 @@ async fn assistant(
             provider: "local",
         }));
     };
-    if api_key.contains(['\r', '\n']) {
+    if contains_newline(&api_key) {
         return Ok(Json(AssistantResponse {
             reply: fallback,
             provider: "local",
@@ -262,6 +262,10 @@ fn env_non_empty(name: &str) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
+fn contains_newline(value: &str) -> bool {
+    value.contains('\r') || value.contains('\n')
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,7 +294,7 @@ mod tests {
 
     #[test]
     fn provider_key_rejects_header_injection() {
-        assert!("safe-key".contains(['\r', '\n']) == false);
-        assert!("unsafe\nkey".contains(['\r', '\n']));
+        assert!(!contains_newline("safe-key"));
+        assert!(contains_newline("unsafe\nkey"));
     }
 }
