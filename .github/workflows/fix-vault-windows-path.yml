@@ -1,0 +1,31 @@
+name: Fix Vault Windows Path Boundary
+
+on:
+  push:
+    branches: [agent/local-encrypted-album]
+    paths:
+      - ".github/workflows/fix-vault-windows-path.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/local-encrypted-album
+          fetch-depth: 0
+      - name: Apply Windows path boundary fix
+        run: |
+          python3 tools/fix-vault-windows-path.py
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src/vault.rs
+          git commit -m "fix: canonicalize vault boundary paths on Windows"
+          git push origin HEAD:agent/local-encrypted-album
