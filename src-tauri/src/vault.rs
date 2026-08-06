@@ -381,6 +381,25 @@ impl VaultState {
         operation(session.master_key.as_slice())
     }
 
+    /// 复制当前会话主密钥并立即释放会话锁，供后台长任务使用，
+    /// 避免加密/解密大文件期间阻塞私密相册界面。
+    fn copy_session_key(&self) -> Result<Zeroizing<Vec<u8>>> {
+        let mut guard = self
+            .session
+            .lock()
+            .map_err(|_| anyhow!("private album session is unavailable"))?;
+        let expired = guard
+            .as_ref()
+            .map(|session| session.last_activity.elapsed() >= session.auto_lock)
+            .unwrap_or(false);
+        if expired {
+            *guard = None;
+            bail!("私密相册已自动锁定");
+        }
+        let session = guard.as_ref().ok_or_else(|| anyhow!("私密相册尚未解锁"))?;
+        Ok(session.master_key.clone())
+    }
+
     fn install_session(&self, master_key: Vec<u8>, auto_lock_seconds: u64) -> Result<()> {
         if master_key.len() != MASTER_KEY_BYTES {
             bail!("private album master key is invalid");
@@ -982,14 +1001,24 @@ impl VaultState {
         let source_paths = self.resolve_photo_source_paths(&photo_ids)?;
         // 先标记为“隐藏中”：照片立即从同步相册消失；加密失败时会自动回滚。
         self.set_photo_hiding(&photo_ids, true)?;
-        let outcome = self.session_key(|master_key| {
-            let imported = self.import_paths(source_paths, false, album_id, master_key)?;
-            if !imported.is_empty() {
-                // 加密成功后：软删除记录并物理删除原文件与缩略图，只保留私密加密副本。
-                self.finalize_photo_hide(&photo_ids)?;
+        // 一次性取出主密钥并释放会话锁：加密在后台执行，不阻塞私密相册界面。
+        let master_key = match self.copy_session_key() {
+            Ok(key) => key,
+            Err(error) => {
+                let _ = self.set_photo_hiding(&photo_ids, false);
+                return Err(error);
             }
-            Ok(imported)
-        });
+        };
+        let outcome = self
+            .import_paths(source_paths, false, album_id, &master_key)
+            .and_then(|imported| {
+                if imported.is_empty() {
+                    return Ok(imported);
+                }
+                // 加密成功后：彻底清除原文件、缩略图与记录，只保留私密加密副本。
+                self.finalize_photo_hide(&photo_ids)?;
+                Ok(imported)
+            });
         if outcome.is_err() {
             // 加密失败：恢复照片到同步相册，避免数据“消失”。
             let _ = self.set_photo_hiding(&photo_ids, false);
@@ -1064,55 +1093,55 @@ impl VaultState {
 
     /// 把私密相册里的照片恢复（移除）到同步相册：解密后写回照片库并去重。
     fn restore_to_sync_album(&self, asset_id: &str) -> Result<VaultAsset> {
-        self.session_key(|master_key| {
-            let manifest = self.load_manifest(master_key)?;
-            let asset = manifest
-                .assets
-                .iter()
-                .find(|asset| asset.id == asset_id && asset.state == VaultAssetState::Active)
-                .cloned()
-                .ok_or_else(|| anyhow!("私密相册中不存在该照片"))?;
-            let object_path = self.object_path(&asset.id);
-            let file_len = fs::metadata(&object_path)
-                .map(|metadata| metadata.len())
-                .unwrap_or(MAX_PREVIEW_BYTES);
-            let plaintext = self.decrypt_file(&object_path, &asset.id, master_key, file_len)?;
-            let content_hash = format!("{:x}", Sha256::digest(plaintext.as_slice()));
-            let database_path = self.data_dir().join("lifetrace.db");
-            let connection = crate::database::connection::open(&database_path)
-                .context("无法打开本地照片库数据库")?;
-            let existing: Option<(String, Option<String>)> = connection
-                .query_row(
-                    "SELECT id, deleted_at FROM photos WHERE content_hash=?1",
-                    [&content_hash],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
-                )
-                .optional()
-                .map_err(|error| anyhow!(error.to_string()))?;
-            match existing {
-                Some((photo_id, deleted_at)) => {
-                    if deleted_at.is_some() {
-                        connection.execute(
-                            "UPDATE photos SET deleted_at=NULL, processing_status='completed' WHERE id=?1",
-                            [&photo_id],
-                        )?;
-                    }
-                    // 隐藏时可能已删除磁盘原文件；恢复时确保文件与缩略图都在。
-                    self.ensure_photo_files(&connection, &photo_id, &plaintext, &asset.mime_type)?;
+        // 一次性取出主密钥并释放会话锁：解密/写回不阻塞私密相册界面。
+        let master_key = self.copy_session_key()?;
+        let manifest = self.load_manifest(&master_key)?;
+        let asset = manifest
+            .assets
+            .iter()
+            .find(|asset| asset.id == asset_id && asset.state == VaultAssetState::Active)
+            .cloned()
+            .ok_or_else(|| anyhow!("私密相册中不存在该照片"))?;
+        let object_path = self.object_path(&asset.id);
+        let file_len = fs::metadata(&object_path)
+            .map(|metadata| metadata.len())
+            .unwrap_or(MAX_PREVIEW_BYTES);
+        let plaintext = self.decrypt_file(&object_path, &asset.id, &master_key, file_len)?;
+        let content_hash = format!("{:x}", Sha256::digest(plaintext.as_slice()));
+        let database_path = self.data_dir().join("lifetrace.db");
+        let connection = crate::database::connection::open(&database_path)
+            .context("无法打开本地照片库数据库")?;
+        let existing: Option<(String, Option<String>)> = connection
+            .query_row(
+                "SELECT id, deleted_at FROM photos WHERE content_hash=?1",
+                [&content_hash],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(|error| anyhow!(error.to_string()))?;
+        match existing {
+            Some((photo_id, deleted_at)) => {
+                if deleted_at.is_some() {
+                    connection.execute(
+                        "UPDATE photos SET deleted_at=NULL, processing_status='completed' WHERE id=?1",
+                        [&photo_id],
+                    )?;
                 }
-                None => {
-                    self.write_restored_photo(&connection, &asset, &plaintext, &content_hash)?;
-                }
+                // 隐藏时可能已删除磁盘原文件；恢复时确保文件与缩略图都在。
+                self.ensure_photo_files(&connection, &photo_id, &plaintext, &asset.mime_type)?;
             }
-            drop(connection);
-            // 从私密相册移除该资产。
-            let mut manifest = self.load_manifest(master_key)?;
-            manifest.assets.retain(|item| item.id != asset_id);
-            self.save_manifest(master_key, &manifest)?;
-            let _ = fs::remove_file(self.object_path(asset_id));
-            let _ = fs::remove_file(self.thumbnail_path(asset_id));
-            Ok(asset)
-        })
+            None => {
+                self.write_restored_photo(&connection, &asset, &plaintext, &content_hash)?;
+            }
+        }
+        drop(connection);
+        // 从私密相册移除该资产。
+        let mut manifest = self.load_manifest(&master_key)?;
+        manifest.assets.retain(|item| item.id != asset_id);
+        self.save_manifest(&master_key, &manifest)?;
+        let _ = fs::remove_file(self.object_path(asset_id));
+        let _ = fs::remove_file(self.thumbnail_path(asset_id));
+        Ok(asset)
     }
 
     /// 确保照片记录对应的原文件与缩略图存在于磁盘（缺失时从解密内容重建）。

@@ -143,7 +143,17 @@ export default function LocalVaultModule() {
   const closePreview=()=>{if(preview){URL.revokeObjectURL(preview.url);objectUrls.current.delete(preview.url)}setPreview(null)};
   const moveToTrash=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.moveToTrash(asset.id);await refresh()},"已移入私密回收站。");
   const restore=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.restoreAsset(asset.id);await refresh()},"已恢复到私密相册。");
-  const restoreToSyncAlbum=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.restoreToSyncAlbum(asset.id);closePreview();await refresh()},"已恢复到同步相册。");
+  const restoreToSyncAlbum=async(asset:VaultAsset)=>{
+    if(!api)return;
+    setError("");setMessage("正在恢复到同步相册，请稍候…");
+    try{
+      await api.restoreToSyncAlbum(asset.id);
+      closePreview();await refresh();
+      setMessage("已恢复到同步相册。");
+    }catch(cause){
+      setError(cause instanceof Error?cause.message:String(cause));
+    }
+  };
   const permanentDelete=(asset:VaultAsset)=>{
     if(!window.confirm(`永久删除“${asset.originalName}”？此操作无法撤销。`))return;
     void perform(async()=>{if(!api)return;await api.deleteAssetPermanently(asset.id);await refresh()},"已永久删除密文和索引记录。");

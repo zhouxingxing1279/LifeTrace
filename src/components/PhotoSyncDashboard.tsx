@@ -145,7 +145,7 @@ export default function PhotoSyncModule() {
         total:Math.max(0,(current.total??0)-ids.length),
       }:current);
       setSelectMode(false);setSelectedIds(new Set());
-      setMessage(`已开始后台隐藏 ${result.count} 张照片，加密完成后可在私密相册查看。`);
+      setMessage(`正在后台加密隐藏 ${result.count} 张照片，完成后可在私密相册查看。`);
     }catch(error){
       const text=error instanceof Error?error.message:String(error??"");
       setMessage(text||"隐藏任务启动失败");
