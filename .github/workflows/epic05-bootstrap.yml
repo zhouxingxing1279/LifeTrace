@@ -143,17 +143,15 @@ jobs:
           new_notes_sql = ") VALUES(?1,?21,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,NULL)"
           if notes_source.count(old_notes_sql) != 1:
               raise SystemExit('notes insert SQL did not match the expected pre-fix source')
-          old_notes_params = '''                deleted_at,
-                version
-            ],'''
-          new_notes_params = '''                deleted_at,
-                version,
-                text(object, "userId").ok_or_else(|| "笔记缺少当前资料归属".to_owned())?
-            ],'''
-          if notes_source.count(old_notes_params) != 1:
-              raise SystemExit('notes insert parameters did not match the expected pre-fix source')
           notes_source = notes_source.replace(old_notes_sql, new_notes_sql, 1)
-          notes_source = notes_source.replace(old_notes_params, new_notes_params, 1)
+          save_note_start = notes_source.index("pub fn save_note(")
+          params_start = notes_source.index("            params![", save_note_start)
+          params_end = notes_source.index("\n            ],", params_start)
+          params_block = notes_source[params_start:params_end]
+          if not params_block.rstrip().endswith("version"):
+              raise SystemExit('notes insert parameter tail did not match the expected pre-fix source')
+          owner_param = ',\n                text(object, "userId").ok_or_else(|| "笔记缺少当前资料归属".to_owned())?'
+          notes_source = notes_source[:params_end] + owner_param + notes_source[params_end:]
           notes_path.write_text(notes_source, encoding='utf-8')
           PY
 
