@@ -1,5 +1,6 @@
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AuthApi, CloudDataStore, EMPTY_CLOUD_STATE, formatMoney, searchEntities, type CloudState, type WebSession } from "./core";
+import { AuthScreen } from "./AuthScreen";
 import { AccountsPage, BudgetsPage, CategoriesPage, FinanceOverview, ImportPage, TransactionsPage } from "./pages/FinancePages";
 import { NotesPage } from "./pages/NotesPage";
 import { ArticlesPage, EnglishStatsPage, VocabularyPage } from "./pages/EnglishPages";
@@ -101,12 +102,6 @@ export default function App() {
     } finally { setLoading(false); }
   }, []);
 
-  async function login(email: string, password: string, publicDevice: boolean) {
-    if (!navigator.onLine) throw new Error("网页端需要联网才能登录");
-    setError("");
-    setSession(await auth.login(email, password, publicDevice));
-  }
-
   async function logout() {
     try { if (navigator.onLine) await auth.logout(session?.csrfToken); }
     finally {
@@ -119,7 +114,7 @@ export default function App() {
 
   if (authLoading) return <Centered>正在验证云端会话…</Centered>;
   if (!online && !session) return <OfflineScreen />;
-  if (!session) return <LoginScreen error={error} onLogin={login} />;
+  if (!session) return <AuthScreen auth={auth} error={error} onAuthenticated={setSession} />;
 
   const common = { session, state, privacy, online, run };
   return <div className={`app-shell ${privacy ? "privacy-on" : ""}`}>
@@ -186,21 +181,6 @@ function MobileNav({ route }: { route: Route }) {
 
 function Nav({ active, icon, label, route }: { active: boolean; icon: string; label: string; route: Route }) {
   return <button className={`nav-button ${active ? "active" : ""}`} onClick={() => navigate(route)}><span>{icon}</span><b>{label}</b></button>;
-}
-
-function LoginScreen({ error, onLogin }: { error: string; onLogin: (email: string, password: string, publicDevice: boolean) => Promise<void> }) {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [publicDevice, setPublicDevice] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [localError, setLocalError] = useState("");
-  async function submit(event: FormEvent) {
-    event.preventDefault(); setSubmitting(true); setLocalError("");
-    try { await onLogin(email.trim(), password, publicDevice); }
-    catch (cause) { setLocalError(cause instanceof Error ? cause.message : "登录失败"); }
-    finally { setSubmitting(false); }
-  }
-  return <div className="login-page"><section className="login-intro"><div className="brand large"><span className="brand-mark">L</span><span><strong>LifeTrace</strong><small>Cloud Web</small></span></div><div><p className="eyebrow">EPIC 13</p><h1>随时访问你的云端个人数据。</h1><p>网页端只在联网时工作。业务数据不写入 IndexedDB 或 localStorage，所有保存操作直接提交到 LifeTrace Cloud。</p></div><div className="feature-row"><span>云端直写</span><span>跨端一致</span><span>公共设备保护</span></div></section><section className="login-card-wrap"><form className="login-card" onSubmit={(event) => void submit(event)}><p className="eyebrow">欢迎回来</p><h2>登录 LifeTrace</h2><label>邮箱<input type="email" required autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label><label>密码<input type="password" required autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} /></label><label className="checkbox"><input type="checkbox" checked={publicDevice} onChange={(event) => setPublicDevice(event.target.checked)} /><span>这是公共设备</span></label>{(localError || error) && <Notice kind="error">{localError || error}</Notice>}<button className="primary-button full" disabled={submitting}>{submitting ? "登录中…" : "登录"}</button><small>认证使用 HttpOnly Cookie；退出后页面内存中的业务数据立即清空。</small></form></section></div>;
 }
 
 function OfflineScreen() {
