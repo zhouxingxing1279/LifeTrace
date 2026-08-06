@@ -6,10 +6,11 @@
 npm ci
 npm run lint
 npm run test:unit
+npm run web:build
 npm run pwa:build
 ```
 
-静态产物位于 `dist-web/`。GitHub Actions 会上传名为 `lifetrace-web-pwa` 的短期 artifact。
+PWA 静态产物位于 `dist-web/`。GitHub Actions 上传 `lifetrace-web-pwa` artifact，并验证 manifest、Service Worker、图标和 5 MB 体积门禁。
 
 ## 2. 推荐拓扑
 
@@ -19,88 +20,124 @@ Browser / Installed PWA
       HTTPS
         |
 Reverse proxy / CDN
-  ├── /          -> dist-web 静态文件
-  └── /api/*     -> lifetrace-cloud
+        |-- /assets/*  -> dist-web static assets
+        |-- /*         -> dist-web/index.html (SPA fallback)
+        `-- /api/*     -> LifeTrace Cloud Axum service
+                              |
+                          PostgreSQL
 ```
 
-必须使用同源 `/api`，避免 Web Session Cookie 的跨站限制并降低 CORS/CSRF 配置复杂度。
+Web 与 API 必须使用同一站点来源，确保 HttpOnly Cookie、SameSite 和 CSRF Origin 校验行为稳定。开发环境由 `vite.web.config.ts` 将 `/api` 代理到 `LIFETRACE_CLOUD_URL`。
 
-## 3. Nginx 示例
+## 3. 在线要求
 
-```nginx
-server {
-    listen 443 ssl http2;
-    server_name lifetrace.example.com;
+LifeTrace Web 是云端直写客户端：
 
-    root /srv/lifetrace/dist-web;
-    index index.html;
+- 页面加载、会话恢复和业务操作均需要网络；
+- 浏览器不保存业务实体、草稿或待同步队列；
+- Service Worker 不缓存页面、静态资源或 API；
+- 断网时禁止写操作并提示“数据未保存”；
+- 重新联网后刷新页面或点击“刷新云端”恢复最新数据。
 
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto https;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
+部署层不得配置 HTML 的离线 fallback，也不得由 CDN 缓存带身份信息的 `/api` 响应。
 
-    location = /sw.js {
-        add_header Cache-Control "no-cache";
-        try_files $uri =404;
-    }
+## 4. 静态资源策略
 
-    location = /manifest.webmanifest {
-        add_header Content-Type application/manifest+json;
-        add_header Cache-Control "no-cache";
-        try_files $uri =404;
-    }
+推荐响应头：
 
-    location /assets/ {
-        add_header Cache-Control "public, max-age=31536000, immutable";
-        try_files $uri =404;
-    }
+```text
+/index.html
+  Cache-Control: no-cache
 
-    location / {
-        add_header Cache-Control "no-cache";
-        try_files $uri /index.html;
-    }
-}
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+/assets/<hash>.*
+  Cache-Control: public, max-age=31536000, immutable
+
+/api/*
+  Cache-Control: no-store
 ```
 
-## 4. 环境
+虽然静态 hash 资源可由 HTTP 缓存优化，但 Service Worker 不主动创建 Cache Storage 副本。
 
-本地开发：
+## 5. Cookie 与安全配置
+
+生产环境要求：
+
+- 全站 HTTPS；
+- Session Cookie：`HttpOnly; Secure`；
+- SameSite 根据同源部署策略配置；
+- Axum 允许的 Web Origin 必须是实际生产域名；
+- 反向代理保留 `Origin`、`Host`、`X-Forwarded-For` 和协议头；
+- `/api/v1/sync/push` 等 Browser 写请求校验 `x-csrf-token`；
+- 禁止把 access token 或 refresh token注入前端环境变量。
+
+## 6. SPA 路由
+
+以下路径必须回退到 `index.html`：
+
+- `/search`
+- `/devices`
+- `/finance/*`
+- `/notes`
+- `/english/*`
+
+`/api/*`、`/sw.js`、`/manifest.webmanifest` 和实际静态资源不得进入 SPA fallback。
+
+## 7. 健康检查
+
+部署后验证：
 
 ```bash
-LIFETRACE_CLOUD_URL=http://127.0.0.1:8080 npm run pwa:dev
+curl -I https://<host>/
+curl -I https://<host>/manifest.webmanifest
+curl -I https://<host>/sw.js
+curl -I https://<host>/api/v1/health/live
+curl -I https://<host>/api/v1/health/ready
 ```
 
-该变量只配置 Vite 开发代理；生产产物始终请求同源 `/api`，不在前端包中嵌入后端密钥或令牌。
+浏览器联调必须额外验证：登录、snapshot、push、pull、退出、CSRF 拒绝和跨用户数据隔离。
 
-## 5. 发布检查
+## 8. 附件能力
 
-1. `dist-web/index.html`、`sw.js`、manifest、192/512 图标存在；
-2. `/api/v1/web/session` 同源可达；
-3. HTTPS 有效；
-4. `sw.js` 返回 `no-cache`；
-5. hash 资源长期缓存；
-6. 登录、创建笔记、同步、退出冒烟通过；
-7. Lighthouse/浏览器 Performance 面板确认 LCP 目标；
-8. PWA 安装提示和离线启动通过。
+当前服务未提供 EPIC-12 对象存储签名上传路由。不要仅部署 `file.metadata` 同步后就开放附件按钮。上线附件前必须同时具备：
 
-## 6. 渐进发布
+- 用户和领域所有权校验；
+- 文件大小与 MIME 白名单；
+- 签名上传 URL；
+- 上传完成确认；
+- 下载授权；
+- 孤立文件清理与失败重试。
 
-- 将每次构建发布到不可变版本目录，例如 `/releases/<commit-sha>/`；
-- `current` 符号链接切换到目标版本；
-- 先内部账户验证，再扩大流量；
-- 监控登录失败率、sync 4xx/5xx、Service Worker 错误和前端异常。
+## 9. 发布步骤
 
-## 7. 回滚
+1. PR 所有检查通过；
+2. squash merge 到 `main`；
+3. 使用 `main` 对应 SHA 构建 `dist-web`；
+4. 上传到静态站点或 CDN；
+5. 原子切换静态版本；
+6. 验证健康检查和登录流程；
+7. 验证 Service Worker 更新提示；
+8. 验证手机、平板和桌面布局。
 
-静态前端回滚不需要数据库变更：
+## 10. 回滚
 
-1. 将 `current` 切回上一已验证版本；
-2. 保持旧 `sw.js` 可访问，并通过新的 cache name 触发清理；
-3. 如 PR 已合入但需代码回退，创建 revert PR，不 force-push `main`；
-4. 回滚后重复登录、同步、退出冒烟。
+Web 静态资源回滚：
 
-本 EPIC 未修改数据库 Schema，也未改变 sync v1 后端协议，因此回滚不会产生迁移逆操作。
+1. 将站点指向上一个通过 CI 的 `dist-web` artifact；
+2. 保持 API 和数据库不变；
+3. 确认旧前端仍满足当前最低客户端版本；
+4. 浏览器重新加载后获取旧静态版本。
+
+代码回滚：
+
+```bash
+git revert <epic13-merge-commit>
+```
+
+本 EPIC 不增加数据库迁移；回滚前端不会删除云端业务数据。若 Browser sync 后端改动需要回滚，应同步回滚对应 Rust 路由和集成测试。
