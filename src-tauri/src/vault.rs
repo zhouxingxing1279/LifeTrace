@@ -27,7 +27,7 @@ const NONCE_BYTES: usize = 12;
 const OBJECT_MAGIC: &[u8; 8] = b"LTVLT001";
 const OBJECT_CHUNK_BYTES: usize = 1024 * 1024;
 const DEFAULT_AUTO_LOCK_SECONDS: u64 = 300;
-const MIN_PASSWORD_CHARS: usize = 12;
+const MIN_PASSWORD_CHARS: usize = 6;
 const MAX_PREVIEW_BYTES: u64 = 512 * 1024 * 1024;
 const DELETE_CONFIRMATION: &str = "永久删除私密相册";
 const MASTER_KEY_AAD: &[u8] = b"lifetrace-vault-master-key-v1";
@@ -1483,7 +1483,8 @@ mod tests {
     fn initialization_requires_a_strong_password() {
         let (state, root) = test_state();
         assert!(state.initialize("123456").is_err());
-        assert!(state.initialize("abcdefghijkl").is_ok());
+        assert!(state.initialize("12345").is_err());
+        assert!(state.initialize("abcdef").is_ok());
         let _ = fs::remove_dir_all(root);
     }
 
