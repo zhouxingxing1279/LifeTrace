@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "esnext", "webworker"],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -30,7 +30,7 @@
     "src/types/**/*.ts",
     "contracts/typescript/**/*.ts",
     "vite.tauri.config.ts",
-    "vite.web.config.ts"
+    "vite.browser.config.ts"
   ],
   "exclude": ["node_modules", "src/server", "app/api", "desktop", "scripts", "tests"]
 }
