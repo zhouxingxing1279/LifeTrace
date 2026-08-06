@@ -12,6 +12,27 @@ npm run pwa:build
 
 PWA 静态产物位于 `dist-web/`。GitHub Actions 上传 `lifetrace-web-pwa` artifact，并验证 manifest、Service Worker、图标和 5 MB 体积门禁。
 
+### 本地开发
+
+LifeTrace Cloud 默认监听 `http://127.0.0.1:8787`，Web 开发服务器默认监听 `http://127.0.0.1:4173`。启动 Web/PWA 开发服务器时，Vite 会将浏览器的 `/api/*` 请求代理到 8787：
+
+```bash
+npm run pwa:dev
+```
+
+只有后端使用其他地址时才需要覆盖代理目标：
+
+```bash
+LIFETRACE_CLOUD_URL=http://127.0.0.1:9000 npm run pwa:dev
+```
+
+Windows PowerShell 可使用：
+
+```powershell
+$env:LIFETRACE_CLOUD_URL = "http://127.0.0.1:9000"
+npm run pwa:dev
+```
+
 ## 2. 推荐拓扑
 
 ```text
@@ -27,7 +48,7 @@ Reverse proxy / CDN
                           PostgreSQL
 ```
 
-Web 与 API 必须使用同一站点来源，确保 HttpOnly Cookie、SameSite 和 CSRF Origin 校验行为稳定。开发环境由 `vite.web.config.ts` 将 `/api` 代理到 `LIFETRACE_CLOUD_URL`。
+Web 与 API 必须使用同一站点来源，确保 HttpOnly Cookie、SameSite 和 CSRF Origin 校验行为稳定。开发环境由 `vite.web.config.ts` 将 `/api` 代理到 `LIFETRACE_CLOUD_URL`；未设置时使用 `http://127.0.0.1:8787`。
 
 ## 3. 在线要求
 
