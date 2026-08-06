@@ -17,8 +17,12 @@ pub use config::Config;
 pub use error::ApiError;
 pub use state::{AppState, StartupError};
 
+use axum::http::{
+    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
+    HeaderName, Method,
+};
 use axum::Router;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
 /// Build the full application router.
@@ -34,8 +38,23 @@ pub fn app(state: AppState) -> Router {
             .collect();
         CorsLayer::new()
             .allow_origin(origins)
-            .allow_methods(Any)
-            .allow_headers(Any)
+            .allow_credentials(true)
+            .allow_methods([
+                Method::GET,
+                Method::HEAD,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+                Method::OPTIONS,
+            ])
+            .allow_headers([
+                ACCEPT,
+                AUTHORIZATION,
+                CONTENT_TYPE,
+                HeaderName::from_static("x-csrf-token"),
+                HeaderName::from_static("x-request-id"),
+            ])
     };
     routes::router(state.clone())
         .with_state(state)
