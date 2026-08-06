@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
       outDir: "../dist-web",
       emptyOutDir: true,
       target: "es2022",
-      sourcemap: true,
+      sourcemap: false,
       reportCompressedSize: true,
     },
     server: {
