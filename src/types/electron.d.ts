@@ -41,7 +41,48 @@ declare global {
       exportCertificate():Promise<PhotoSyncDesktopResponse>;
       setCompatibilityMode(enabled:boolean,confirmed?:boolean):Promise<PhotoSyncDesktopResponse>;
     };
+    vaultApi?: {
+      status():Promise<VaultStatus>;
+      initialize(password:string):Promise<VaultStatus>;
+      unlock(password:string):Promise<VaultStatus>;
+      lock():Promise<VaultStatus>;
+      listAssets():Promise<VaultAsset[]>;
+      importFiles():Promise<VaultAsset[]>;
+      readAsset(assetId:string):Promise<VaultAssetPayload>;
+      readThumbnail(assetId:string):Promise<VaultThumbnailPayload>;
+      deleteAsset(assetId:string):Promise<void>;
+      changePassword(oldPassword:string,newPassword:string):Promise<VaultStatus>;
+      setAutoLock(seconds:number):Promise<VaultStatus>;
+      deleteAll(confirmation:string):Promise<void>;
+    };
   }
+
+  type VaultStatus = {
+    configured:boolean;
+    unlocked:boolean;
+    assetCount?:number;
+    autoLockSeconds:number;
+  };
+
+  type VaultAsset = {
+    id:string;
+    originalName:string;
+    mimeType:string;
+    size:number;
+    importedAt:string;
+    hasThumbnail:boolean;
+  };
+
+  type VaultAssetPayload = {
+    asset:VaultAsset;
+    dataBase64:string;
+  };
+
+  type VaultThumbnailPayload = {
+    assetId:string;
+    mimeType:string;
+    dataBase64:string;
+  };
 
   type MobileUploadStatus = {
     available:boolean;
