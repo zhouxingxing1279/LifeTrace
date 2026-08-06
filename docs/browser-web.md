@@ -95,4 +95,6 @@ cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads
 dist-browser/
 ```
 
+Pull Request 必须通过 Browser Web、EPIC-03 PostgreSQL 以及被改动路径触发的既有回归检查后才能合并。
+
 部署静态文件时，需要允许页面访问 LifeTrace Cloud，并把页面的精确 Origin 加入 `CORS_ALLOWED_ORIGINS`。生产环境必须使用 HTTPS 和安全 Cookie。
