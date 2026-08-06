@@ -34,6 +34,12 @@ fn user_id(object: &serde_json::Map<String, Value>) -> String {
 }
 /// 写入英语实体（DTO → 真实列）。
 pub fn put(connection: &Connection, key: &str, value: &Value) -> Result<(), String> {
+    let owned = if key == "articles" {
+        value.clone()
+    } else {
+        crate::database::profile::assign_active_owner(connection, value)?
+    };
+    let value = &owned;
     match key {
         "articles" => put_article(connection, value),
         "records" => put_record(connection, value),
@@ -464,16 +470,17 @@ fn article_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
     }))
 }
 fn list_records(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, article_id, record_date, reading_time_seconds, summary,
                 score, analysis_id, new_words_json, completion_status, reading_status,
                 started_at, completed_at, created_at, updated_at
-         FROM english_learning_records WHERE deleted_at IS NULL
+         FROM english_learning_records WHERE deleted_at IS NULL AND user_id=?1
          ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
-    let rows = statement.query_map([], |row| {
+    let rows = statement.query_map([profile_id], |row| {
         let new_words: Option<String> = row.get(8)?;
         Ok(json!({
             "id": row.get::<_, String>(0)?,
@@ -497,6 +504,7 @@ fn list_records(connection: &Connection) -> Result<Vec<Value>, String> {
         .map_err(|error| error.to_string())
 }
 fn list_vocabulary(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT v.id, v.user_id, v.normalized_word, v.display_word, v.definition,
@@ -506,11 +514,13 @@ fn list_vocabulary(connection: &Connection) -> Result<Vec<Value>, String> {
                 v.incorrect_count, v.encounter_count, v.last_reviewed_at, v.next_review_at,
                 v.status, v.frequency_rank, v.tags_json, v.metadata_json, v.created_at,
                 v.updated_at
-         FROM english_vocabulary v WHERE v.deleted_at IS NULL
+         FROM english_vocabulary v WHERE v.deleted_at IS NULL AND v.user_id = ?1
          ORDER BY v.updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
-    let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query([profile_id])
+        .map_err(|error| error.to_string())?;
     let mut items = Vec::new();
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
         items.push(vocabulary_from_row(connection, &row)?);
@@ -585,16 +595,17 @@ fn vocabulary_from_row(connection: &Connection, row: &rusqlite::Row<'_>) -> Resu
     }))
 }
 fn list_highlights(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, article_id, selected_text, block_id, start_offset,
                 end_offset, color, prefix, suffix, note, created_at, updated_at
-         FROM english_highlights WHERE deleted_at IS NULL
+         FROM english_highlights WHERE deleted_at IS NULL AND user_id=?1
          ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], |row| {
+        .query_map([profile_id], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "userId": row.get::<_, String>(1)?,
@@ -616,16 +627,17 @@ fn list_highlights(connection: &Connection) -> Result<Vec<Value>, String> {
         .map_err(|error| error.to_string())
 }
 fn list_english_notes(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, article_id, quote, content, block_id, start_offset,
                 end_offset, selected_text, prefix, suffix, highlight_id, created_at, updated_at
-         FROM english_notes WHERE deleted_at IS NULL
+         FROM english_notes WHERE deleted_at IS NULL AND user_id=?1
          ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], |row| {
+        .query_map([profile_id], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "userId": row.get::<_, String>(1)?,
@@ -648,16 +660,17 @@ fn list_english_notes(connection: &Connection) -> Result<Vec<Value>, String> {
         .map_err(|error| error.to_string())
 }
 fn list_analysis(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, record_id, article_id, provider, score, content_score,
                 grammar_score, vocabulary_score, structure_score, mistakes_json,
                 suggestions_json, improved_summary, weak_points_json, created_at, updated_at
-         FROM english_ai_analysis WHERE deleted_at IS NULL
+         FROM english_ai_analysis WHERE deleted_at IS NULL AND user_id=?1
          ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
-    let rows = statement.query_map([], |row| {
+    let rows = statement.query_map([profile_id], |row| {
         let mistakes: Option<String> = row.get(10)?;
         let suggestions: Option<String> = row.get(11)?;
         let weak_points: Option<String> = row.get(13)?;

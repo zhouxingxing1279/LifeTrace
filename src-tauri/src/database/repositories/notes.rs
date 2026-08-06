@@ -298,6 +298,9 @@ pub fn list_notes(
     let scope = scope.unwrap_or("all");
     let mut conditions = Vec::<String>::new();
     let mut arguments = Vec::<Box<dyn rusqlite::ToSql>>::new();
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
+    conditions.push("t.user_id = ?".to_owned());
+    arguments.push(Box::new(profile_id));
 
     conditions.push(match scope {
         "trash" => "t.deleted_at IS NOT NULL".to_owned(),
@@ -403,9 +406,12 @@ fn fts_search(connection: &Connection, term: &str) -> Result<Option<Vec<String>>
 
 /// 笔记详情（含完整正文）。
 pub fn get_note(connection: &Connection, note_id: &str) -> Result<Option<Value>, String> {
-    let sql = format!("SELECT {FULL_COLUMNS} FROM notes WHERE id = ?1");
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
+    let sql = format!("SELECT {FULL_COLUMNS} FROM notes WHERE id = ?1 AND user_id=?2");
     let value = connection
-        .query_row(&sql, [note_id], |row| note_full_from_row(connection, row))
+        .query_row(&sql, rusqlite::params![note_id, profile_id], |row| {
+            note_full_from_row(connection, row)
+        })
         .optional()
         .map_err(|error| error.to_string())?;
     Ok(value)
@@ -413,14 +419,15 @@ pub fn get_note(connection: &Connection, note_id: &str) -> Result<Option<Value>,
 
 /// 文件夹 + 标签（含使用次数）。
 pub fn meta(connection: &Connection) -> Result<Value, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, name, icon, color, sort_order, created_at, updated_at
-             FROM note_folders WHERE deleted_at IS NULL ORDER BY sort_order, name",
+             FROM note_folders WHERE deleted_at IS NULL AND user_id=?1 ORDER BY sort_order, name",
         )
         .map_err(|error| error.to_string())?;
     let folders = statement
-        .query_map([], |row| {
+        .query_map([profile_id.clone()], |row| {
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "name": row.get::<_, String>(1)?,
@@ -440,11 +447,11 @@ pub fn meta(connection: &Connection) -> Result<Value, String> {
             .prepare(
                 "SELECT t.id, t.name, t.color, t.created_at, t.updated_at,
                         (SELECT COUNT(*) FROM note_tag_relations tr WHERE tr.tag_id = t.id) AS usage_count
-                 FROM note_tags t WHERE t.deleted_at IS NULL ORDER BY t.name",
+                 FROM note_tags t WHERE t.deleted_at IS NULL AND t.user_id=?1 ORDER BY t.name",
             )
             .map_err(|error| error.to_string())?;
         let rows = statement
-            .query_map([], |row| {
+            .query_map([profile_id], |row| {
                 Ok(json!({
                     "id": row.get::<_, String>(0)?,
                     "name": row.get::<_, String>(1)?,
@@ -662,6 +669,8 @@ pub fn save_note(
     is_update: bool,
     create_revision: bool,
 ) -> Result<Value, String> {
+    let owned = crate::database::profile::assign_active_owner(connection, input)?;
+    let input = &owned;
     let object = json_parser::as_object(input, "笔记数据")?;
     let note_id = text(object, "id").unwrap_or_else(id);
     let existing = get_note(connection, &note_id)?;
@@ -709,7 +718,7 @@ pub fn save_note(
                content_text, content_markdown, summary, is_pinned, is_favorite, is_archived,
                ai_summary, ai_tags_json, embedding_status, last_ai_processed_at,
                created_at, updated_at, deleted_at, version, modified_by_device
-             ) VALUES(?1,'local',?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,NULL)
+             ) VALUES(?1,?21,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,NULL)
              ON CONFLICT(id) DO UPDATE SET
                title=excluded.title, note_type=excluded.note_type, folder_id=excluded.folder_id,
                content_json=excluded.content_json, content_html=excluded.content_html,
@@ -745,7 +754,8 @@ pub fn save_note(
                 created_at,
                 updated_at,
                 deleted_at,
-                version
+                version,
+                text(object, "userId").ok_or_else(|| "笔记缺少当前资料归属".to_owned())?
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -869,6 +879,8 @@ pub fn duplicate_note(connection: &Connection, note_id: &str) -> Result<Value, S
 
 /// 保存文件夹，返回 id。
 pub fn save_folder(connection: &Connection, input: &Value) -> Result<String, String> {
+    let owned = crate::database::profile::assign_active_owner(connection, input)?;
+    let input = &owned;
     let object = json_parser::as_object(input, "文件夹数据")?;
     let folder_id = text(object, "id").unwrap_or_else(id);
     let name = text(object, "name").ok_or_else(|| "文件夹缺少 name".to_owned())?;
@@ -916,6 +928,8 @@ pub fn delete_folder(connection: &Connection, folder_id: &str) -> Result<(), Str
 
 /// 保存标签，返回 id。
 pub fn save_tag(connection: &Connection, input: &Value) -> Result<String, String> {
+    let owned = crate::database::profile::assign_active_owner(connection, input)?;
+    let input = &owned;
     let object = json_parser::as_object(input, "标签数据")?;
     let tag_id = text(object, "id").unwrap_or_else(id);
     let name = text(object, "name").ok_or_else(|| "标签缺少 name".to_owned())?;

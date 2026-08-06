@@ -278,15 +278,18 @@ fn exercise_dto(connection: &Connection, exercise_id: &str) -> Result<Value, Str
     }))
 }
 pub fn list_workouts(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, source, source_id, name, occurred_at, local_date,
                     duration_seconds, exercise_count, set_count, planned_set_count, volume_kg,
                     calories_kcal, status, created_at, updated_at
-             FROM workouts WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+             FROM workouts WHERE deleted_at IS NULL AND user_id=?1 ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
-    let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+    let mut rows = statement
+        .query([profile_id])
+        .map_err(|error| error.to_string())?;
     let mut items = Vec::new();
     while let Some(row) = rows.next().map_err(|error| error.to_string())? {
         items.push(workout_from_row(connection, &row)?);
@@ -333,6 +336,8 @@ pub fn get_workout(connection: &Connection, id: &str) -> Result<Option<Value>, S
         .find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
 }
 pub fn save_workout(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let object = json_parser::as_object(dto, "训练记录")?;
     let id = json_parser::string_field(object, "id")
         .filter(|id| !id.is_empty())
@@ -508,15 +513,16 @@ fn import_dto(connection: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Res
     }))
 }
 pub fn list_imports(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
     let mut statement = connection
         .prepare(
             "SELECT id, user_id, source, share_url, status, parser, parser_version, error,
                     raw_json, workout_id, created_at, updated_at
-             FROM workout_imports WHERE deleted_at IS NULL ORDER BY updated_at DESC",
+             FROM workout_imports WHERE deleted_at IS NULL AND user_id=?1 ORDER BY updated_at DESC",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map([], |row| import_dto(connection, row))
+        .query_map([profile_id], |row| import_dto(connection, row))
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
@@ -527,6 +533,8 @@ pub fn get_import(connection: &Connection, id: &str) -> Result<Option<Value>, St
         .find(|item| item.get("id").and_then(Value::as_str) == Some(id)))
 }
 pub fn save_import(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let mut value = dto.clone();
     if let Some(object) = value.as_object_mut() {
         object.insert("updatedAt".to_owned(), json!(now()));
@@ -634,6 +642,8 @@ pub fn upsert_training_note(connection: &Connection, row: &TrainingNoteRow) -> R
         .map_err(|error| error.to_string())
 }
 pub fn save_training_note(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let dto = &owned;
     let row = training_note_from_legacy_json(connection, dto, None, None)?;
     upsert_training_note(connection, &row)
 }

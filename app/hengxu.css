@@ -46,3 +46,8 @@
 .hx-cloud-user{display:grid;gap:4px;padding:12px;border-radius:10px;background:rgba(59,130,246,.08);margin:12px 0}
 .hx-cloud-user small,.hx-cloud-user span{color:var(--hx-muted,#64748b)}
 .hx-cloud-account .hx-btn svg{width:16px;height:16px}
+.hx-cloud-binding,.hx-sync-status,.hx-sync-conflicts{display:grid;gap:9px;margin:12px 0;padding:12px;border:1px solid rgba(148,163,184,.25);border-radius:12px;background:rgba(248,250,252,.65)}
+.hx-cloud-binding>strong,.hx-sync-status>div:first-child{display:flex;align-items:center;gap:7px}.hx-cloud-binding svg,.hx-sync-status svg{width:17px;height:17px}
+.hx-cloud-binding p,.hx-sync-status span,.hx-sync-status small{margin:0;color:var(--hx-muted,#64748b);font-size:12px}
+.hx-sync-conflicts>div{display:grid;gap:7px;padding-top:8px;border-top:1px solid rgba(148,163,184,.2)}
+.hx-sync-conflicts span{font-size:12px;word-break:break-all}.hx-cloud-account .negative{color:var(--hx-danger,#b91c1c)}

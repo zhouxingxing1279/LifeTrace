@@ -8,5 +8,6 @@ pub mod connection;
 pub mod legacy;
 pub mod migration_runner;
 pub mod migrations;
+pub mod profile;
 pub mod repositories;
 pub mod validation;
