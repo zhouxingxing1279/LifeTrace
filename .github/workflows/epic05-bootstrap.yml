@@ -39,6 +39,27 @@ jobs:
           xz -t /tmp/epic05-fix2.tar.xz
           tar -tJf /tmp/epic05-fix2.tar.xz >/dev/null
           tar -xJf /tmp/epic05-fix2.tar.xz
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src-tauri/src/server.rs')
+          source = path.read_text(encoding='utf-8')
+          old = '''pub async fn serve(
+              data_dir: PathBuf,
+              resource_dir: PathBuf,
+              photo_runtime: Arc<photo::Runtime>,
+          ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {'''
+          new = '''pub async fn serve(
+              data_dir: PathBuf,
+              resource_dir: PathBuf,
+              photo_runtime: Arc<photo::Runtime>,
+              sync_state: crate::sync::SyncDesktopState,
+          ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {'''
+          if old not in source:
+              raise SystemExit('server::serve signature did not match the expected pre-fix source')
+          path.write_text(source.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Install Tauri Linux build dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
