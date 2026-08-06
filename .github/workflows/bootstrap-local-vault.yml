@@ -1,10 +1,10 @@
-name: Bootstrap Local Vault Patch
+name: Apply Local Vault Repairs
 
 on:
   push:
     branches: [agent/local-encrypted-album]
     paths:
-      - "tools/local-vault-patch.part*"
+      - "tools/fix-vault-compile.py"
       - ".github/workflows/bootstrap-local-vault.yml"
   workflow_dispatch:
 
@@ -19,16 +19,8 @@ jobs:
         with:
           ref: agent/local-encrypted-album
           fetch-depth: 0
-      - name: Decode implementation patch
-        run: |
-          cp src/components/PhotoSyncModule.tsx src/components/PhotoSyncDashboard.tsx
-          cat tools/local-vault-patch.part* | base64 --decode > /tmp/local-vault-patch.zip
-          python3 - <<'PY'
-          import zipfile
-          with zipfile.ZipFile('/tmp/local-vault-patch.zip') as archive:
-              archive.extractall('.')
-          PY
-          rm -f .github/workflows/local-encrypted-album.yml
+      - name: Apply targeted repair
+        run: python3 tools/fix-vault-compile.py
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -37,18 +29,14 @@ jobs:
         run: |
           cargo fmt --manifest-path src-tauri/Cargo.toml
           cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
-      - name: Commit generated implementation
+      - name: Commit repair
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/local-vault.css \
-            src/components/LocalVaultModule.tsx src/components/PhotoSyncDashboard.tsx \
-            src/components/PhotoSyncModule.tsx src/types/electron.d.ts \
-            src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/src/lib.rs src-tauri/src/vault.rs \
-            tauri-ui/main.tsx tauri-ui/vaultBridge.ts
+          git add src-tauri/src/vault.rs src-tauri/Cargo.lock
           if git diff --cached --quiet; then
-            echo "Patch already applied."
+            echo "Repair already applied."
           else
-            git commit -m "feat: add local encrypted album"
+            git commit -m "fix: compile local encrypted album"
             git push origin HEAD:agent/local-encrypted-album
           fi
