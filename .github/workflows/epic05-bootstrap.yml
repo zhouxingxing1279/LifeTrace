@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: epic05-bootstrap-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   apply-test-push:
     runs-on: ubuntu-latest
@@ -36,9 +40,15 @@ jobs:
           tar -tJf /tmp/epic05-fix2.tar.xz >/dev/null
           tar -xJf /tmp/epic05-fix2.tar.xz
       - name: Install Tauri Linux build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+          sudo timeout 240s apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20
+          sudo timeout 240s apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - name: Create required bundled dictionary resource
         run: |
           python3 - <<'PY'
