@@ -202,12 +202,12 @@ impl VaultState {
             config.parallelism,
             Some(MASTER_KEY_BYTES),
         )
-        .context("private album password parameters are invalid")?;
+        .map_err(|_| anyhow!("private album password parameters are invalid"))?;
         let argon2 = Argon2::new(Algorithm::Argon2id, Version::V0x13, params);
         let mut key = Zeroizing::new(vec![0_u8; MASTER_KEY_BYTES]);
         argon2
             .hash_password_into(password.as_bytes(), &salt, key.as_mut_slice())
-            .context("failed to derive private album key")?;
+            .map_err(|_| anyhow!("failed to derive private album key"))?;
         Ok(key)
     }
 
@@ -655,10 +655,11 @@ impl VaultState {
             Err(_) => return Ok(false),
         };
         let thumbnail = image.thumbnail(480, 480);
-        let mut bytes = Zeroizing::new(Vec::new());
+        let mut cursor = Cursor::new(Vec::new());
         thumbnail
-            .write_to(&mut Cursor::new(bytes.as_mut()), image::ImageFormat::Png)
+            .write_to(&mut cursor, image::ImageFormat::Png)
             .context("failed to encode private thumbnail")?;
+        let bytes = Zeroizing::new(cursor.into_inner());
         let aad = format!("lifetrace-vault-thumbnail-v1:{asset_id}");
         let encrypted = Self::encrypt_blob(master_key, bytes.as_slice(), aad.as_bytes())?;
         self.write_json_atomic(&self.thumbnail_path(asset_id), &encrypted)?;
