@@ -8,11 +8,11 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use lifetrace_contracts::auth::v1::{
-    AcceptedResponseV1, CsrfResponseV1, DeviceInstallationV1, DeviceListV1,
-    SessionListV1, UpdateDeviceRequestV1, WebLoginRequestV1, WebRegisterRequestV1,
-    WebSessionResponseV1,
+    AcceptedResponseV1, CsrfResponseV1, DeviceInstallationV1, DeviceListV1, Scope,
+    SessionListV1, UpdateDeviceRequestV1, WebLoginRequestV1, WebSessionResponseV1,
 };
 use lifetrace_contracts::ErrorCode;
+use serde::Deserialize;
 use serde_json::json;
 use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -25,6 +25,19 @@ use crate::auth::token::TokenKind;
 use crate::auth::{AuthCredential, AuthenticatedPrincipal, AuthService};
 use crate::error::ApiError;
 use crate::state::AppState;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct WebRegisterRequest {
+    email: String,
+    password: String,
+    display_name: Option<String>,
+    invite_token: Option<String>,
+    #[serde(default)]
+    requested_scopes: Vec<Scope>,
+    #[serde(default)]
+    public_device: bool,
+}
 
 pub fn router() -> Router<AppState> {
     Router::<AppState>::new()
@@ -166,7 +179,7 @@ async fn register(
     State(state): State<AppState>,
     peer: PeerAddr,
     headers: HeaderMap,
-    Json(request): Json<WebRegisterRequestV1>,
+    Json(request): Json<WebRegisterRequest>,
 ) -> Result<impl IntoResponse, ApiError> {
     if state.config.auth_registration_mode == "disabled" {
         return Err(auth_error(
@@ -231,7 +244,7 @@ async fn register(
     .bind(user_id)
     .bind(request_context.ip.map(|value| value.to_string()))
     .bind(&request_context.user_agent)
-    .bind(json!({"registrationMode": state.config.auth_registration_mode}))
+    .bind(json!({"registrationMode": state.config.auth_registration_mode.clone()}))
     .execute(&mut *tx)
     .await
     .map_err(database_error)?;
