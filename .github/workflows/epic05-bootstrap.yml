@@ -370,7 +370,10 @@ jobs:
           {
             set -euxo pipefail
             rm -rf .epic05-overlay .epic05-fix .epic05-fix2
+            rm -f .github/workflows/epic05-windows-sync.yml
             rm -f epic05-base-overlay.tar.xz epic05-fix-diagnostic.tar.xz
+            rm -f epic05-desktop-test.log epic05-sync-clippy.log epic05-desktop-clippy.log
+            rm -f epic05-frontend-validation.log epic05-publish.log
             git config user.name "LifeTrace EPIC-05 Agent"
             git config user.email "actions@users.noreply.github.com"
             git status --short
