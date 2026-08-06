@@ -39,16 +39,6 @@ impl SqliteSyncStore {
         }
     }
 
-    pub fn set_device_id(&self, value: impl Into<String>) {
-        if let Ok(mut device) = self.device_id.lock() {
-            *device = value.into();
-        }
-    }
-
-    pub fn database(&self) -> Arc<Mutex<Connection>> {
-        self.database.clone()
-    }
-
     fn list_find(values: Vec<Value>, id: &str) -> Option<Value> {
         values
             .into_iter()

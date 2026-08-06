@@ -45,20 +45,6 @@ impl HttpSyncTransport {
         })
     }
 
-    pub async fn set_session(
-        &self,
-        origin: String,
-        access_token: String,
-        cloud_user_id: String,
-        device_id: String,
-    ) {
-        let mut auth = self.auth.write().await;
-        auth.origin = origin.trim_end_matches('/').to_owned();
-        auth.access_token = Some(access_token);
-        auth.cloud_user_id = Some(cloud_user_id);
-        auth.device_id = device_id;
-    }
-
     pub async fn clear_session(&self) {
         let mut auth = self.auth.write().await;
         auth.access_token = None;

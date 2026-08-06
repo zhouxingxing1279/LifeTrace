@@ -8,6 +8,9 @@ use crate::database::profile;
 
 use super::payload::legacy_to_wire;
 
+/// 写入来源。当前实现只从本地写入路径入队；`Remote` 与 `Migration`
+/// 保留用于未来的远端应用/迁移路径（EPIC-05 WriteOrigin 语义）。
+#[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MutationOrigin {
     Local,
@@ -36,26 +39,6 @@ pub fn enqueue_upsert(
         entity_id,
         "upsert",
         Some(value),
-        atomic_group_id,
-    )
-}
-
-pub fn enqueue_delete(
-    connection: &Connection,
-    entity_type: &str,
-    entity_id: &str,
-    atomic_group_id: Option<&str>,
-    origin: MutationOrigin,
-) -> Result<Option<String>, String> {
-    if origin != MutationOrigin::Local {
-        return Ok(None);
-    }
-    enqueue(
-        connection,
-        entity_type,
-        entity_id,
-        "delete",
-        None,
         atomic_group_id,
     )
 }
@@ -120,18 +103,6 @@ fn enqueue(
             serde_json::json!({"changeId": change_id, "operation": operation}).to_string(), stamp]
     ).map_err(|error| error.to_string())?;
     Ok(Some(change_id))
-}
-
-pub fn table_entity_type(table: &str) -> Option<&'static str> {
-    Some(match table {
-        "accounts" => EntityType::FINANCE_ACCOUNT,
-        "transactions" => EntityType::FINANCE_TRANSACTION,
-        "activities" => EntityType::HABIT_ACTIVITY,
-        "logs" => EntityType::HABIT_LOG,
-        "reviews" => EntityType::REVIEW_DAILY,
-        "workoutHistory" => EntityType::WORKOUT_WORKOUT,
-        _ => return None,
-    })
 }
 
 /// Queue all existing user-owned rows when the user explicitly chooses to bind
