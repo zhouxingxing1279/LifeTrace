@@ -6,76 +6,107 @@
 |---|---|---|---|---|
 | A-01 | TypeScript | Web、桌面和共享类型静态检查 | `npm run lint` | 0 error |
 | A-02 | Unit | 金额精确转换与非法输入 | `npm run test:unit` | 整数分，无浮点误差 |
-| A-03 | Unit | 财务/笔记/词汇 Schema 工厂 | `npm run test:unit` | 必填字段完整 |
-| A-04 | Unit | Cookie 登录端点与 scope | `npm run test:unit` | 正确 URL、credentials、scope |
-| A-05 | Unit | 离线 outbox 持久化 | `npm run test:unit` | 刷新仓库后数据仍存在 |
-| A-06 | Unit | push accepted + pull | `npm run test:unit` | outbox 清空、cursor 和 version 更新 |
-| A-07 | Unit | 版本冲突 | `npm run test:unit` | 采用服务器实体、产生冲突记录 |
-| A-08 | Regression | 现有 Tauri Web 构建 | `npm run web:build` | 成功 |
-| A-09 | Build | 独立 PWA 构建 | `npm run pwa:build` | 成功生成 `dist-web` |
-| A-10 | Artifact | PWA 关键文件 | CI shell checks | index/manifest/sw/icons 存在 |
-| A-11 | Performance | 构建产物预算 | `du -sk dist-web` | 小于 5 MB |
+| A-03 | Unit | 财务/笔记/英语 Schema 工厂 | `npm run test:unit` | 必填字段完整 |
+| A-04 | Unit | Cookie 登录与完整 scope | `npm run test:unit` | credentials=include，scope 完整 |
+| A-05 | Unit | 云端 snapshot 初始加载 | `npm run test:unit` | 获取 cursor 和实体；无 outbox |
+| A-06 | Unit | push accepted | `npm run test:unit` | 服务器确认后才更新内存状态 |
+| A-07 | Unit | push 失败 | `npm run test:unit` | 内存状态不变，错误明确 |
+| A-08 | Unit | 版本冲突 | `npm run test:unit` | 应用服务器实体并记录冲突 |
+| A-09 | Unit | CSV 导入和重复检测 | `npm run test:unit` | candidate 状态、疑似重复可识别 |
+| A-10 | Unit | 全局搜索 | `npm run test:unit` | 财务/笔记/英语跨模块命中 |
+| A-11 | Regression | 现有 Tauri Web 构建 | `npm run web:build` | 成功 |
+| A-12 | Build | 独立 PWA 构建 | `npm run pwa:build` | 成功生成 `dist-web` |
+| A-13 | Artifact | PWA 关键文件 | CI shell checks | index/manifest/sw/icons 存在 |
+| A-14 | Performance | 构建产物预算 | `du -sk dist-web` | 小于 5 MB |
+| A-15 | Integration | Browser Cookie + CSRF sync | PostgreSQL CI | snapshot/pull/push 成功 |
 
-## 2. 认证与安全联调
+## 2. 云端直写行为
 
-| ID | 前置 | 步骤 | 预期 |
+| ID | 场景 | 操作 | 预期 |
 |---|---|---|---|
-| M-01 | 有效账户 | 登录 | 进入概览；Cookie 不可由 JS 读取 |
-| M-02 | 无效密码 | 登录 | 显示服务端稳定错误，不进入工作区 |
-| M-03 | 已登录 | 刷新页面 | 通过 `/web/session` 恢复 |
-| M-04 | 已登录 | 退出后刷新 | 无法进入工作区；本地用户缓存已清理 |
-| M-05 | 公共设备 | 勾选公共设备登录 | session 标记 publicDevice，退出清理缓存 |
-| M-06 | CSRF token 缺失 | 直接调用退出接口 | 服务端拒绝 |
+| C-01 | 初次登录 | 登录后进入概览 | 从 `/sync/snapshot` 加载数据 |
+| C-02 | 新增记录 | 新增账单/笔记/生词 | `/sync/push` accepted 后才显示 |
+| C-03 | 请求失败 | 断网或服务器 5xx 时保存 | 显示未保存，表单内容不清空 |
+| C-04 | 浏览器刷新 | 刷新页面 | 重新恢复 Session 并获取 snapshot |
+| C-05 | 增量刷新 | 点击“刷新云端” | 按 cursor 调用 `/sync/pull` |
+| C-06 | 冲突 | 两端修改同一记录 | Web 显示服务器最新版本与冲突提示 |
+| C-07 | 删除 | 删除云端实体 | accepted 后从页面移除 |
+| C-08 | 批量导入 | 上传 CSV/XLSX | 去重后按批 push，逐条统计结果 |
 
-## 3. 财务
+## 3. 浏览器本地数据检查
 
-| ID | 场景 | 预期 |
-|---|---|---|
-| F-01 | 创建现金账户 | 立即显示，进入 outbox，联网后获得 serverVersion |
-| F-02 | 创建 23.50 元支出 | payload 为 `2350` 分，localDate 为本地自然日 |
-| F-03 | 创建收入 | 列表使用收入样式，概览支出统计不计入 |
-| F-04 | 删除流水 | 本地立即隐藏，服务端形成 tombstone |
-| F-05 | 未指定账户记账 | 合法保存，不阻断记录 |
+使用 DevTools 验收：
 
-## 4. 笔记
+- IndexedDB 中没有 LifeTrace 业务数据库；
+- localStorage/sessionStorage 中没有财务、笔记、英语实体或 outbox；
+- Cookie 为 HttpOnly，JavaScript 无法读取；
+- Service Worker Cache Storage 不保留页面或 API 响应；
+- 退出登录后 React 页面状态被清空；
+- 公共设备模式的会话有效期由服务器策略控制。
 
-| ID | 场景 | 预期 |
-|---|---|---|
-| N-01 | 创建无标题笔记 | 合法保存，列表显示“无标题笔记” |
-| N-02 | 编辑正文 | 保留实体 ID，localVersion 增加，生成新 changeId |
-| N-03 | 搜索 | 同时匹配标题和纯文本正文 |
-| N-04 | 置顶/取消置顶 | 排序立即变化并进入同步队列 |
-| N-05 | 删除 | 本地隐藏并同步 delete |
+## 4. 功能联调
 
-## 5. 英语
+### 财务
 
-| ID | 场景 | 预期 |
-|---|---|---|
-| E-01 | 同步文章目录 | 文章只读显示，客户端不生成 article upsert |
-| E-02 | 打开文章 | 显示正文，关闭后回到目录 |
-| E-03 | 添加单词 | normalizedWord 小写，初始状态 LEARNING |
-| E-04 | 切换掌握状态 | LEARNING/MASTERED 切换并同步 |
+- 快速记录收入与支出；
+- 新建、重命名、删除账户；
+- 新建和删除自定义分类；
+- 设置月度预算并计算使用进度；
+- 微信/支付宝/银行 CSV 或 XLSX 导入；
+- candidate 账单确认或忽略；
+- 相同交易单号不重复上传。
 
-## 6. 离线、同步和冲突
+### 笔记
 
-| ID | 场景 | 预期 |
-|---|---|---|
-| S-01 | 在线首次进入 | 恢复 session 后自动同步 |
-| S-02 | 断网后刷新 | 从 App Shell 与本地缓存进入工作区 |
-| S-03 | 离线创建三类数据 | 即时显示，待同步计数增加 |
-| S-04 | 恢复网络 | 自动 push 后 pull，待同步计数归零 |
-| S-05 | 请求中断 | 原 change payload 保留，可按同一 changeId 重试 |
-| S-06 | 两端修改同一笔记 | Web 采用服务器版本并显示冲突通知 |
-| S-07 | 服务器删除实体 | pull 后本地实体移除 |
-| S-08 | 多批数据 | 严格按 cursor 应用，整批成功后保存 cursor |
+- Tiptap 富文本编辑；
+- 富文本切换 Markdown；
+- 文件夹筛选；
+- 标签创建与关联；
+- 置顶、编辑和删除；
+- 多端冲突显示服务器版本；
+- 附件按钮明确提示 EPIC-12 依赖，不声称上传成功。
 
-## 7. 兼容与体验
+### 英语
 
-最低覆盖：
+- 浏览云端只读文章；
+- 选择正文并保存高亮；
+- 提交阅读总结；
+- 添加、掌握和删除生词；
+- 查看阅读时间、生词和高亮统计。
 
-- Chrome/Edge 当前稳定版；
-- Safari 当前稳定版；
-- 360×800、390×844、768×1024、1440×900；
-- 键盘 Tab 导航；
-- `prefers-reduced-motion`；
-- PWA standalone 模式和浏览器普通模式。
+### 设备与安全
+
+- 查看设备和活动会话；
+- 重命名设备；
+- 撤销非当前设备和会话；
+- 隐私模式遮罩金额；
+- 退出后不能继续访问页面内存数据。
+
+## 5. 响应式验收
+
+| 视口 | 预期 |
+|---|---|
+| 360×800 | 底部导航可用；表单单列；无横向阻断 |
+| 768×1024 | 平板布局可用；卡片两列或单列自适应 |
+| 1366×768 | 完整侧栏和多列仪表盘 |
+| 1920×1080 | 内容宽度合理，不产生大面积无意义留白 |
+
+## 6. PWA 验收
+
+- Manifest 可解析；
+- Chrome/Edge 可添加到主屏幕；
+- 快速记账、笔记、英语和搜索快捷入口有效；
+- 新 Service Worker 安装后出现更新提示；
+- 断网首次打开显示浏览器网络错误或应用联网提示；
+- Service Worker 不提供离线壳，也不缓存 API。
+
+## 7. 合并门禁
+
+只有以下条件同时满足才允许合入：
+
+- EPIC13 Web PWA 检查通过；
+- EPIC-03 PostgreSQL 检查通过；
+- EPIC-05 Windows Sync 回归通过；
+- PR 无未解决阻断审查；
+- PR head SHA 与最终检查 SHA 一致；
+- 合入后 `main` 的对应检查继续通过。
