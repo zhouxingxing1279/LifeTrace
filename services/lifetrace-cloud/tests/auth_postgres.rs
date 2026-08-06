@@ -6,7 +6,12 @@ use lifetrace_cloud::auth::security::RequestContext;
 use lifetrace_cloud::auth::AuthCredential;
 use lifetrace_cloud::{app, AppState, Config};
 use lifetrace_contracts::auth::v1::*;
-use lifetrace_contracts::sync::v1::AppId;
+use lifetrace_contracts::sync::v1::{
+    AppId, ChangeOperation, ClientPlatform, PushRequestV1, SyncChangeV1, SyncClientInfo,
+};
+use lifetrace_contracts::{
+    ChangeId, DeviceId, EntityId, EntityType, RequestId, ServerVersion,
+};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
@@ -134,6 +139,67 @@ async fn native_login_refresh_rotation_and_reuse_revocation() {
             .await
             .unwrap();
     assert_eq!(session_status, "revoked");
+}
+
+/// Regression: a device registered through the auth login path must not cause
+/// a duplicate-key violation when the same device later opens a sync
+/// connection (the sync path historically used a deterministic UUID id and
+/// `ON CONFLICT (id)`, colliding with the unique
+/// `(user_id, app_id, external_device_id)` index).
+#[tokio::test]
+async fn registered_device_can_sync_without_duplicate_key_error() {
+    let Some(state) = state().await else {
+        return;
+    };
+    let device_id = "regression-sync-device".to_owned();
+    let mut request = register(AppId::DESKTOP, vec![]);
+    request.device_id = device_id.clone();
+    let tokens = state
+        .auth_service
+        .register(request, &context())
+        .await
+        .unwrap();
+
+    let push = PushRequestV1 {
+        request_id: RequestId::new("regression-push-1"),
+        client: SyncClientInfo {
+            app_id: AppId::new(AppId::DESKTOP),
+            client_version: "0.2.1".to_owned(),
+            platform: ClientPlatform::new(ClientPlatform::WINDOWS),
+            protocol_version: 1,
+            schema_version: 1,
+            device_id: DeviceId::new(&device_id),
+        },
+        changes: vec![SyncChangeV1 {
+            change_id: ChangeId::new("regression-change-1"),
+            entity_type: EntityType::new(EntityType::FINANCE_TRANSACTION),
+            entity_id: EntityId::new("regression-entity-1"),
+            operation: ChangeOperation::new(ChangeOperation::DELETE),
+            base_server_version: ServerVersion::zero(),
+            entity_schema_version: 1,
+            client_modified_at: chrono::Utc::now(),
+            payload: None,
+            atomic_group_id: None,
+            dependencies: vec![],
+        }],
+    };
+
+    let response = state
+        .store
+        .push(&tokens.user.id, &push)
+        .await
+        .expect("sync push must reuse the registered device row");
+    assert_eq!(response.results.len(), 1);
+    // 同一设备只有一行。
+    let count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM cloud_devices WHERE user_id=$1::uuid AND app_id='lifetrace-desktop' AND external_device_id=$2",
+    )
+    .bind(tokens.user.id.as_str())
+    .bind(&device_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(count, 1);
 }
 
 #[tokio::test]

@@ -156,7 +156,7 @@ impl PostgresRepository {
                  id, user_id, app_id, platform, client_version, protocol_version, schema_version,\
                  status, external_device_id, first_seen_at, last_seen_at\
              ) VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8, now(), now()) \
-             ON CONFLICT (id) DO UPDATE SET \
+             ON CONFLICT (user_id, app_id, external_device_id) DO UPDATE SET \
                  client_version = EXCLUDED.client_version,\
                  protocol_version = EXCLUDED.protocol_version,\
                  schema_version = EXCLUDED.schema_version,\
