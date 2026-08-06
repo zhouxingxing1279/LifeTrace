@@ -23,7 +23,7 @@ export function createTransaction(userId: string, deviceId: string, input: Trans
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   return {
     meta: baseMeta(userId, deviceId), transactionType: input.type, amountCents,
-    currency: "CNY", occurredAt, localDate: input.localDate ?? occurredAt.slice(0, 10),
+    currency: "CNY", occurredAt, localDate: input.localDate ?? localDate(new Date(occurredAt)),
     status: input.status ?? "confirmed", sourceType: input.sourceType ?? "web_manual",
     accountId: input.accountId ?? null, toAccountId: input.toAccountId ?? null,
     categoryId: input.categoryId ?? null, merchant: input.merchant?.trim() || null,
@@ -35,6 +35,102 @@ export function createTransaction(userId: string, deviceId: string, input: Trans
 export function createBudgetPreference(userId: string, deviceId: string, month: string, amount: string, categoryId: string | null = null): JsonEntity {
   if (!/^\d{4}-\d{2}$/.test(month)) throw new Error("预算月份格式必须为 YYYY-MM");
   return { meta: baseMeta(userId, deviceId), preferenceKey: `finance.budget.${month}.${categoryId ?? "all"}`, value: { month, categoryId, amountCents: Math.abs(amountToCents(amount)), warningThreshold: 0.8 } };
+}
+
+export interface HabitInput {
+  name: string;
+  activityType?: string;
+  unit?: string;
+  minimumTarget?: number | null;
+  normalTarget?: number | null;
+  targetPeriod?: "daily" | "weekly" | string;
+  targetDays?: number[];
+  icon?: string | null;
+  color?: string | null;
+  description?: string | null;
+}
+
+export function createHabitActivity(userId: string, deviceId: string, input: HabitInput): JsonEntity {
+  const name = input.name.trim();
+  if (!name) throw new Error("请输入项目名称");
+  return {
+    meta: baseMeta(userId, deviceId), name,
+    activityType: input.activityType ?? "habit", unit: input.unit?.trim() || "次",
+    minimumTarget: input.minimumTarget ?? null, normalTarget: input.normalTarget ?? 1,
+    targetPeriod: input.targetPeriod ?? "daily", targetDays: input.targetDays ?? [],
+    icon: input.icon ?? name.slice(0, 1), color: input.color ?? "#0f766e",
+    scheduleType: "flexible", startDate: localDate(), checkinMethod: "manual",
+    syncSource: "web", description: input.description?.trim() || null, isArchived: false,
+  };
+}
+
+export function createHabitLog(userId: string, deviceId: string, activityId: string, value = 1, note = "", date = localDate()): JsonEntity {
+  if (!activityId) throw new Error("请选择坚持项目");
+  return {
+    meta: baseMeta(userId, deviceId), activityId, logDate: date,
+    value: Number.isFinite(value) ? value : 1, status: "completed",
+    note: note.trim() || null, metadata: { source: "web" },
+  };
+}
+
+export interface DailyReviewInput {
+  reviewDate?: string;
+  energy?: number | null;
+  mood?: number | null;
+  completionScore?: number | null;
+  bestThing?: string;
+  problem?: string;
+  tomorrowPriority?: string;
+  note?: string;
+}
+
+export function createDailyReview(userId: string, deviceId: string, input: DailyReviewInput, id?: string): JsonEntity {
+  return {
+    meta: baseMeta(userId, deviceId, id), reviewDate: input.reviewDate ?? localDate(),
+    energy: input.energy ?? null, mood: input.mood ?? null,
+    completionScore: input.completionScore ?? null,
+    bestThing: input.bestThing?.trim() || null, problem: input.problem?.trim() || null,
+    tomorrowPriority: input.tomorrowPriority?.trim() || null, note: input.note?.trim() || null,
+  };
+}
+
+export interface WorkoutInput {
+  name: string;
+  occurredAt?: string;
+  durationMinutes?: number;
+  exerciseCount?: number;
+  setCount?: number;
+  volumeKg?: number | null;
+  caloriesKcal?: number | null;
+  source?: string;
+}
+
+export function createWorkout(userId: string, deviceId: string, input: WorkoutInput): JsonEntity {
+  const occurredAt = input.occurredAt ?? new Date().toISOString();
+  return {
+    meta: baseMeta(userId, deviceId), source: input.source ?? "manual", sourceId: null,
+    name: input.name.trim() || "训练", occurredAt, localDate: localDate(new Date(occurredAt)),
+    durationSeconds: Math.max(0, Math.round((input.durationMinutes ?? 0) * 60)),
+    exerciseCount: Math.max(0, Math.round(input.exerciseCount ?? 0)),
+    setCount: Math.max(0, Math.round(input.setCount ?? 0)), plannedSetCount: null,
+    volumeKg: input.volumeKg ?? null, caloriesKcal: input.caloriesKcal ?? null, status: "completed",
+  };
+}
+
+export function createWorkoutExercise(userId: string, deviceId: string, workoutId: string, name: string, sortOrder = 0, plannedSets = 0, completedSets = 0): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), workoutId, name: name.trim() || "训练动作", sortOrder, plannedSets, completedSets };
+}
+
+export function createWorkoutSet(userId: string, deviceId: string, exerciseId: string, setNumber: number, weightKg: number | null, reps: number | null): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), exerciseId, setNumber, weightKg, reps, completed: true };
+}
+
+export function createWorkoutImport(userId: string, deviceId: string, shareUrl: string): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), source: "xunji", shareUrl: shareUrl.trim() || null, status: "pending", parser: null, parserVersion: null, error: null, workoutId: null };
+}
+
+export function createTrainingNote(userId: string, deviceId: string, title: string, content: string, workoutId: string | null = null): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), title: title.trim() || "训练笔记", content: content.trim(), workoutId, source: "manual", noteDate: localDate() };
 }
 
 export function createNoteFolder(userId: string, deviceId: string, name: string, sortOrder = 0): JsonEntity {
@@ -86,8 +182,16 @@ export function createEnglishHighlight(userId: string, deviceId: string, article
   return { meta: baseMeta(userId, deviceId), articleId, blockId: null, selectedText: selectedText.trim(), startOffset: null, endOffset: null, prefix: null, suffix: null, color: "yellow", note: note.trim() || null };
 }
 
+export function createEnglishNote(userId: string, deviceId: string, articleId: string, content: string, quote = ""): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), articleId, quote: quote.trim() || null, content: content.trim(), blockId: null, startOffset: null, endOffset: null, selectedText: quote.trim() || null, prefix: null, suffix: null, highlightId: null };
+}
+
 export function createEnglishLearningRecord(userId: string, deviceId: string, articleId: string, summary: string, readingTimeSeconds: number, newWords: string[] = []): JsonEntity {
   return { meta: baseMeta(userId, deviceId), articleId, analysisId: null, recordDate: localDate(), readingTimeSeconds: Math.max(0, Math.round(readingTimeSeconds)), summary: summary.trim(), newWords, completionStatus: "completed", readingStatus: "completed", startedAt: null, completedAt: new Date().toISOString(), score: null };
+}
+
+export function createPreference(userId: string, deviceId: string, preferenceKey: string, value: unknown): JsonEntity {
+  return { meta: baseMeta(userId, deviceId), preferenceKey, value };
 }
 
 export function createFileMetadata(userId: string, deviceId: string, file: { name: string; type: string; size: number; sha256: string }): JsonEntity {
