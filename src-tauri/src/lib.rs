@@ -6,6 +6,7 @@ mod database;
 mod desktop;
 mod server;
 mod sync;
+mod vault;
 
 use tauri::Manager;
 
@@ -43,10 +44,34 @@ pub fn run() {
             sync::commands::sync_now,
             sync::commands::sync_conflicts,
             sync::commands::sync_resolve_conflict,
+            vault::vault_status,
+            vault::vault_initialize,
+            vault::vault_unlock,
+            vault::vault_lock,
+            vault::vault_list_assets,
+            vault::vault_list_albums,
+            vault::vault_import_files,
+            vault::vault_read_asset,
+            vault::vault_read_thumbnail,
+            vault::vault_export_asset,
+            vault::vault_move_to_trash,
+            vault::vault_restore_asset,
+            vault::vault_delete_asset_permanently,
+            vault::vault_create_album,
+            vault::vault_rename_album,
+            vault::vault_delete_album,
+            vault::vault_set_asset_album,
+            vault::vault_verify_integrity,
+            vault::vault_change_password,
+            vault::vault_set_auto_lock,
+            vault::vault_set_lock_on_blur,
+            vault::vault_delete_all,
         ])
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
             let resource_dir = app.path().resource_dir()?;
+            let vault_state = vault::VaultState::new(data_dir.join("vault"))?;
+            app.manage(vault_state);
             let photo_runtime = server::photo::Runtime::new(data_dir.clone());
             app.manage(desktop::DesktopState {
                 data_dir: data_dir.clone(),

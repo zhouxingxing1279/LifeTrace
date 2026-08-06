@@ -4,6 +4,7 @@ import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
+import { installVaultBridge } from "./vaultBridge";
 
 import "@/app/globals.css";
 import "@/app/hengxu.css";
@@ -14,6 +15,7 @@ import "@/app/notes.css";
 import "@/app/redesign.css";
 import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
+import "@/app/local-vault.css";
 import "@/app/settings.css";
 
 const root = document.getElementById("root");
@@ -23,6 +25,7 @@ installAppPreferences();
 
 async function start() {
   installTauriApiBridge();
+  installVaultBridge();
   root!.innerHTML = '<div class="hx-loading"><span>LT</span><p>正在启动本地 SQLite 服务…</p></div>';
   try {
     await waitForTauriBackend();

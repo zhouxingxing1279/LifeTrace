@@ -12,20 +12,26 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+aes-gcm = "0.10"
+anyhow = "1"
+argon2 = "0.5"
+async-trait = "0.1"
 axum = { version = "0.8", features = ["multipart", "macros"] }
 axum-server = { version = "0.8", features = ["tls-rustls"] }
+base64 = "0.22"
 chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 lifetrace-contracts = { path = "../crates/lifetrace-contracts" }
 lifetrace-sync-client = { path = "../crates/lifetrace-sync-client" }
-async-trait = "0.1"
-futures-util = "0.3"
 md5 = "0.8"
+mime_guess = "2"
+rand = "0.8"
+regex = "1"
 reqwest = { version = "0.12", default-features = false, features = ["gzip", "json", "rustls-tls", "stream"] }
 rqrr = "0.10.1"
 rusqlite = { version = "0.37", features = ["bundled", "backup"] }
 rustls = { version = "0.23", features = ["ring"] }
-regex = "1"
 rcgen = "0.14"
 scraper = "0.27"
 serde = { version = "1", features = ["derive"] }
@@ -38,6 +44,7 @@ tokio = { version = "1", features = ["full"] }
 tower-http = { version = "0.6", features = ["cors", "trace"] }
 url = "2"
 uuid = { version = "1", features = ["v4", "serde"] }
+zeroize = "1.8"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = ["Win32_Foundation", "Win32_Security_Credentials"] }
