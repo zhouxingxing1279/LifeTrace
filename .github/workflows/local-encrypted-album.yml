@@ -1,0 +1,118 @@
+name: Local Encrypted Album
+
+on:
+  push:
+    branches:
+      - agent/local-encrypted-album
+    paths:
+      - "src-tauri/**"
+      - "src/components/LocalVaultModule.tsx"
+      - "src/components/PhotoSyncModule.tsx"
+      - "src/components/PhotoSyncDashboard.tsx"
+      - "src/types/electron.d.ts"
+      - "tauri-ui/**"
+      - "app/local-vault.css"
+      - ".github/workflows/local-encrypted-album.yml"
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - "src/components/LocalVaultModule.tsx"
+      - "src/components/PhotoSyncModule.tsx"
+      - "src/components/PhotoSyncDashboard.tsx"
+      - "src/types/electron.d.ts"
+      - "tauri-ui/**"
+      - "app/local-vault.css"
+      - ".github/workflows/local-encrypted-album.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  vault-security-and-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo timeout 240s apt-get update -o Acquire::Retries=3
+          sudo timeout 240s apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Enforce local-only boundary
+        shell: bash
+        run: |
+          if grep -En 'fetch\(|XMLHttpRequest|WebSocket|EventSource|syncApi|photoSyncApi|cloudCredentialApi' \
+            tauri-ui/vaultBridge.ts src-tauri/src/vault.rs; then
+            echo "Private album code must not access network or cloud/sync APIs."
+            exit 1
+          fi
+          test ! -e src-tauri/src/server/vault.rs
+          test ! -e src-tauri/src/sync/vault.rs
+      - name: Format Rust and refresh lockfile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+          cargo generate-lockfile --manifest-path src-tauri/Cargo.toml
+      - name: Rust private album tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1
+      - name: Rust desktop regression tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+      - name: Clippy
+        run: |
+          cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- \
+            -D warnings \
+            -A dead_code \
+            -A clippy::explicit_auto_deref \
+            -A clippy::field_reassign_with_default \
+            -A clippy::manual_async_fn \
+            -A clippy::map_identity \
+            -A clippy::needless_borrow \
+            -A clippy::needless_question_mark \
+            -A clippy::needless_range_loop \
+            -A clippy::question_mark \
+            -A clippy::redundant_closure \
+            -A clippy::result_large_err \
+            -A clippy::too_many_arguments \
+            -A clippy::type_complexity \
+            -A clippy::uninlined_format_args \
+            -A clippy::unnecessary_lazy_evaluations
+      - name: Frontend checks
+        run: |
+          npm ci
+          npm run lint
+          npm run test:unit
+          npm run web:build
+      - name: Require committed formatting and lockfile
+        run: git diff --exit-code -- src-tauri/src/vault.rs src-tauri/Cargo.lock
+      - name: Upload formatted Rust and lockfile for repair
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-vault-generated-files
+          path: |
+            src-tauri/src/vault.rs
+            src-tauri/Cargo.lock
+          if-no-files-found: warn
