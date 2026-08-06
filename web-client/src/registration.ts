@@ -1,5 +1,6 @@
 import { REQUESTED_SCOPES, type FetchLike, type WebSession } from "./cloud/types";
 import { API_BASE } from "./cloud/base";
+import { browserFetch } from "./cloud/http";
 
 export interface AuthCapabilities {
   registrationMode: "open" | "invite" | "disabled" | string;
@@ -35,7 +36,7 @@ function errorMessage(payload: unknown, fallback: string): string {
 }
 
 export class RegistrationApi {
-  constructor(private readonly fetcher: FetchLike = fetch.bind(globalThis)) {}
+  constructor(private readonly fetcher: FetchLike = browserFetch) {}
 
   private async request<T>(url: string, init: RequestInit = {}): Promise<T> {
     const headers = new Headers(init.headers);
