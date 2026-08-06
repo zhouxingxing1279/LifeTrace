@@ -45,6 +45,16 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - name: Enforce cloud-only storage policy
+        run: |
+          if grep -R -n -E 'localStorage|sessionStorage|indexedDB|IDBDatabase' web-client/src; then
+            echo "Business data must not be persisted in browser storage"
+            exit 1
+          fi
+          if grep -q 'addEventListener("fetch"' public/sw.js; then
+            echo "Service Worker must not intercept or cache Web/API requests"
+            exit 1
+          fi
       - run: npm run lint
       - run: npm run test:unit
       - run: npm run web:build
