@@ -4,8 +4,7 @@ on:
   pull_request:
     paths:
       - "web-client/**"
-      - "public/manifest.webmanifest"
-      - "public/sw.js"
+      - "public/**"
       - "vite.web.config.ts"
       - "tests/web-client.test.ts"
       - "package.json"
@@ -17,8 +16,7 @@ on:
     branches: [main]
     paths:
       - "web-client/**"
-      - "public/manifest.webmanifest"
-      - "public/sw.js"
+      - "public/**"
       - "vite.web.config.ts"
       - "tests/web-client.test.ts"
       - "package.json"
