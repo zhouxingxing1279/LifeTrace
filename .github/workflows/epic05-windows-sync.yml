@@ -1,0 +1,175 @@
+name: EPIC-05 Windows Sync
+
+on:
+  push:
+    branches:
+      - main
+      - agent/epic-05-windows-sync-core
+    paths:
+      - "crates/lifetrace-contracts/**"
+      - "crates/lifetrace-sync-client/**"
+      - "src-tauri/**"
+      - "src/**"
+      - "tauri-ui/**"
+      - "services/lifetrace-cloud/**"
+      - "docs/epic-05/**"
+      - "package*.json"
+      - ".github/workflows/epic05-windows-sync.yml"
+  pull_request:
+    paths:
+      - "crates/lifetrace-contracts/**"
+      - "crates/lifetrace-sync-client/**"
+      - "src-tauri/**"
+      - "src/**"
+      - "tauri-ui/**"
+      - "services/lifetrace-cloud/**"
+      - "docs/epic-05/**"
+      - "package*.json"
+      - ".github/workflows/epic05-windows-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-core-desktop-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo timeout 240s apt-get update \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20
+          sudo timeout 240s apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-contracts
+            crates/lifetrace-sync-client
+            src-tauri
+      - name: Rustfmt
+        run: |
+          cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml -- --check
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Contract tests
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+      - name: Pure sync core tests
+        run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
+      - name: Desktop SQLite and adapter tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+      - name: Clippy pure sync core
+        run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
+      - name: Clippy desktop library
+        run: |
+          cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- \
+            -D warnings \
+            -A dead_code \
+            -A clippy::explicit_auto_deref \
+            -A clippy::field_reassign_with_default \
+            -A clippy::manual_async_fn \
+            -A clippy::map_identity \
+            -A clippy::needless_borrow \
+            -A clippy::needless_question_mark \
+            -A clippy::needless_range_loop \
+            -A clippy::question_mark \
+            -A clippy::redundant_closure \
+            -A clippy::result_large_err \
+            -A clippy::too_many_arguments \
+            -A clippy::type_complexity \
+            -A clippy::uninlined_format_args \
+            -A clippy::unnecessary_lazy_evaluations
+      - name: Frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run test:unit
+          npm run web:build
+
+  cloud-postgresql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: lifetrace
+          POSTGRES_PASSWORD: lifetrace_test_password
+          POSTGRES_DB: lifetrace_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lifetrace -d lifetrace_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      TEST_DATABASE_URL: postgres://lifetrace:lifetrace_test_password@127.0.0.1:5432/lifetrace_test
+      AUTH_PASSWORD_PEPPER: epic05-ci-password-pepper
+      AUTH_TOKEN_HASH_PEPPER: epic05-ci-token-pepper
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/lifetrace-cloud
+      - name: Cloud PostgreSQL authentication, persistence and isolation regression
+        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
+
+  windows-client:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create required bundled dictionary resource
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-sync-client
+            src-tauri
+      - name: Windows pure core and desktop tests
+        run: |
+          cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
+          cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+      - name: Windows frontend build
+        run: |
+          npm ci
+          npm run web:build
