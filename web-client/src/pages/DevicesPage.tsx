@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
-import type { DeviceInstallation, ManagedSession, WebManagementApi, WebSession } from "../core";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { WebManagementApi, type AuthApi, type DeviceInstallation, type ManagedSession, type WebSession } from "../core";
 import { Empty, Notice, PageStack, Panel } from "../ui";
 
-export function DevicesPage({ session, management, online }: { session: WebSession; management: WebManagementApi; online: boolean }) {
+export function DevicesPage({ session, auth, online }: { session: WebSession; auth: AuthApi; online: boolean }) {
+  const management = useMemo(() => new WebManagementApi(), [auth]);
   const [devices, setDevices] = useState<DeviceInstallation[]>([]);
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
   const [error, setError] = useState("");
