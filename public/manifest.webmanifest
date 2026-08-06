@@ -1,0 +1,17 @@
+{
+  "name": "LifeTrace 个人管理平台",
+  "short_name": "LifeTrace",
+  "description": "财务、笔记与英语学习的跨端个人管理平台",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f4f1e9",
+  "theme_color": "#24362e",
+  "lang": "zh-CN",
+  "categories": ["productivity", "finance", "education"],
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
