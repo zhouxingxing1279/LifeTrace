@@ -15,7 +15,7 @@ on:
       - "services/lifetrace-cloud/**"
       - ".github/workflows/browser-web.yml"
   push:
-    branches: [main]
+    branches: [main, agent/browser-app-parity]
     paths:
       - "web-client/**"
       - "app/**"
@@ -39,9 +39,9 @@ concurrency:
 
 jobs:
   frontend:
-    name: Typecheck, unit tests and browser build
+    name: Typecheck, unit tests and builds
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -62,6 +62,7 @@ jobs:
           fi
       - run: npm run lint
       - run: npm run test:unit
+      - run: npm run web:build
       - run: npm run browser:build
       - name: Verify browser artifact
         shell: bash
