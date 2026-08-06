@@ -22,14 +22,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cat .epic05-overlay/chunk-* | base64 -d > /tmp/epic05-overlay.tar.xz
-          xz -t /tmp/epic05-overlay.tar.xz
-          tar -tJf /tmp/epic05-overlay.tar.xz >/dev/null
-          echo "Base overlay: $(sha256sum /tmp/epic05-overlay.tar.xz | cut -d' ' -f1), $(stat -c %s /tmp/epic05-overlay.tar.xz) bytes"
-          tar -xJf /tmp/epic05-overlay.tar.xz
+          cat .epic05-overlay/chunk-* | base64 -d > epic05-base-overlay.tar.xz
+          xz -t epic05-base-overlay.tar.xz
+          tar -tJf epic05-base-overlay.tar.xz >/dev/null
+          echo "Base overlay: $(sha256sum epic05-base-overlay.tar.xz | cut -d' ' -f1), $(stat -c %s epic05-base-overlay.tar.xz) bytes"
+          tar -xJf epic05-base-overlay.tar.xz
 
           cat .epic05-fix/chunk-* | base64 -d > epic05-fix-diagnostic.tar.xz
           echo "Fix overlay: $(sha256sum epic05-fix-diagnostic.tar.xz | cut -d' ' -f1), $(stat -c %s epic05-fix-diagnostic.tar.xz) bytes"
+      - name: Upload base overlay diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: epic05-base-archive
+          path: epic05-base-overlay.tar.xz
+          if-no-files-found: error
+          retention-days: 1
       - name: Upload repair archive diagnostics
         uses: actions/upload-artifact@v4
         with:
@@ -115,7 +122,7 @@ jobs:
         run: |
           set -euo pipefail
           rm -rf .epic05-overlay .epic05-fix
-          rm -f .github/workflows/epic05-bootstrap.yml epic05-fix-diagnostic.tar.xz
+          rm -f .github/workflows/epic05-bootstrap.yml epic05-base-overlay.tar.xz epic05-fix-diagnostic.tar.xz
           git config user.name "LifeTrace EPIC-05 Agent"
           git config user.email "actions@users.noreply.github.com"
           git add -A
