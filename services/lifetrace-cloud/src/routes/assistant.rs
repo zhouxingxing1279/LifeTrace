@@ -98,8 +98,8 @@ async fn assistant(
         }));
     }
 
-    let base_url = env_non_empty("DEEPSEEK_BASE_URL")
-        .unwrap_or_else(|| "https://api.deepseek.com".to_owned());
+    let base_url =
+        env_non_empty("DEEPSEEK_BASE_URL").unwrap_or_else(|| "https://api.deepseek.com".to_owned());
     let model = env_non_empty("DEEPSEEK_MODEL").unwrap_or_else(|| "deepseek-chat".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let context_text = serde_json::to_string(&context).unwrap_or_else(|_| "{}".to_owned());
@@ -241,7 +241,8 @@ fn local_reply(prompt: &str, context: &Value) -> String {
     let readings = count(context, "english.learning_record");
     let reviews = count(context, "review.daily");
 
-    let focus = if prompt.contains("消费") || prompt.contains("财务") || prompt.contains("账单") {
+    let focus = if prompt.contains("消费") || prompt.contains("财务") || prompt.contains("账单")
+    {
         format!("当前上下文包含 {transactions} 笔近期账单。建议先按支出类别和月份核对大额、重复及候选流水，再结合预算判断是否需要调整。")
     } else if prompt.contains("训练") || prompt.contains("健身") {
         format!("当前上下文包含 {workouts} 次近期训练。建议对照训练频率、时长和容量变化，并结合复盘中的精力状态安排下一周负荷。")
