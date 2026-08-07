@@ -13,6 +13,8 @@ const USER_KEY = "lifetrace-cloud-user";
 const LOCAL_ORIGIN = "http://127.0.0.1:8787";
 type ImportMetaWithEnv = ImportMeta & { env?: Record<string, string | undefined> };
 
+let reconnectFlight: Promise<boolean> | undefined;
+
 function storage(): Storage | undefined { return typeof window !== "undefined" ? window.localStorage : undefined; }
 function buildOrigin(): string { return ((import.meta as ImportMetaWithEnv).env?.VITE_LIFETRACE_CLOUD_URL || "").trim(); }
 function readOrigin(): string { return savedCloudOrigin() || buildOrigin() || LOCAL_ORIGIN; }
@@ -40,6 +42,7 @@ type CloudAuthState = CloudAuthSnapshot & {
   error?: string;
   setOrigin(origin: string): void;
   initialize(): Promise<void>;
+  reconnect(): Promise<boolean>;
   loadCapabilities(): Promise<CloudAuthCapabilities | undefined>;
   login(email: string, password: string): Promise<boolean>;
   register(input: { email: string; password: string; displayName?: string; inviteToken?: string }): Promise<boolean>;
@@ -53,6 +56,21 @@ type CloudAuthState = CloudAuthSnapshot & {
 function authenticatedPatch(snapshot: CloudAuthSnapshot) {
   writeCachedUser(snapshot.user);
   return { ...snapshot, phase: "authenticated" as const, loading: false, initialized: true, error: undefined };
+}
+
+function anonymousPatch() {
+  writeCachedUser(undefined);
+  return {
+    user: undefined,
+    session: undefined,
+    binding: undefined,
+    scopes: [],
+    authenticated: false,
+    phase: "anonymous" as const,
+    loading: false,
+    initialized: true,
+    error: undefined,
+  };
 }
 
 export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
@@ -82,8 +100,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       set({ origin: cloudAuthClient.configuredOrigin() });
       const hasCredential = await cloudAuthClient.hasStoredCredential();
       if (!hasCredential) {
-        writeCachedUser(undefined);
-        set({ user: undefined, session: undefined, binding: undefined, scopes: [], authenticated: false, phase: "anonymous", loading: false, initialized: true });
+        set(anonymousPatch());
         return;
       }
       const snapshot = await cloudAuthClient.restore();
@@ -91,13 +108,51 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
     } catch (error) {
       const hasCredential = await cloudAuthClient.hasStoredCredential();
       if (hasCredential) {
-        set({ authenticated: false, phase: "offline", loading: false, initialized: true, error: "云端暂时不可用，将在网络恢复后重新连接" });
+        set({ authenticated: false, phase: "offline", loading: false, initialized: true, error: "云端暂时不可用，将自动使用已保存的登录凭据重连" });
       } else {
-        writeCachedUser(undefined);
-        set({ user: undefined, session: undefined, binding: undefined, scopes: [], authenticated: false, phase: "anonymous", loading: false, initialized: true, error: undefined });
+        set(anonymousPatch());
       }
       if (!hasCredential && error instanceof Error && !/Refresh Token/.test(error.message)) set({ error: error.message });
     }
+  },
+
+  async reconnect() {
+    if (get().phase !== "offline") return get().authenticated;
+    if (reconnectFlight) return reconnectFlight;
+
+    reconnectFlight = (async () => {
+      try {
+        cloudAuthClient.configure(get().origin);
+        const hasCredential = await cloudAuthClient.hasStoredCredential();
+        if (!hasCredential) {
+          set(anonymousPatch());
+          return false;
+        }
+
+        const snapshot = await cloudAuthClient.restore();
+        if (get().phase !== "offline") return get().authenticated;
+        set(authenticatedPatch(snapshot));
+        return true;
+      } catch (error) {
+        const hasCredential = await cloudAuthClient.hasStoredCredential();
+        if (!hasCredential) {
+          set(anonymousPatch());
+          return false;
+        }
+        if (get().phase === "offline") {
+          set({
+            authenticated: false,
+            phase: "offline",
+            loading: false,
+            initialized: true,
+            error: "云端暂时不可用，正在自动重连",
+          });
+        }
+        return false;
+      }
+    })().finally(() => { reconnectFlight = undefined; });
+
+    return reconnectFlight;
   },
 
   async loadCapabilities() {
@@ -139,7 +194,13 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
     catch (error) { set({ loading: false, error: error instanceof Error ? error.message : "修改密码失败" }); return false; }
   },
 
-  async restore() { await get().initialize(); },
+  async restore() {
+    if (get().phase === "offline") {
+      await get().reconnect();
+      return;
+    }
+    await get().initialize();
+  },
 
   async logout(all = false) {
     writeCachedUser(undefined);
