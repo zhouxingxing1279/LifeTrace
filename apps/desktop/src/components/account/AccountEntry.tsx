@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronRight,
   Cloud,
@@ -17,8 +18,7 @@ import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 import { confirmAction } from "@/src/ui/feedback/confirm";
 
 export type SettingsSection = "general" | "sync" | "ai" | "translation" | "security" | "about";
-
-type AuthDialogMode = "login" | "register" | "binding";
+type AuthDialogMode = "login" | "register";
 
 function initials(value?: string | null) {
   const text = value?.trim();
@@ -26,7 +26,15 @@ function initials(value?: string | null) {
   return text.slice(0, 2).toUpperCase();
 }
 
-function AccountDialog({ initialMode, close }: { initialMode: "login" | "register"; close: () => void }) {
+function openSettings(section: SettingsSection) {
+  window.location.hash = `settings-${section}`;
+  const settingsButton = Array.from(document.querySelectorAll<HTMLButtonElement>(".hx-sidebar-foot > button"))
+    .find((button) => button.textContent?.includes("设置"));
+  settingsButton?.click();
+  window.setTimeout(() => document.getElementById(`settings-${section}`)?.scrollIntoView({ block: "start" }), 60);
+}
+
+function AccountDialog({ initialMode, close }: { initialMode: AuthDialogMode; close: () => void }) {
   const auth = useCloudAuthStore();
   const [mode, setMode] = useState<AuthDialogMode>(initialMode);
   const [email, setEmail] = useState("");
@@ -57,8 +65,10 @@ function AccountDialog({ initialMode, close }: { initialMode: "login" | "registe
   const completeAuth = () => {
     setPassword("");
     setConfirmPassword("");
-    if (useCloudAuthStore.getState().binding?.bindingRequired) setMode("binding");
-    else close();
+    close();
+    // 登录可能切换到另一个用户专属 SQLite Profile。刷新 WebView，确保所有模块
+    // （包括有内部缓存的笔记、英语等）重新从当前 Profile 读取，而不是残留上一个用户的数据。
+    window.setTimeout(() => window.location.reload(), 50);
   };
 
   const submitLogin = async (event: React.FormEvent) => {
@@ -93,7 +103,7 @@ function AccountDialog({ initialMode, close }: { initialMode: "login" | "registe
       return;
     }
     if (await auth.forgotPassword(email.trim())) {
-      setMessage("密码重置请求已提交，请按服务端提供的方式继续操作");
+      setMessage("密码重置请求已提交");
     }
   };
 
@@ -102,56 +112,42 @@ function AccountDialog({ initialMode, close }: { initialMode: "login" | "registe
   }}>
     <section className="hx-account-dialog" role="dialog" aria-modal="true" aria-labelledby="hx-account-dialog-title">
       <header className="hx-account-dialog-head">
-        <div><span className="hx-account-mark">LT</span><div><h2 id="hx-account-dialog-title">{mode === "binding" ? "连接你的数据" : mode === "register" ? "创建 LifeTrace 账号" : "登录 LifeTrace"}</h2><p>{mode === "binding" ? "选择这台电脑上现有数据的归属" : "登录后可在设备之间同步个人记录"}</p></div></div>
+        <div><span className="hx-account-mark">LT</span><div><h2 id="hx-account-dialog-title">{mode === "register" ? "创建 LifeTrace 账号" : "登录 LifeTrace"}</h2><p>每个账号拥有独立的数据空间</p></div></div>
         <button type="button" aria-label="关闭" disabled={auth.loading} onClick={close}><X /></button>
       </header>
 
-      {mode === "binding" ? <div className="hx-account-binding">
-        <div className="hx-account-binding-option">
-          <strong>关联这台电脑上的现有数据</strong>
-          <p>保留当前本地记录，并把这份资料与刚登录的账号关联。适合已经使用过 LifeTrace 的设备。</p>
-          <button className="hx-btn primary" disabled={auth.loading} onClick={async () => { await auth.bindCurrentProfile(); if (!useCloudAuthStore.getState().binding?.bindingRequired) close(); }}>关联并开始同步</button>
-        </div>
-        <div className="hx-account-binding-option">
-          <strong>使用新的空白云端资料</strong>
-          <p>当前本地资料仍保留在这台电脑，新账号从空白资料开始。</p>
-          <button className="hx-btn secondary" disabled={auth.loading} onClick={async () => { await auth.createCloudProfile(); if (!useCloudAuthStore.getState().binding?.bindingRequired) close(); }}>创建空白资料</button>
-        </div>
-        {auth.error && <p className="hx-account-error" role="alert">{auth.error}</p>}
-      </div> : <>
-        <div className="hx-account-tabs" role="tablist">
-          <button type="button" className={mode === "login" ? "active" : ""} onClick={() => { setMode("login"); setMessage(""); auth.clearError(); }}>登录</button>
-          {registrationAllowed && <button type="button" className={mode === "register" ? "active" : ""} onClick={() => { setMode("register"); setMessage(""); auth.clearError(); }}>注册</button>}
-        </div>
+      <div className="hx-account-tabs" role="tablist">
+        <button type="button" className={mode === "login" ? "active" : ""} onClick={() => { setMode("login"); setMessage(""); auth.clearError(); }}>登录</button>
+        {registrationAllowed && <button type="button" className={mode === "register" ? "active" : ""} onClick={() => { setMode("register"); setMessage(""); auth.clearError(); }}>注册</button>}
+      </div>
 
-        <form className="hx-account-form" onSubmit={mode === "register" ? submitRegister : submitLogin}>
-          {mode === "register" && <label>昵称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" placeholder="你希望显示的名字" /></label>}
-          <label>邮箱<input ref={emailRef} type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" placeholder="name@example.com" /></label>
-          <label>密码<div className="hx-account-password"><input type={showPassword ? "text" : "password"} required minLength={mode === "register" ? passwordMinLength : undefined} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} placeholder={mode === "register" ? `至少 ${passwordMinLength} 个字符` : "输入密码"} /><button type="button" aria-label={showPassword ? "隐藏密码" : "显示密码"} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
-          {mode === "register" && <label>确认密码<input type={showPassword ? "text" : "password"} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="再次输入密码" /></label>}
-          {mode === "register" && registrationMode === "invite" && <label>邀请码<input required value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} autoComplete="off" placeholder="输入管理员提供的邀请码" /></label>}
+      <form className="hx-account-form" onSubmit={mode === "register" ? submitRegister : submitLogin}>
+        {mode === "register" && <label>昵称<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} autoComplete="name" placeholder="你希望显示的名字" /></label>}
+        <label>邮箱<input ref={emailRef} type="email" required value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="username" placeholder="name@example.com" /></label>
+        <label>密码<div className="hx-account-password"><input type={showPassword ? "text" : "password"} required minLength={mode === "register" ? passwordMinLength : undefined} value={password} onChange={(event) => setPassword(event.target.value)} autoComplete={mode === "register" ? "new-password" : "current-password"} placeholder={mode === "register" ? `至少 ${passwordMinLength} 个字符` : "输入密码"} /><button type="button" aria-label={showPassword ? "隐藏密码" : "显示密码"} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff /> : <Eye />}</button></div></label>
+        {mode === "register" && <label>确认密码<input type={showPassword ? "text" : "password"} required value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} autoComplete="new-password" placeholder="再次输入密码" /></label>}
+        {mode === "register" && registrationMode === "invite" && <label>邀请码<input required value={inviteToken} onChange={(event) => setInviteToken(event.target.value)} autoComplete="off" placeholder="输入管理员提供的邀请码" /></label>}
 
-          {mode === "login" && <button className="hx-account-link" type="button" onClick={() => void forgotPassword()}>忘记密码？</button>}
-          {(message || auth.error) && <p className="hx-account-error" role="alert">{message || auth.error}</p>}
+        {mode === "login" && <button className="hx-account-link" type="button" onClick={() => void forgotPassword()}>忘记密码？</button>}
+        {(message || auth.error) && <p className="hx-account-error" role="alert">{message || auth.error}</p>}
 
-          <button className="hx-btn primary hx-account-submit" disabled={auth.loading || !email.trim() || !password}>
-            {auth.loading ? <><LoaderCircle className="spin" />正在处理…</> : mode === "register" ? "创建账号" : <><LogIn />登录</>}
-          </button>
-        </form>
+        <button className="hx-btn primary hx-account-submit" disabled={auth.loading || !email.trim() || !password}>
+          {auth.loading ? <><LoaderCircle className="spin" />正在处理…</> : mode === "register" ? "创建账号" : <><LogIn />登录</>}
+        </button>
+      </form>
 
-        <div className="hx-account-server">
-          <button type="button" onClick={() => setAdvanced((value) => !value)}><Server />服务器设置<ChevronRight className={advanced ? "open" : ""} /></button>
-          {advanced && <label>LifeTrace 服务地址<input value={auth.origin} onChange={(event) => auth.setOrigin(event.target.value)} placeholder="https://api.example.com" /><small>普通使用无需修改。开发环境默认连接本机 8787 端口。</small></label>}
-        </div>
-      </>}
+      <div className="hx-account-server">
+        <button type="button" onClick={() => setAdvanced((value) => !value)}><Server />服务器设置<ChevronRight className={advanced ? "open" : ""} /></button>
+        {advanced && <label>LifeTrace 服务地址<input value={auth.origin} onChange={(event) => auth.setOrigin(event.target.value)} placeholder="https://api.example.com" /><small>普通使用无需修改。开发环境默认连接本机 8787 端口。</small></label>}
+      </div>
     </section>
   </div>;
 }
 
-export default function AccountEntry({ onOpenSettings }: { onOpenSettings: (section: SettingsSection) => void }) {
+function AccountEntry() {
   const auth = useCloudAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dialog, setDialog] = useState<"login" | "register" | null>(null);
+  const [dialog, setDialog] = useState<AuthDialogMode | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -173,24 +169,21 @@ export default function AccountEntry({ onOpenSettings }: { onOpenSettings: (sect
   const status = auth.phase === "bootstrapping" || auth.phase === "refreshing"
     ? "正在恢复账户…"
     : auth.phase === "offline" && auth.user
-      ? "离线 · 等待恢复"
+      ? "离线 · 保持登录"
       : auth.authenticated
-        ? auth.binding?.bindingRequired ? "需要完成数据连接" : "已登录"
+        ? "已登录"
         : "同步你的数据";
 
   const logout = async () => {
     setMenuOpen(false);
     const accepted = await confirmAction({
       title: "退出 LifeTrace？",
-      description: "退出后本机数据仍会保留，但会停止当前账号的云端同步。",
+      description: "退出后当前账号的数据仍会安全保存在本机和云端，但不会向其他账号显示。",
       confirmLabel: "退出登录",
     });
-    if (accepted) await auth.logout(false);
-  };
-
-  const openSettings = (section: SettingsSection) => {
-    setMenuOpen(false);
-    onOpenSettings(section);
+    if (!accepted) return;
+    await auth.logout(false);
+    window.location.reload();
   };
 
   const hasIdentity = Boolean(auth.user && (auth.authenticated || auth.phase === "offline"));
@@ -199,10 +192,9 @@ export default function AccountEntry({ onOpenSettings }: { onOpenSettings: (sect
     {hasIdentity ? <>
       {menuOpen && <div className="hx-account-menu" role="menu">
         <header><span>{initials(name)}</span><div><strong>{name}</strong><small>{auth.user?.email}</small></div></header>
-        {auth.binding?.bindingRequired && <button type="button" className="attention" onClick={() => setDialog("login")}><Cloud />完成数据连接<ChevronRight /></button>}
-        <button type="button" onClick={() => openSettings("security")}><ShieldCheck />账户与安全<ChevronRight /></button>
-        <button type="button" onClick={() => openSettings("sync")}><Cloud />同步状态<ChevronRight /></button>
-        <button type="button" onClick={() => openSettings("general")}><Settings />设置<ChevronRight /></button>
+        <button type="button" onClick={() => { setMenuOpen(false); openSettings("security"); }}><ShieldCheck />账户与安全<ChevronRight /></button>
+        <button type="button" onClick={() => { setMenuOpen(false); openSettings("sync"); }}><Cloud />同步状态<ChevronRight /></button>
+        <button type="button" onClick={() => { setMenuOpen(false); openSettings("general"); }}><Settings />设置<ChevronRight /></button>
         <div className="hx-account-menu-separator" />
         <button type="button" className="danger" disabled={auth.loading} onClick={() => void logout()}><LogOut />退出登录</button>
       </div>}
@@ -215,3 +207,26 @@ export default function AccountEntry({ onOpenSettings }: { onOpenSettings: (sect
     {dialog && <AccountDialog initialMode={dialog} close={() => setDialog(null)} />}
   </div>;
 }
+
+export function AccountEntryHost() {
+  const [target, setTarget] = useState<Element | null>(null);
+
+  useEffect(() => {
+    void useCloudAuthStore.getState().initialize();
+    const locate = () => {
+      const next = document.querySelector(".hx-sidebar-foot");
+      if (next) setTarget(next);
+      return Boolean(next);
+    };
+    if (locate()) return;
+    const observer = new MutationObserver(() => {
+      if (locate()) observer.disconnect();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, []);
+
+  return target ? createPortal(<AccountEntry />, target) : null;
+}
+
+export default AccountEntry;
