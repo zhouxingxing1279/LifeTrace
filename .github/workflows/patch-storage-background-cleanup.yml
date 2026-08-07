@@ -1,0 +1,169 @@
+name: Patch storage background cleanup
+
+on:
+  push:
+    branches:
+      - feat/storage-location-migration
+    paths:
+      - .github/workflows/patch-storage-background-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/storage-location-migration
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Move old-directory deletion to background cleanup
+        shell: python
+        run: |
+          from pathlib import Path
+
+          storage = Path("apps/desktop/src-tauri/src/storage.rs")
+          text = storage.read_text(encoding="utf-8")
+
+          old_commit = '''fn commit_migration(
+              config: &mut StorageConfig,
+              locator: &Path,
+              pending: &PendingMigration,
+          ) -> Result<(), String> {
+              config.active_data_dir = Some(pending.target.clone());
+              config.pending_migration = None;
+              config.cleanup_pending = Some(pending.source.clone());
+              save_config(locator, config)?;
+
+              match fs::remove_dir_all(&pending.source) {
+                  Ok(()) => {
+                      config.cleanup_pending = None;
+                      save_config(locator, config)?;
+                  }
+                  Err(value) => eprintln!(
+                      "LifeTrace storage migration completed but old directory cleanup failed: {value}"
+                  ),
+              }
+              Ok(())
+          }
+          '''
+          new_commit = '''fn commit_migration(
+              config: &mut StorageConfig,
+              locator: &Path,
+              pending: &PendingMigration,
+          ) -> Result<(), String> {
+              config.active_data_dir = Some(pending.target.clone());
+              config.pending_migration = None;
+              config.cleanup_pending = Some(pending.source.clone());
+              save_config(locator, config)
+          }
+          '''
+          if old_commit not in text:
+              raise SystemExit("commit_migration block not found")
+          text = text.replace(old_commit, new_commit, 1)
+
+          old_retry = '''fn retry_old_directory_cleanup(config: &mut StorageConfig, locator: &Path) -> Result<(), String> {
+              let Some(old_path) = config.cleanup_pending.clone() else {
+                  return Ok(());
+              };
+              if config.active_data_dir.as_ref() == Some(&old_path) {
+                  config.cleanup_pending = None;
+                  return save_config(locator, config);
+              }
+              if !old_path.exists() || fs::remove_dir_all(&old_path).is_ok() {
+                  config.cleanup_pending = None;
+                  save_config(locator, config)?;
+              }
+              Ok(())
+          }
+          '''
+          new_retry = '''fn retry_old_directory_cleanup(config_path: &Path) -> Result<(), String> {
+              let initial = load_config(config_path)?;
+              let Some(old_path) = initial.cleanup_pending else {
+                  return Ok(());
+              };
+              if initial.active_data_dir.as_ref() == Some(&old_path) {
+                  let mut latest = load_config(config_path)?;
+                  if latest.cleanup_pending.as_ref() == Some(&old_path) {
+                      latest.cleanup_pending = None;
+                      save_config(config_path, &latest)?;
+                  }
+                  return Ok(());
+              }
+
+              if old_path.exists() {
+                  fs::remove_dir_all(&old_path)
+                      .map_err(|value| error("删除迁移完成后的旧存储目录失败", value))?;
+              }
+
+              let mut latest = load_config(config_path)?;
+              if latest.cleanup_pending.as_ref() == Some(&old_path)
+                  && latest.active_data_dir.as_ref() != Some(&old_path)
+              {
+                  latest.cleanup_pending = None;
+                  save_config(config_path, &latest)?;
+              }
+              Ok(())
+          }
+
+          pub fn schedule_pending_cleanup(config_path: PathBuf) {
+              tokio::task::spawn_blocking(move || {
+                  if let Err(value) = retry_old_directory_cleanup(&config_path) {
+                      eprintln!("LifeTrace old storage cleanup deferred: {value}");
+                  }
+              });
+          }
+          '''
+          if old_retry not in text:
+              raise SystemExit("retry cleanup block not found")
+          text = text.replace(old_retry, new_retry, 1)
+
+          old_boot = '''
+              retry_old_directory_cleanup(&mut config, &locator)?;
+
+              let current_data_dir = config
+          '''
+          new_boot = '''
+              let current_data_dir = config
+          '''
+          if old_boot not in text:
+              raise SystemExit("bootstrap synchronous cleanup call not found")
+          text = text.replace(old_boot, new_boot, 1)
+          storage.write_text(text, encoding="utf-8")
+
+          lib = Path("apps/desktop/src-tauri/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          old_manage = '''            app.manage(storage::StorageState::new(
+                          data_dir.clone(),
+                          default_data_dir,
+                          storage_config_path,
+                      ));
+
+                      let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
+          '''
+          new_manage = '''            app.manage(storage::StorageState::new(
+                          data_dir.clone(),
+                          default_data_dir,
+                          storage_config_path.clone(),
+                      ));
+                      storage::schedule_pending_cleanup(storage_config_path);
+
+                      let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
+          '''
+          if old_manage not in text:
+              raise SystemExit("storage state manage block not found")
+          lib.write_text(text.replace(old_manage, new_manage, 1), encoding="utf-8")
+      - name: Format Rust
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/storage.rs apps/desktop/src-tauri/src/lib.rs
+          git commit -m "fix(storage): delete old directory on background worker"
+          git push origin HEAD:feat/storage-location-migration
