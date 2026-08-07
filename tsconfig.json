@@ -1,7 +1,11 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["dom", "dom.iterable", "esnext"],
+    "lib": [
+      "dom",
+      "dom.iterable",
+      "esnext"
+    ],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -13,9 +17,13 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "types": ["vite/client"],
+    "types": [
+      "vite/client"
+    ],
     "paths": {
-      "@/*": ["./*"]
+      "@/*": [
+        "./*"
+      ]
     }
   },
   "include": [
@@ -30,7 +38,16 @@
     "src/types/**/*.ts",
     "contracts/typescript/**/*.ts",
     "vite.tauri.config.ts",
-    "vite.browser.config.ts"
+    "vite.browser.config.ts",
+    "src/ui/**/*.ts",
+    "src/ui/**/*.tsx"
   ],
-  "exclude": ["node_modules", "src/server", "app/api", "desktop", "scripts", "tests"]
+  "exclude": [
+    "node_modules",
+    "src/server",
+    "app/api",
+    "desktop",
+    "scripts",
+    "tests"
+  ]
 }
