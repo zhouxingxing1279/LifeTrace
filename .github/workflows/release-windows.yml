@@ -97,6 +97,7 @@ jobs:
           prerelease: false
           owner: zhouxingxing1279
           repo: LifeTrace-Releases
+          releaseCommitish: main
           args: --verbose
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
