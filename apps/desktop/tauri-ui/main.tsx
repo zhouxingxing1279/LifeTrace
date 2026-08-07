@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
 import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
+import { AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
@@ -44,6 +45,7 @@ async function start() {
       <StrictMode>
         <ClientErrorBoundary>
           <HengXuShell />
+          <AccountEntryHost />
           <MobileUploadConnectionStatus />
         </ClientErrorBoundary>
       </StrictMode>,
