@@ -12,7 +12,6 @@ on:
       - "tauri-ui/**"
       - "tests/**"
       - "tsconfig.json"
-      - "docs/ui-redesign/**"
   workflow_dispatch:
 
 permissions:
@@ -21,6 +20,13 @@ permissions:
 concurrency:
   group: ui-refactor-agent-${{ github.ref }}
   cancel-in-progress: false
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
+  CARGO_BUILD_JOBS: "2"
+  RUSTFLAGS: "-C debuginfo=0"
 
 jobs:
   refactor-and-validate:
@@ -31,6 +37,11 @@ jobs:
         with:
           ref: agent/ui-redesign
           fetch-depth: 0
+
+      - name: Reclaim runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /usr/local/share/boost || true
+          df -h
 
       - name: Install Tauri Linux dependencies
         env:
@@ -94,13 +105,55 @@ jobs:
         run: npm test
 
       - name: Rust desktop regression tests
-        run: npm run test:rust
+        id: rust-tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+          npm run test:rust 2>&1 | tee /tmp/rust-test.log
+          status=${PIPESTATUS[0]}
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          mkdir -p docs/ui-redesign
+          {
+            echo "# Rust test failure diagnostic"
+            echo
+            echo "Workflow run: $GITHUB_RUN_ID"
+            echo "Commit: $GITHUB_SHA"
+            echo "Exit status: $status"
+            echo
+            echo '```text'
+            tail -n 500 /tmp/rust-test.log
+            echo '```'
+          } > docs/ui-redesign/RUST_TEST_FAILURE.md
+          exit "$status"
+
+      - name: Commit Rust diagnostics
+        if: always() && steps.rust-tests.outputs.status != '0'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/ui-redesign/RUST_TEST_FAILURE.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: capture Rust test failure"
+            git push origin HEAD:agent/ui-redesign
+          fi
+
+      - name: Stop after Rust failure
+        if: always() && steps.rust-tests.outputs.status != '0'
+        run: exit 1
+
+      - name: Remove stale Rust diagnostic
+        if: steps.rust-tests.outputs.status == '0'
+        run: rm -f docs/ui-redesign/RUST_TEST_FAILURE.md
 
       - name: Tauri production build
+        if: steps.rust-tests.outputs.status == '0'
         run: npm run build
 
       - name: Commit generated refactor
         id: commit
+        if: steps.rust-tests.outputs.status == '0'
         shell: bash
         run: |
           if git diff --quiet; then
@@ -115,6 +168,7 @@ jobs:
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Validation summary
+        if: steps.rust-tests.outputs.status == '0'
         run: |
           echo "UI refactor validated. Generated commit: ${{ steps.commit.outputs.changed }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Checks: npm test, npm run test:rust, npm run build" >> "$GITHUB_STEP_SUMMARY"
