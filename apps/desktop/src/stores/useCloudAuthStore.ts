@@ -142,11 +142,23 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
   async restore() { await get().initialize(); },
 
   async logout(all = false) {
-    set({ loading: true, error: undefined });
+    writeCachedUser(undefined);
+    set({
+      user: undefined,
+      session: undefined,
+      binding: undefined,
+      scopes: [],
+      authenticated: false,
+      phase: "anonymous",
+      loading: true,
+      initialized: true,
+      error: undefined,
+    });
     try {
       await cloudAuthClient.logout(all);
-      writeCachedUser(undefined);
       set({ ...cloudAuthClient.state(), user: undefined, phase: "anonymous", loading: false, initialized: true });
-    } catch (error) { set({ loading: false, error: error instanceof Error ? error.message : "退出失败" }); }
+    } catch (error) {
+      set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "退出失败" });
+    }
   },
 }));
