@@ -23,6 +23,10 @@ import CloudAccountPanel from "@/src/components/CloudAccountPanel";
 import AboutLifeTracePanel from "@/src/components/AboutLifeTracePanel";
 import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { getAccountBalanceSnapshot, getTotalAccountBalance } from "@/src/utils/finance";
+import ContextMenu from "@/src/ui/menu/ContextMenu";
+import MoreMenu from "@/src/ui/menu/MoreMenu";
+import { ConfirmDialogHost, confirmAction } from "@/src/ui/feedback/confirm";
+import type { AppAction } from "@/src/ui/actions/types";
 
 type PlatformView = "dashboard" | "assistant" | "habits" | "english" | "fitness" | "photos" | "finance" | "transactions" | "accounts" | "import" | "calendar" | "review" | "notes" | "settings";
 type Modal = null | { kind: "activity"; value?: Activity } | { kind: "record"; value: Activity } | { kind: "transaction"; value?: Transaction } | { kind: "account"; value?: FinanceAccount };
@@ -49,20 +53,20 @@ const navGroups: { label: string; items: { id: PlatformView; label: string; icon
 ];
 
 const pageCopy: Record<PlatformView, [string, string]> = {
-  dashboard: ["个人总览", "把坚持、训练、财务和复盘放在同一个日常系统里。"],
-  assistant: ["AI 管家", "按需查阅全部个人记录，用 DeepSeek 帮你总结、回顾与发现规律。"],
-  habits: ["坚持项目", "管理长期项目，关注完成率、总量与真实趋势。"],
-  english: ["每日英语", "阅读、英文总结、AI 反馈与长期能力成长。"],
-  fitness: ["健身数据", "导入训练截图，在电脑端统一解析并沉淀训练记录。"],
-  photos: ["照片", "手机连接同一局域网，通过浏览器把原始照片和视频增量同步到本机。"],
-  finance: ["财务概览", "看清资产、收支和消费结构，不制造额外焦虑。"],
-  transactions: ["账单管理", "搜索、筛选、编辑并维护全部收支记录。"],
-  accounts: ["账户管理", "集中维护银行卡、电子钱包、投资账户和现金。"],
-  import: ["账单导入", "从 CSV 文件批量导入账单，数据直接进入 SQLite。"],
-  calendar: ["生活日历", "坚持、账单和复盘都落在具体的一天里。"],
-  review: ["每日复盘", "每天两分钟，看清今天并为明天留一个重点。"],
-  notes: ["笔记", "记录想法、复盘与知识，并与坚持、训练和账单建立联系。"],
-  settings: ["数据与设置", "管理 SQLite 数据、备份、恢复和外观。"],
+  dashboard: ["个人总览", "今天需要关注的内容"],
+  assistant: ["AI 管家", "查询、总结和回顾个人记录"],
+  habits: ["坚持项目", "记录今天，观察长期趋势"],
+  english: ["每日英语", "阅读、总结并复盘"],
+  fitness: ["健身数据", "导入训练，查看历史"],
+  photos: ["照片", "本地同步与管理"],
+  finance: ["财务概览", "资产、收支和消费结构"],
+  transactions: ["账单管理", "搜索与维护全部流水"],
+  accounts: ["账户管理", "维护账户和余额基准"],
+  import: ["账单导入", "导入微信、支付宝账单"],
+  calendar: ["生活日历", "按日期查看生活记录"],
+  review: ["每日复盘", "完成今天的两分钟复盘"],
+  notes: ["笔记", "记录与整理长期知识"],
+  settings: ["数据与设置", "备份、恢复和应用设置"],
 };
 
 function Metric({ label, value, sub, positive }: { label: string; value: string; sub: string; positive?: boolean }) {
@@ -172,7 +176,53 @@ function Habits({ edit, record, note }: { edit: (value?: Activity) => void; reco
   const [filter, setFilter] = useState<"all" | "pending" | "done">("all");
   const today = dayKey();
   const shown = activities.filter(item => filter === "all" || (filter === "done") === logs.some(log => log.activityId === item.id && log.createdAt.startsWith(today) && log.status !== "skipped"));
-  return <div className="hx-view"><div className="hx-toolbar"><div className="hx-segmented">{[["all","全部"],["pending","待完成"],["done","已完成"]].map(([id,label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)}>{label}</button>)}</div><button className="hx-btn primary" onClick={() => edit()}><Plus /> 创建坚持项目</button></div><div className="hx-card-grid">{shown.map(item => { const itemLogs = logs.filter(log => log.activityId === item.id); const todayValue = itemLogs.filter(log => log.createdAt.startsWith(today)).reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0); const target = item.normalTarget ?? 1; const projectColor=PROJECT_COLORS[item.color??"emerald"]??PROJECT_COLORS.emerald; return <article className="hx-habit-card" style={{"--habit-color":projectColor.value,"--habit-soft":projectColor.soft} as React.CSSProperties} key={item.id}><div className="hx-card-actions"><span><ActivityGlyph icon={item.icon}/></span><div><button onClick={() => edit(item)} aria-label={`编辑${item.name}`}><Pencil /></button><button onClick={() => archiveActivity(item.id)} aria-label={`归档${item.name}`}><Archive /></button></div></div><h3>{item.name}</h3><p>{item.description || "保持稳定节奏，关注长期积累。"}</p><div className="hx-progress-label"><span>今日进度</span><b>{todayValue} / {target} {item.unit}</b></div><i className="hx-track"><b style={{ width: `${Math.min(100, todayValue / target * 100)}%` }} /></i><footer><small>累计 {itemLogs.reduce((sum, log) => log.status==="skipped"?sum:sum+(log.value??1), 0)} {item.unit}</small><div><button className="note" onClick={()=>note(item)}><NotebookPen/>记录</button><button className={todayValue >= target ? "done" : ""} onClick={() => record(item)}>{todayValue >= target ? "继续记录" : "打卡"}</button></div></footer></article>})}</div><HabitAnalytics activities={activities} logs={logs}/></div>;
+  return <div className="hx-view">
+    <div className="hx-toolbar">
+      <div className="hx-segmented">{[["all","全部"],["pending","待完成"],["done","已完成"]].map(([id,label]) => <button key={id} className={filter === id ? "active" : ""} onClick={() => setFilter(id as typeof filter)}>{label}</button>)}</div>
+      <button className="hx-btn primary" onClick={() => edit()}><Plus /> 创建坚持项目</button>
+    </div>
+    <div className="hx-habit-list">
+      {shown.map(item => {
+        const itemLogs = logs.filter(log => log.activityId === item.id);
+        const todayValue = itemLogs.filter(log => log.createdAt.startsWith(today)).reduce((sum, log) => log.status === "skipped" ? sum : sum + (log.value ?? 1), 0);
+        const target = item.normalTarget ?? 1;
+        const total = itemLogs.reduce((sum, log) => log.status === "skipped" ? sum : sum + (log.value ?? 1), 0);
+        const projectColor = PROJECT_COLORS[item.color ?? "emerald"] ?? PROJECT_COLORS.emerald;
+        const actions: AppAction<Activity>[] = [
+          { id: "record", label: todayValue >= target ? "继续记录" : "记录完成", icon: Check, group: "primary", execute: record },
+          { id: "note", label: "添加练习笔记", icon: NotebookPen, group: "related", execute: note },
+          { id: "edit", label: "编辑项目", icon: Pencil, group: "organize", execute: edit },
+          { id: "archive", label: "归档项目", icon: Archive, group: "organize", execute: (context) => archiveActivity(context.id) },
+        ];
+        return <ContextMenu
+          as="article"
+          className="hx-habit-row"
+          style={{"--habit-color":projectColor.value,"--habit-soft":projectColor.soft} as React.CSSProperties}
+          actions={actions}
+          context={item}
+          ariaLabel={`${item.name}操作`}
+          key={item.id}
+        >
+          <span className="hx-habit-glyph"><ActivityGlyph icon={item.icon}/></span>
+          <div className="hx-habit-copy">
+            <h3>{item.name}</h3>
+            <p>{item.description || `${item.targetPeriod === "weekly" ? "每周" : "每天"}目标 ${target} ${item.unit}`}</p>
+          </div>
+          <div className="hx-habit-progress">
+            <div><span>今日进度</span><strong>{todayValue} / {target} {item.unit}</strong></div>
+            <i className="hx-track"><b style={{ width: `${Math.min(100, target > 0 ? todayValue / target * 100 : 0)}%` }} /></i>
+            <small>累计 {total} {item.unit}</small>
+          </div>
+          <div className="hx-habit-actions">
+            <button className={`hx-btn ${todayValue >= target ? "secondary" : "primary"}`} onClick={() => record(item)}>{todayValue >= target ? "继续记录" : "打卡"}</button>
+            <MoreMenu actions={actions} context={item} label={`${item.name}更多操作`}/>
+          </div>
+        </ContextMenu>;
+      })}
+      {!shown.length && <Empty text={activities.length ? "当前筛选下没有项目。" : "创建第一个坚持项目，开始记录今天。"}/>}
+    </div>
+    <HabitAnalytics activities={activities} logs={logs}/>
+  </div>;
 }
 
 function HabitAnalytics({activities,logs}:{activities:Activity[];logs:ActivityLog[]}) {
@@ -204,16 +254,65 @@ function Finance() {
 
 function Transactions({ edit, note }: { edit: (value?: Transaction) => void; note:(value:Transaction)=>void }) {
   const { transactions, deleteTransaction } = useLifeStore();
-  const [search,setSearch]=useState(""); const [direction,setDirection]=useState<"all"|Transaction["type"]>("all");
+  const [search,setSearch]=useState("");
+  const [direction,setDirection]=useState<"all"|Transaction["type"]>("all");
   const rows=transactions
-    .filter(item => (direction==="all"||item.type===direction) && `${item.counterparty??""}${item.category}${item.note??""}`.toLowerCase().includes(search.toLowerCase()))
-    .sort((left,right) => new Date(right.occurredAt).getTime()-new Date(left.occurredAt).getTime());
-  return <div className="hx-view"><div className="hx-toolbar hx-tx-tools"><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索交易对象、分类或备注"/><select value={direction} onChange={e=>setDirection(e.target.value as typeof direction)}><option value="all">全部流水</option><option value="expense">支出</option><option value="income">收入</option><option value="transfer">转账</option></select><button className="hx-btn primary" onClick={()=>edit()}><Plus/> 手动记账</button></div><article className="hx-panel hx-table-wrap"><table><thead><tr><th>时间</th><th>交易</th><th>分类</th><th>账户</th><th>类型</th><th>金额</th><th>操作</th></tr></thead><tbody>{rows.map(item=><tr key={item.id}><td>{new Date(item.occurredAt).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</td><td><strong>{item.counterparty||item.category}</strong><small>{item.item||item.note||"手动记录"}</small></td><td><span className="hx-tag">{item.category}</span></td><td>{item.type==="transfer"?`${item.account} → ${item.toAccount??"未匹配账户"}`:item.account}</td><td>{item.type==="expense"?"支出":item.type==="income"?"收入":"转账"}</td><td className={item.type}>{transactionAmountText(item)}</td><td><button title="消费笔记" onClick={()=>note(item)}><NotebookPen/></button><button aria-label="编辑账单" onClick={()=>edit(item)}><Pencil/></button><button aria-label="删除账单" onClick={()=>deleteTransaction(item.id)}><Trash2/></button></td></tr>)}</tbody></table><footer>共 {rows.length} 笔记录</footer></article></div>;
+    .filter(item => (direction === "all" || item.type === direction) && `${item.counterparty ?? ""}${item.category}${item.note ?? ""}`.toLowerCase().includes(search.toLowerCase()))
+    .sort((left,right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime());
+  const actionsFor = (item: Transaction): AppAction<Transaction>[] => [
+    { id: "note", label: "添加消费笔记", icon: NotebookPen, group: "primary", execute: note },
+    { id: "copy", label: "复制交易摘要", icon: Copy, group: "related", execute: async (context) => { await navigator.clipboard?.writeText(`${context.counterparty || context.category} ${transactionAmountText(context)} ${context.account}`); notify("交易摘要已复制"); } },
+    { id: "edit", label: "编辑交易", icon: Pencil, group: "organize", execute: edit },
+    { id: "delete", label: "删除交易", icon: Trash2, group: "danger", danger: true, execute: async (context) => { if (await confirmAction({ title: "删除这笔交易？", description: `${context.counterparty || context.category} · ${transactionAmountText(context)}。删除后无法恢复。`, confirmLabel: "删除交易" })) await deleteTransaction(context.id); } },
+  ];
+  return <div className="hx-view">
+    <div className="hx-toolbar hx-tx-tools">
+      <input value={search} onChange={event => setSearch(event.target.value)} placeholder="搜索交易对象、分类或备注"/>
+      <select value={direction} onChange={event => setDirection(event.target.value as typeof direction)}><option value="all">全部流水</option><option value="expense">支出</option><option value="income">收入</option><option value="transfer">转账</option></select>
+      <button className="hx-btn primary" onClick={() => edit()}><Plus/> 手动记账</button>
+    </div>
+    <article className="hx-panel hx-table-wrap">
+      <table>
+        <thead><tr><th>时间</th><th>交易</th><th>分类</th><th>账户</th><th>类型</th><th>金额</th><th aria-label="操作"/></tr></thead>
+        <tbody>
+          {rows.map(item => <ContextMenu as="tr" actions={actionsFor(item)} context={item} ariaLabel={`${item.counterparty || item.category}操作`} key={item.id}>
+            <td>{new Date(item.occurredAt).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</td>
+            <td><strong>{item.counterparty || item.category}</strong><small>{item.item || item.note || "手动记录"}</small></td>
+            <td><span className="hx-tag">{item.category}</span></td>
+            <td>{item.type === "transfer" ? `${item.account} → ${item.toAccount ?? "未匹配账户"}` : item.account}</td>
+            <td>{item.type === "expense" ? "支出" : item.type === "income" ? "收入" : "转账"}</td>
+            <td className={item.type}>{transactionAmountText(item)}</td>
+            <td className="hx-table-actions"><MoreMenu actions={actionsFor(item)} context={item} label={`${item.counterparty || item.category}更多操作`}/></td>
+          </ContextMenu>)}
+          {!rows.length && <tr><td className="hx-table-empty" colSpan={7}>没有符合当前条件的账单。</td></tr>}
+        </tbody>
+      </table>
+      <footer>共 {rows.length} 笔记录</footer>
+    </article>
+  </div>;
 }
 
 function Accounts({ edit }: { edit: (value?: FinanceAccount) => void }) {
   const { accounts, transactions, deleteAccount } = useLifeStore();
-  return <div className="hx-view"><div className="hx-toolbar"><span className="hx-tag">设置某一时刻的余额，之后的账单会自动增减当前余额</span><button className="hx-btn primary" onClick={()=>edit()}><Plus/> 添加账户</button></div><div className="hx-card-grid">{accounts.map(account=>{const snapshot=getAccountBalanceSnapshot(account,transactions);return <article className="hx-account-card" key={account.id}><header><i style={{background:account.color}}>{account.icon}</i><div><button aria-label={`编辑${account.name}`} onClick={()=>edit(account)}><Pencil/></button><button aria-label={`删除${account.name}`} onClick={()=>deleteAccount(account.id)}><Trash2/></button></div></header><h3>{account.name}</h3><p>{account.type}{account.last4?` · 尾号 ${account.last4}`:""}</p><strong>{snapshot.currentBalance===null?"未设置":money(snapshot.currentBalance)}</strong><small className="hx-balance-basis">{snapshot.hasBaseline&&account.balanceAt?`基准：${new Date(account.balanceAt).toLocaleString("zh-CN")} · ${money(account.balance??0)}`:"编辑账户以设置余额基准时间"}</small><div><span>基准后收入 <b>{money(snapshot.income)}</b></span><span>基准后支出 <b>{money(snapshot.expense)}</b></span></div></article>})}</div></div>;
+  const actionsFor = (account: FinanceAccount): AppAction<FinanceAccount>[] => [
+    { id: "edit", label: "编辑账户", icon: Pencil, group: "primary", execute: edit },
+    { id: "delete", label: "删除账户", icon: Trash2, group: "danger", danger: true, execute: async (context) => { if (await confirmAction({ title: "删除这个账户？", description: `账户“${context.name}”将被删除。请先确认相关账单不再需要该账户。`, confirmLabel: "删除账户" })) await deleteAccount(context.id); } },
+  ];
+  return <div className="hx-view">
+    <div className="hx-toolbar"><span className="hx-toolbar-summary">余额按基准时间和后续流水自动计算</span><button className="hx-btn primary" onClick={() => edit()}><Plus/> 添加账户</button></div>
+    <div className="hx-account-list">
+      {accounts.map(account => {
+        const snapshot = getAccountBalanceSnapshot(account, transactions);
+        return <ContextMenu as="article" className="hx-account-row" actions={actionsFor(account)} context={account} ariaLabel={`${account.name}操作`} key={account.id}>
+          <i className="hx-account-icon" style={{background:account.color}}>{account.icon}</i>
+          <div className="hx-account-copy"><h3>{account.name}</h3><p>{account.type}{account.last4 ? ` · 尾号 ${account.last4}` : ""}</p></div>
+          <div className="hx-account-balance"><strong>{snapshot.currentBalance === null ? "未设置" : money(snapshot.currentBalance)}</strong><small>{snapshot.hasBaseline && account.balanceAt ? `基准 ${new Date(account.balanceAt).toLocaleDateString("zh-CN")} · 后续 ${snapshot.transactionCount} 笔` : "尚未设置余额基准"}</small></div>
+          <div className="hx-account-actions"><button className="hx-btn secondary" onClick={() => edit(account)}>编辑</button><MoreMenu actions={actionsFor(account)} context={account} label={`${account.name}更多操作`}/></div>
+        </ContextMenu>;
+      })}
+      {!accounts.length && <Empty text="添加账户后，余额和流水会在这里统一计算。"/>}
+    </div>
+  </div>;
 }
 
 function ImportBills() {
@@ -465,10 +564,19 @@ export default function HengXuShell() {
     window.localStorage.setItem("lifetrace:last-note",created.id);setView("notes");notify("关联笔记已创建");
   };
   useEffect(()=>{void initialize()},[initialize]);
+  useEffect(()=>{const stored=window.localStorage.getItem("lifetrace:ui-density");document.documentElement.dataset.density=stored==="compact"?"compact":"comfortable"},[]);
   useEffect(()=>{const receive=(event:Event)=>{const detail=(event as CustomEvent<string|Partial<ToastPayload>>).detail;if(typeof detail==="string"){setToastDuration(2200);setToast(detail)}else if(detail?.message){setToastDuration(detail.duration??(detail.type==="error"?4500:2500));setToast(detail.message)}};window.addEventListener("hengxu-toast",receive);return()=>window.removeEventListener("hengxu-toast",receive)},[]);
   useEffect(()=>{if(!toast)return;const timer=window.setTimeout(()=>setToast(""),toastDuration);const element=document.querySelector(".hx-toast");const close=()=>setToast("");element?.addEventListener("click",close);return()=>{window.clearTimeout(timer);element?.removeEventListener("click",close)}},[toast,toastDuration]);
   if(!ready)return <div className="hx-loading"><span>LT</span><p>正在连接 SQLite 个人系统…</p></div>;
   if(storageError)return <div className="hx-loading"><span>!</span><h1>SQLite 暂时无法连接</h1><p>{storageError}</p><button className="hx-btn primary" onClick={()=>initialize()}>重新连接</button></div>;
   const [title,subtitle]=pageCopy[view];
-  return <main className="hx-shell"><aside className={menu?"open":""} aria-label="主导航"><div className="hx-brand"><span>LT</span><div><strong>Life trace</strong><small>个人管理系统</small></div></div><nav>{navGroups.map(group=><div key={group.label}><label>{group.label}</label>{group.items.map(({id,label,icon:Icon})=><button className={view===id?"active":""} aria-current={view===id?"page":undefined} key={id} onClick={()=>{setView(id);setMenu(false)}}><span><Icon/>{label}</span><ChevronRight/></button>)}</div>)}</nav><div className="hx-sidebar-foot"><div><i/><strong>本地 SQLite 模式</strong><p>数据保存在本机数据库，不依赖浏览器存储。</p></div><button className={view==="settings"?"active":""} aria-current={view==="settings"?"page":undefined} onClick={()=>{setView("settings");setMenu(false)}}><span><Settings/>数据与设置</span><ChevronRight/></button><section><span>LT</span><div><strong>个人空间</strong><small>本地账户</small></div></section></div></aside>{menu&&<button className="hx-nav-scrim" aria-label="关闭导航" onClick={()=>setMenu(false)}/>}<div className="hx-main"><header className="hx-topbar"><button className="hx-menu" aria-label={menu?"关闭导航":"打开导航"} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Menu/></button><div><span className="hx-kicker">{new Intl.DateTimeFormat("zh-CN",{month:"long",day:"numeric",weekday:"long"}).format(new Date())}</span><h1>{title}</h1><p>{subtitle}</p></div></header>{view==="dashboard"&&<Dashboard go={setView} record={value=>setModal({kind:"record",value})}/>} {view==="assistant"&&<AIAssistantModule openSettings={()=>setView("settings")}/>} {view==="habits"&&<Habits edit={value=>setModal({kind:"activity",value})} record={value=>setModal({kind:"record",value})} note={value=>void makeLinkedNote("habit_log",`${value.name}练习记录 - ${dayKey()}`,"habit",value.id,`今天的记录：\n\n问题：\n\n下次重点：`)}/>} {view==="english"&&<DailyEnglish/>} {view==="fitness"&&<Fitness note={value=>void makeLinkedNote("workout_review",`训练复盘 - ${dayKey(new Date(value.occurredAt))}`,"workout",value.id,`训练名称：${value.name}\n训练日期：${dayKey(new Date(value.occurredAt))}\n训练时长：${Math.max(1,Math.round(value.durationSeconds/60))} 分钟\n总容量：${value.volumeKg??"未记录"}\n动作数量：${value.exerciseCount}\n训练来源：${value.source}`)}/>} {view==="photos"&&<PhotoSyncModule/>} {view==="notes"&&<NotesModule/>} {view==="finance"&&<Finance/>} {view==="transactions"&&<Transactions edit={value=>setModal({kind:"transaction",value})} note={value=>void makeLinkedNote("expense_note",`消费记录 - ${value.counterparty||value.category}`,"transaction",value.id,`日期：${dayKey(new Date(value.occurredAt))}\n金额：¥${value.amount.toFixed(2)}\n分类：${value.category}\n账户：${value.account}\n商户：${value.counterparty||"未填写"}\n消费目的：`)}/>} {view==="accounts"&&<Accounts edit={value=>setModal({kind:"account",value})}/>} {view==="import"&&<ImportBills/>} {view==="calendar"&&<CalendarView/>} {view==="review"&&<ReviewView/>} {view==="settings"&&<SettingsView/>}</div>{modal&&<EditorModal modal={modal} close={()=>setModal(null)}/>} {toast&&<div className="hx-toast" role="status"><Check/>{toast}</div>}<AppUpdaterHost/></main>;
+  const pageActions: AppAction<PlatformView>[] = [
+    { id:"dashboard", label:"返回个人总览", icon:Home, group:"primary", hidden:view==="dashboard", execute:()=>setView("dashboard") },
+    ...(view==="habits"?[{ id:"create-habit", label:"创建坚持项目", icon:Plus, group:"primary" as const, execute:()=>setModal({kind:"activity"}) }]:[]),
+    ...(view==="transactions"?[{ id:"create-transaction", label:"手动记账", icon:Plus, group:"primary" as const, execute:()=>setModal({kind:"transaction"}) }]:[]),
+    ...(view==="accounts"?[{ id:"create-account", label:"添加账户", icon:Plus, group:"primary" as const, execute:()=>setModal({kind:"account"}) }]:[]),
+    { id:"density", label:document.documentElement.dataset.density==="compact"?"切换舒适布局":"切换紧凑布局", icon:Menu, group:"organize", execute:()=>{const next=document.documentElement.dataset.density==="compact"?"comfortable":"compact";document.documentElement.dataset.density=next;window.localStorage.setItem("lifetrace:ui-density",next);notify(next==="compact"?"已切换紧凑布局":"已切换舒适布局")}},
+    { id:"settings", label:"数据与设置", icon:Settings, group:"organize", hidden:view==="settings", execute:()=>setView("settings") },
+  ];
+  return <ContextMenu as="div" className="hx-shell-context" actions={pageActions} context={view} ariaLabel={`${title}页面操作`}><main className="hx-shell"><aside className={menu?"open":""} aria-label="主导航"><div className="hx-brand"><span>LT</span><div><strong>Life trace</strong><small>个人管理系统</small></div></div><nav>{navGroups.map(group=><div key={group.label}><label>{group.label}</label>{group.items.map(({id,label,icon:Icon})=><button className={view===id?"active":""} aria-current={view===id?"page":undefined} key={id} onClick={()=>{setView(id);setMenu(false)}}><span><Icon/>{label}</span><ChevronRight/></button>)}</div>)}</nav><div className="hx-sidebar-foot"><div><i/><strong>本地 SQLite 模式</strong><p>数据保存在本机数据库，不依赖浏览器存储。</p></div><button className={view==="settings"?"active":""} aria-current={view==="settings"?"page":undefined} onClick={()=>{setView("settings");setMenu(false)}}><span><Settings/>数据与设置</span><ChevronRight/></button><section><span>LT</span><div><strong>个人空间</strong><small>本地账户</small></div></section></div></aside>{menu&&<button className="hx-nav-scrim" aria-label="关闭导航" onClick={()=>setMenu(false)}/>}<div className="hx-main"><header className="hx-topbar"><button className="hx-menu" aria-label={menu?"关闭导航":"打开导航"} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Menu/></button><div><span className="hx-kicker">{new Intl.DateTimeFormat("zh-CN",{month:"long",day:"numeric",weekday:"long"}).format(new Date())}</span><h1>{title}</h1><p>{subtitle}</p></div><div className="hx-page-actions"><MoreMenu actions={pageActions} context={view} label={`${title}页面操作`}/></div></header>{view==="dashboard"&&<Dashboard go={setView} record={value=>setModal({kind:"record",value})}/>} {view==="assistant"&&<AIAssistantModule openSettings={()=>setView("settings")}/>} {view==="habits"&&<Habits edit={value=>setModal({kind:"activity",value})} record={value=>setModal({kind:"record",value})} note={value=>void makeLinkedNote("habit_log",`${value.name}练习记录 - ${dayKey()}`,"habit",value.id,`今天的记录：\n\n问题：\n\n下次重点：`)}/>} {view==="english"&&<DailyEnglish/>} {view==="fitness"&&<Fitness note={value=>void makeLinkedNote("workout_review",`训练复盘 - ${dayKey(new Date(value.occurredAt))}`,"workout",value.id,`训练名称：${value.name}\n训练日期：${dayKey(new Date(value.occurredAt))}\n训练时长：${Math.max(1,Math.round(value.durationSeconds/60))} 分钟\n总容量：${value.volumeKg??"未记录"}\n动作数量：${value.exerciseCount}\n训练来源：${value.source}`)}/>} {view==="photos"&&<PhotoSyncModule/>} {view==="notes"&&<NotesModule/>} {view==="finance"&&<Finance/>} {view==="transactions"&&<Transactions edit={value=>setModal({kind:"transaction",value})} note={value=>void makeLinkedNote("expense_note",`消费记录 - ${value.counterparty||value.category}`,"transaction",value.id,`日期：${dayKey(new Date(value.occurredAt))}\n金额：¥${value.amount.toFixed(2)}\n分类：${value.category}\n账户：${value.account}\n商户：${value.counterparty||"未填写"}\n消费目的：`)}/>} {view==="accounts"&&<Accounts edit={value=>setModal({kind:"account",value})}/>} {view==="import"&&<ImportBills/>} {view==="calendar"&&<CalendarView/>} {view==="review"&&<ReviewView/>} {view==="settings"&&<SettingsView/>}</div>{modal&&<EditorModal modal={modal} close={()=>setModal(null)}/>} {toast&&<div className="hx-toast" role="status"><Check/>{toast}</div>}<ConfirmDialogHost/><AppUpdaterHost/></main></ContextMenu>;
 }

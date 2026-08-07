@@ -23,6 +23,8 @@ import {
 import { noteApi, type NoteInputValue } from "@/src/services/noteApi";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import type { Note, NoteFolder, NoteRelation, NoteRevision, NoteTag, NoteType } from "@/src/types";
+import MoreMenu from "@/src/ui/menu/MoreMenu";
+import type { AppAction } from "@/src/ui/actions/types";
 
 const lowlight=createLowlight(common);
 const turndown=new TurndownService({headingStyle:"atx",bulletListMarker:"-",codeBlockStyle:"fenced"});
@@ -132,6 +134,13 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
     ...store.transactions.slice(0,30).map(x=>({type:"transaction",id:x.id,label:`账单 · ${x.counterparty||x.category} · ¥${x.amount}`})),
   ];
   const addRelation=(value:string)=>{if(!value)return;const [entityType,entityId]=value.split(":");if(draft.relations.some(x=>x.entityType===entityType&&x.entityId===entityId))return;patch({relations:[...draft.relations,{id:crypto.randomUUID(),noteId:note.id,entityType:entityType as NoteRelation["entityType"],entityId,relationType:"reference",createdAt:new Date().toISOString()}]})};
+  const editorActions:AppAction<Note>[]=[
+    {id:"duplicate",label:"复制笔记",icon:Copy,group:"primary",execute:()=>action("duplicate")},
+    {id:"export-md",label:"导出 Markdown",icon:FileText,group:"related",execute:()=>exportNote("md")},
+    {id:"export-html",label:"导出 HTML",icon:File,group:"related",execute:()=>exportNote("html")},
+    {id:"export-json",label:"导出 JSON",icon:FileJson,group:"related",execute:()=>exportNote("json")},
+    {id:"trash",label:"移到回收站",icon:Trash2,group:"danger",danger:true,execute:()=>action("trash")},
+  ];
 
   if(trashMode)return <section className="nt-editor nt-trash-preview"><div><Trash2/><h2>{titleOf(draft)}</h2><p>{draft.summary||"这篇笔记没有摘要。"}</p><small>删除于 {draft.deletedAt?formatTime(draft.deletedAt):"未知时间"}</small><footer><button className="hx-btn primary" onClick={()=>void action("restore")}><ArchiveRestore/>恢复笔记</button><button className="hx-btn secondary danger" onClick={()=>void action("delete")}><Trash2/>永久删除</button></footer></div></section>;
 
@@ -143,13 +152,7 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
         <button className={draft.isPinned?"active":""} title="置顶" onClick={()=>patch({isPinned:!draft.isPinned})}><Pin/></button>
         <button title="版本历史" onClick={()=>void loadHistory()}><History/></button>
         <button title="立即保存" onClick={()=>void save(true)}><Save/></button>
-        <span className="nt-menu-wrap"><button title="更多操作" onClick={()=>setMenuOpen(!menuOpen)}><MoreHorizontal/></button>{menuOpen&&<div className="nt-menu">
-          <button onClick={()=>void action("duplicate")}><Copy/>复制笔记</button>
-          <button onClick={()=>void exportNote("md")}><FileText/>导出 Markdown</button>
-          <button onClick={()=>void exportNote("html")}><File/>导出 HTML</button>
-          <button onClick={()=>void exportNote("json")}><FileJson/>导出 JSON</button>
-          <button onClick={()=>void action("trash")} className="danger"><Trash2/>移到回收站</button>
-        </div>}</span>
+        <MoreMenu actions={editorActions} context={draft} label="更多笔记操作" buttonClassName="nt-more-button"/>
       </div>
     </header>
     <div className="nt-editor-scroll">

@@ -9,6 +9,7 @@ import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumen
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
+import "@/app/tokens.css";
 import "@/app/globals.css";
 import "@/app/hengxu.css";
 import "@/app/fitness-app.css";
@@ -20,6 +21,8 @@ import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
 import "@/app/local-vault.css";
 import "@/app/settings.css";
+import "@/app/ui-foundation.css";
+import "@/app/ui-menus.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
