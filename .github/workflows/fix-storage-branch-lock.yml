@@ -1,0 +1,43 @@
+name: Fix storage branch desktop lock
+
+on:
+  push:
+    branches:
+      - feat/storage-location-migration
+    paths:
+      - .github/workflows/fix-storage-branch-lock.yml
+      - apps/desktop/src-tauri/Cargo.toml
+      - apps/desktop/src-tauri/Cargo.lock
+
+permissions:
+  contents: write
+
+jobs:
+  fix-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/storage-location-migration
+      - name: Synchronize root package version in Cargo.lock
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/Cargo.lock")
+          text = path.read_text(encoding="utf-8")
+          old = '[[package]]\nname = "lifetrace"\nversion = "0.2.1"'
+          new = '[[package]]\nname = "lifetrace"\nversion = "0.2.2"'
+          if old not in text:
+              raise SystemExit("expected lifetrace 0.2.1 root package entry not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Commit synchronized lockfile
+        shell: bash
+        run: |
+          if git diff --quiet -- apps/desktop/src-tauri/Cargo.lock; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/Cargo.lock
+          git commit -m "chore: sync desktop Cargo.lock version to 0.2.2"
+          git push origin HEAD:feat/storage-location-migration
