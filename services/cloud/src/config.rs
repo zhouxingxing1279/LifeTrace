@@ -90,7 +90,7 @@ impl Default for Config {
             auth_argon2_memory_kib: 19_456,
             auth_argon2_iterations: 2,
             auth_argon2_parallelism: 1,
-            auth_password_min_length: 15,
+            auth_password_min_length: 9,
             auth_password_max_bytes: 512,
             auth_password_blocklist_path: None,
             auth_password_pepper: Some("development-password-pepper".to_owned()),
@@ -238,8 +238,10 @@ impl Config {
         ) {
             return Err("AUTH_REGISTRATION_MODE must be disabled, invite or open".to_owned());
         }
-        if self.auth_password_min_length < 15 || self.auth_password_max_bytes < 64 {
-            return Err("password policy is weaker than the EPIC-04 minimum".to_owned());
+        if self.auth_password_min_length < 9 || self.auth_password_max_bytes < 64 {
+            return Err(
+                "AUTH_PASSWORD_MIN_LENGTH must be at least 9 Unicode characters".to_owned(),
+            );
         }
         if self.auth_refresh_idle_ttl_seconds > self.auth_refresh_absolute_ttl_seconds {
             return Err("refresh idle TTL must not exceed absolute TTL".to_owned());
@@ -340,6 +342,19 @@ mod tests {
             ..Config::default()
         };
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn password_policy_rejects_minimum_below_nine() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            auth_password_min_length: 8,
+            ..Config::default()
+        };
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("at least 9 Unicode characters"));
     }
 
     #[test]

@@ -5,6 +5,8 @@ import { AccountEntry, AccountEntryHost } from "@/src/components/account/Account
 import { clientLogger } from "@/src/services/clientObservability";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
+const OFFLINE_RECONNECT_INTERVAL_MS = 10_000;
+
 function SignedOutShell({ restoring }: { restoring: boolean }) {
   const openLogin = () => window.dispatchEvent(new Event("lifetrace:open-auth"));
 
@@ -32,6 +34,7 @@ export default function DesktopApp() {
   const authenticated = useCloudAuthStore((state) => state.authenticated);
   const phase = useCloudAuthStore((state) => state.phase);
   const initialize = useCloudAuthStore((state) => state.initialize);
+  const reconnect = useCloudAuthStore((state) => state.reconnect);
 
   useEffect(() => {
     clientLogger.info("cloud.auth.auto_restore_started");
@@ -46,6 +49,26 @@ export default function DesktopApp() {
       clientLogger.warn("cloud.auth.auto_restore_failed", undefined, error);
     });
   }, [initialize]);
+
+  useEffect(() => {
+    if (phase !== "offline" || !user) return;
+
+    const retry = () => {
+      void reconnect().then((restored) => {
+        if (restored) clientLogger.info("cloud.auth.offline_reconnect_succeeded");
+      }).catch((error) => {
+        clientLogger.warn("cloud.auth.offline_reconnect_failed", undefined, error);
+      });
+    };
+
+    retry();
+    const timer = window.setInterval(retry, OFFLINE_RECONNECT_INTERVAL_MS);
+    window.addEventListener("online", retry);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("online", retry);
+    };
+  }, [phase, reconnect, user]);
 
   const hasIdentity = Boolean(user && (authenticated || phase === "offline"));
   const restoring = phase === "bootstrapping" || phase === "refreshing";

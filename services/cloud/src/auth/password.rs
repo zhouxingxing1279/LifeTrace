@@ -162,7 +162,8 @@ mod tests {
     #[test]
     fn rejects_short_and_common_passwords() {
         let manager = PasswordManager::new(&Config::default());
-        assert!(manager.hash("too short").is_err());
+        assert!(manager.hash("Abc12!xy").is_err());
+        assert!(manager.hash("Abc123!xy").is_ok());
         assert!(manager.hash("123456789012345").is_err());
     }
 }
