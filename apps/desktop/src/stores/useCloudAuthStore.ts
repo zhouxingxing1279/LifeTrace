@@ -1,12 +1,65 @@
 import { create } from "zustand";
-import { cloudAuthClient, type CloudAuthSnapshot } from "@/src/services/cloudAuth";
+import {
+  cloudAuthClient,
+  type CloudAuthCapabilities,
+  type CloudAuthSnapshot,
+  type CloudAuthUser,
+} from "@/src/services/cloudAuth";
+
+export type AuthPhase = "bootstrapping" | "refreshing" | "authenticated" | "anonymous" | "offline" | "error";
+
+const ORIGIN_KEY = "lifetrace-cloud-origin";
+const USER_KEY = "lifetrace-cloud-user";
+const LOCAL_ORIGIN = "http://127.0.0.1:8787";
+
+type ImportMetaWithEnv = ImportMeta & { env?: Record<string, string | undefined> };
+
+function storage(): Storage | undefined {
+  return typeof window !== "undefined" ? window.localStorage : undefined;
+}
+
+function buildOrigin(): string {
+  return ((import.meta as ImportMetaWithEnv).env?.VITE_LIFETRACE_CLOUD_URL || "").trim();
+}
+
+function readOrigin(): string {
+  return storage()?.getItem(ORIGIN_KEY)?.trim() || buildOrigin() || LOCAL_ORIGIN;
+}
+
+function writeOrigin(origin: string) {
+  storage()?.setItem(ORIGIN_KEY, origin);
+}
+
+function readCachedUser(): CloudAuthUser | undefined {
+  const value = storage()?.getItem(USER_KEY);
+  if (!value) return undefined;
+  try {
+    const parsed = JSON.parse(value) as CloudAuthUser;
+    return parsed?.id && parsed?.email ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function writeCachedUser(user?: CloudAuthUser) {
+  if (!user) storage()?.removeItem(USER_KEY);
+  else storage()?.setItem(USER_KEY, JSON.stringify(user));
+}
 
 type CloudAuthState = CloudAuthSnapshot & {
   origin: string;
+  phase: AuthPhase;
   loading: boolean;
+  initialized: boolean;
+  capabilities?: CloudAuthCapabilities;
   error?: string;
   setOrigin(origin: string): void;
-  login(email: string, password: string): Promise<void>;
+  initialize(): Promise<void>;
+  loadCapabilities(): Promise<CloudAuthCapabilities | undefined>;
+  login(email: string, password: string): Promise<boolean>;
+  register(input: { email: string; password: string; displayName?: string; inviteToken?: string }): Promise<boolean>;
+  forgotPassword(email: string): Promise<boolean>;
+  changePassword(currentPassword: string, newPassword: string): Promise<boolean>;
   restore(): Promise<void>;
   logout(all?: boolean): Promise<void>;
   bindCurrentProfile(): Promise<void>;
@@ -14,33 +67,129 @@ type CloudAuthState = CloudAuthSnapshot & {
   clearError(): void;
 };
 
+function authenticatedPatch(snapshot: CloudAuthSnapshot) {
+  writeCachedUser(snapshot.user);
+  return { ...snapshot, phase: "authenticated" as const, loading: false, initialized: true, error: undefined };
+}
+
 export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
-  origin: "",
+  origin: readOrigin(),
+  user: readCachedUser(),
   scopes: [],
   authenticated: false,
+  phase: "bootstrapping",
   loading: false,
+  initialized: false,
+
   clearError() { set({ error: undefined }); },
+
   setOrigin(origin) {
-    set({ origin, error: undefined });
-    try { cloudAuthClient.configure(origin); } catch (error) {
+    set({ origin, error: undefined, capabilities: undefined });
+    try {
+      cloudAuthClient.configure(origin);
+      writeOrigin(cloudAuthClient.configuredOrigin());
+      set({ origin: cloudAuthClient.configuredOrigin() });
+    } catch (error) {
       set({ error: error instanceof Error ? error.message : "云服务地址无效" });
     }
   },
+
+  async initialize() {
+    const origin = get().origin || readOrigin();
+    set({ phase: "refreshing", loading: true, error: undefined });
+    try {
+      cloudAuthClient.configure(origin);
+      writeOrigin(cloudAuthClient.configuredOrigin());
+      set({ origin: cloudAuthClient.configuredOrigin() });
+      const hasCredential = await cloudAuthClient.hasStoredCredential();
+      if (!hasCredential) {
+        writeCachedUser(undefined);
+        set({ user: undefined, session: undefined, binding: undefined, scopes: [], authenticated: false, phase: "anonymous", loading: false, initialized: true });
+        return;
+      }
+      const snapshot = await cloudAuthClient.restore();
+      set(authenticatedPatch(snapshot));
+    } catch (error) {
+      const hasCredential = await cloudAuthClient.hasStoredCredential();
+      if (hasCredential) {
+        set({ authenticated: false, phase: "offline", loading: false, initialized: true, error: "云端暂时不可用，将在网络恢复后重新连接" });
+      } else {
+        writeCachedUser(undefined);
+        set({ user: undefined, session: undefined, binding: undefined, scopes: [], authenticated: false, phase: "anonymous", loading: false, initialized: true, error: undefined });
+      }
+      if (!hasCredential && error instanceof Error && !/Refresh Token/.test(error.message)) {
+        set({ error: error.message });
+      }
+    }
+  },
+
+  async loadCapabilities() {
+    try {
+      cloudAuthClient.configure(get().origin);
+      const capabilities = await cloudAuthClient.capabilities();
+      set({ capabilities, error: undefined });
+      return capabilities;
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "无法读取注册能力" });
+      return undefined;
+    }
+  },
+
   async login(email, password) {
+    set({ loading: true, phase: "refreshing", error: undefined });
+    try {
+      cloudAuthClient.configure(get().origin);
+      const snapshot = await cloudAuthClient.login(email, password);
+      set(authenticatedPatch(snapshot));
+      return true;
+    } catch (error) {
+      set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "登录失败" });
+      return false;
+    }
+  },
+
+  async register(input) {
+    set({ loading: true, phase: "refreshing", error: undefined });
+    try {
+      cloudAuthClient.configure(get().origin);
+      const snapshot = await cloudAuthClient.register(input);
+      set(authenticatedPatch(snapshot));
+      return true;
+    } catch (error) {
+      set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "注册失败" });
+      return false;
+    }
+  },
+
+  async forgotPassword(email) {
     set({ loading: true, error: undefined });
     try {
       cloudAuthClient.configure(get().origin);
-      set({ ...(await cloudAuthClient.login(email, password)), loading: false });
+      await cloudAuthClient.forgotPassword(email);
+      set({ loading: false });
+      return true;
     } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : "登录失败" });
+      set({ loading: false, error: error instanceof Error ? error.message : "无法提交密码重置请求" });
+      return false;
     }
   },
-  async restore() {
-    if (!get().origin) return;
+
+  async changePassword(currentPassword, newPassword) {
     set({ loading: true, error: undefined });
-    cloudAuthClient.configure(get().origin);
-    set({ ...(await cloudAuthClient.restore()), loading: false });
+    try {
+      await cloudAuthClient.changePassword(currentPassword, newPassword);
+      set({ loading: false });
+      return true;
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "修改密码失败" });
+      return false;
+    }
   },
+
+  async restore() {
+    await get().initialize();
+  },
+
   async bindCurrentProfile() {
     const userId = get().user?.id;
     if (!userId || !window.syncApi) return;
@@ -53,6 +202,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       set({ loading: false, error: error instanceof Error ? error.message : String(error) });
     }
   },
+
   async createCloudProfile() {
     const user = get().user;
     if (!user || !window.syncApi) return;
@@ -65,11 +215,13 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       set({ loading: false, error: error instanceof Error ? error.message : String(error) });
     }
   },
+
   async logout(all = false) {
     set({ loading: true, error: undefined });
     try {
       await cloudAuthClient.logout(all);
-      set({ ...cloudAuthClient.state(), loading: false });
+      writeCachedUser(undefined);
+      set({ ...cloudAuthClient.state(), user: undefined, phase: "anonymous", loading: false, initialized: true });
     } catch (error) {
       set({ loading: false, error: error instanceof Error ? error.message : "退出失败" });
     }
