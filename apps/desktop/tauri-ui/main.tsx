@@ -1,13 +1,11 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
-import HengXuShell from "@/src/components/HengXuShell";
+import DesktopApp from "@/src/components/DesktopApp";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
-import { AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
-import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
@@ -26,6 +24,7 @@ import "@/app/settings.css";
 import "@/app/account-settings-redesign.css";
 import "@/app/ui-foundation.css";
 import "@/app/ui-menus.css";
+import "@/app/auth-shell-fixes.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
@@ -46,22 +45,11 @@ async function start() {
     createRoot(root!).render(
       <StrictMode>
         <ClientErrorBoundary>
-          <HengXuShell />
-          <AccountEntryHost />
+          <DesktopApp />
           <MobileUploadConnectionStatus />
         </ClientErrorBoundary>
       </StrictMode>,
     );
-    clientLogger.info("cloud.auth.auto_restore_started");
-    void useCloudAuthStore.getState().restore().then(() => {
-      const state = useCloudAuthStore.getState();
-      clientLogger.info("cloud.auth.auto_restore_finished", {
-        authenticated: state.authenticated,
-        profileId: state.binding?.profileId,
-      });
-    }).catch((error) => {
-      clientLogger.warn("cloud.auth.auto_restore_failed", undefined, error);
-    });
   } catch (error) {
     clientLogger.fatal("desktop.start.failed", undefined, error);
     const message = error instanceof Error ? error.message : "本地服务启动失败";
