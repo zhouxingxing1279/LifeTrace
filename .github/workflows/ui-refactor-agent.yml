@@ -68,6 +68,9 @@ jobs:
       - name: Apply deterministic UI refactor
         run: python3 scripts/apply_ui_refactor.py
 
+      - name: Normalize generated text
+        run: sed -i 's/[[:space:]]\+$//' src/components/HengXuShell.tsx
+
       - name: Check generated patch formatting
         run: git diff --check
 
