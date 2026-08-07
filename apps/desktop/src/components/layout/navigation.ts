@@ -34,46 +34,57 @@ export type PlatformView =
 
 export const navGroups: NavGroup[] = [
   {
-    label: "概览",
+    label: "今天",
+    items: [{ id: "dashboard", label: "今天", icon: Home }],
+  },
+  {
+    label: "生活",
     items: [
-      { id: "dashboard", label: "总览", icon: Home },
-      { id: "assistant", label: "AI 管家", icon: Bot },
+      { id: "habits", label: "坚持", icon: Check },
+      { id: "fitness", label: "健身", icon: Dumbbell },
+      { id: "english", label: "英语", icon: Languages },
     ],
   },
   {
-    label: "成长与生活",
+    label: "记录",
     items: [
-      { id: "habits", label: "坚持项目", icon: Check },
-      { id: "english", label: "每日英语", icon: Languages },
-      { id: "fitness", label: "健身训练", icon: Dumbbell },
-      { id: "photos", label: "照片", icon: Images },
       { id: "notes", label: "笔记", icon: NotebookPen },
-      { id: "calendar", label: "生活日历", icon: CalendarDays },
-      { id: "review", label: "每日复盘", icon: BookOpen },
+      { id: "photos", label: "照片", icon: Images },
     ],
   },
   {
-    label: "资产与账单",
+    label: "财务",
     items: [
-      { id: "finance", label: "财务概览", icon: BarChart3 },
-      { id: "transactions", label: "账单管理", icon: CircleDollarSign },
-      { id: "accounts", label: "账户管理", icon: WalletCards },
-      { id: "import", label: "账单导入", icon: FileUp },
+      { id: "finance", label: "概览", icon: BarChart3 },
+      { id: "transactions", label: "账单", icon: CircleDollarSign },
+      { id: "accounts", label: "账户", icon: WalletCards },
+      { id: "import", label: "导入", icon: FileUp },
     ],
+  },
+  {
+    label: "回顾",
+    items: [
+      { id: "calendar", label: "日历", icon: CalendarDays },
+      { id: "review", label: "复盘", icon: BookOpen },
+    ],
+  },
+  {
+    label: "助手",
+    items: [{ id: "assistant", label: "AI 管家", icon: Bot }],
   },
 ];
 
 export const pageTitles: Record<PlatformView, string> = {
-  dashboard: "总览",
+  dashboard: "今天",
   assistant: "AI 管家",
-  habits: "坚持项目",
+  habits: "坚持",
   english: "每日英语",
   fitness: "健身训练",
   photos: "照片",
-  finance: "财务概览",
-  transactions: "账单管理",
-  accounts: "账户管理",
-  import: "账单导入",
+  finance: "财务",
+  transactions: "账单",
+  accounts: "账户",
+  import: "导入账单",
   calendar: "生活日历",
   review: "每日复盘",
   notes: "笔记",
