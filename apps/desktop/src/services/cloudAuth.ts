@@ -242,12 +242,33 @@ export class CloudAuthClient {
     await parseResponse<{ accepted: boolean }>(response, "change-password");
   }
 
+  private async selectUserProfile(tokens: CloudTokenResponse): Promise<SessionBindingResult | undefined> {
+    if (!window.syncApi) return undefined;
+
+    let binding = await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId());
+    if (!binding.bindingRequired && binding.cloudUserId === tokens.user.id) return binding;
+
+    const profiles = await window.syncApi.profiles();
+    const existing = profiles.find((profile) => profile.cloudUserId === tokens.user.id);
+    if (existing) {
+      await window.syncApi.setActiveProfile(existing.id);
+      clientLogger.info("cloud.auth.profile_selected", { userId: tokens.user.id, profileId: existing.id });
+    } else {
+      const profileId = await window.syncApi.createCloudProfile(tokens.user.displayName || tokens.user.email || "LifeTrace 用户");
+      clientLogger.info("cloud.auth.profile_created", { userId: tokens.user.id, profileId });
+    }
+
+    binding = await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId());
+    if (binding.cloudUserId !== tokens.user.id || binding.bindingRequired) {
+      throw new Error("无法切换到当前账号的数据空间");
+    }
+    return binding;
+  }
+
   private async acceptTokens(tokens: CloudTokenResponse): Promise<CloudAuthSnapshot> {
     this.accessToken = tokens.accessToken;
     if (tokens.refreshToken) await credentialApi().set(tokens.refreshToken);
-    const binding = window.syncApi
-      ? await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId())
-      : undefined;
+    const binding = await this.selectUserProfile(tokens);
     this.snapshot = {
       authenticated: true,
       binding,
@@ -348,6 +369,13 @@ export class CloudAuthClient {
       await window.syncApi.clearSession().catch((error) => {
         clientLogger.warn("cloud.auth.sync_session_clear_failed", undefined, error);
       });
+      try {
+        const profiles = await window.syncApi.profiles();
+        const localProfile = profiles.find((profile) => !profile.cloudUserId);
+        if (localProfile) await window.syncApi.setActiveProfile(localProfile.id);
+      } catch (error) {
+        clientLogger.warn("cloud.auth.local_profile_restore_failed", undefined, error);
+      }
     }
   }
 }
