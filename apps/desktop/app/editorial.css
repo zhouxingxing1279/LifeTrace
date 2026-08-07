@@ -21,10 +21,10 @@
   --lt-accent-soft: #e6efe9;
   --lt-font-serif: "Noto Serif SC", "Source Han Serif SC", "Songti SC", STSong, SimSun, Georgia, serif;
   --lt-font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Courier New", monospace;
+  background: var(--lt-paper);
 }
 
 /* ---------- 应用底色 ---------- */
-:root[data-ui-style="editorial"] html,
 :root[data-ui-style="editorial"] .hx-shell {
   background: var(--lt-paper);
 }

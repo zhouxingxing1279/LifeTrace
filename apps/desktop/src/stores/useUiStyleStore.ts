@@ -24,10 +24,8 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-const initialStyle: UiStyle =
-  typeof window !== "undefined" && window.localStorage.getItem("lifetrace:ui-style") === "editorial"
-    ? "editorial"
-    : "classic";
+const storedStyle = typeof window !== "undefined" ? window.localStorage.getItem("lifetrace:ui-style") : null;
+const initialStyle: UiStyle = storedStyle === "classic" ? "classic" : "editorial";
 const initialThemes: LifeTraceTheme[] =
   typeof window !== "undefined" ? readJson<LifeTraceTheme[]>("lifetrace:custom-themes", []) : [];
 const initialActive: string | null =
@@ -67,6 +65,7 @@ export const useUiStyleStore = create<UiStyleState>((set, get) => ({
     window.localStorage.setItem("lifetrace:ui-theme", JSON.stringify(activeThemeId));
     applySkin(uiStyle, get().customThemes, activeThemeId);
     set({ uiStyle, activeThemeId });
+    window.dispatchEvent(new CustomEvent("hengxu-toast", { detail: uiStyle === "editorial" ? "已切换为编辑风格" : "已切换为经典风格" }));
   },
 
   toggleUiStyle: () => get().setUiStyle(get().uiStyle === "editorial" ? "classic" : "editorial"),
