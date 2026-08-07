@@ -496,18 +496,7 @@ fn commit_migration(
     config.active_data_dir = Some(pending.target.clone());
     config.pending_migration = None;
     config.cleanup_pending = Some(pending.source.clone());
-    save_config(locator, config)?;
-
-    match fs::remove_dir_all(&pending.source) {
-        Ok(()) => {
-            config.cleanup_pending = None;
-            save_config(locator, config)?;
-        }
-        Err(value) => eprintln!(
-            "LifeTrace storage migration completed but old directory cleanup failed: {value}"
-        ),
-    }
-    Ok(())
+    save_config(locator, config)
 }
 
 fn cancel_failed_migration(
@@ -526,19 +515,41 @@ fn cancel_failed_migration(
     save_config(locator, config)
 }
 
-fn retry_old_directory_cleanup(config: &mut StorageConfig, locator: &Path) -> Result<(), String> {
-    let Some(old_path) = config.cleanup_pending.clone() else {
+fn retry_old_directory_cleanup(config_path: &Path) -> Result<(), String> {
+    let initial = load_config(config_path)?;
+    let Some(old_path) = initial.cleanup_pending else {
         return Ok(());
     };
-    if config.active_data_dir.as_ref() == Some(&old_path) {
-        config.cleanup_pending = None;
-        return save_config(locator, config);
+    if initial.active_data_dir.as_ref() == Some(&old_path) {
+        let mut latest = load_config(config_path)?;
+        if latest.cleanup_pending.as_ref() == Some(&old_path) {
+            latest.cleanup_pending = None;
+            save_config(config_path, &latest)?;
+        }
+        return Ok(());
     }
-    if !old_path.exists() || fs::remove_dir_all(&old_path).is_ok() {
-        config.cleanup_pending = None;
-        save_config(locator, config)?;
+
+    if old_path.exists() {
+        fs::remove_dir_all(&old_path)
+            .map_err(|value| error("删除迁移完成后的旧存储目录失败", value))?;
+    }
+
+    let mut latest = load_config(config_path)?;
+    if latest.cleanup_pending.as_ref() == Some(&old_path)
+        && latest.active_data_dir.as_ref() != Some(&old_path)
+    {
+        latest.cleanup_pending = None;
+        save_config(config_path, &latest)?;
     }
     Ok(())
+}
+
+pub fn schedule_pending_cleanup(config_path: PathBuf) {
+    tokio::task::spawn_blocking(move || {
+        if let Err(value) = retry_old_directory_cleanup(&config_path) {
+            eprintln!("LifeTrace old storage cleanup deferred: {value}");
+        }
+    });
 }
 
 pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String> {
@@ -555,8 +566,6 @@ pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String>
             Err(failure) => cancel_failed_migration(&mut config, &locator, &pending, &failure)?,
         }
     }
-
-    retry_old_directory_cleanup(&mut config, &locator)?;
 
     let current_data_dir = config
         .active_data_dir

@@ -96,8 +96,9 @@ pub fn run() {
             app.manage(storage::StorageState::new(
                 data_dir.clone(),
                 default_data_dir,
-                storage_config_path,
+                storage_config_path.clone(),
             ));
+            storage::schedule_pending_cleanup(storage_config_path);
 
             let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
             app.manage(vault_state);
