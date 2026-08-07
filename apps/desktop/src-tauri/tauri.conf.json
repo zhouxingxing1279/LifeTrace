@@ -15,7 +15,7 @@
         "label": "main",
         "title": "LifeTrace",
         "width": 1460,
-        "height": 920,
+        "height": 850,
         "minWidth": 1050,
         "minHeight": 680,
         "dragDropEnabled": false,

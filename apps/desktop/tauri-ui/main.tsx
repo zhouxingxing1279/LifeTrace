@@ -8,6 +8,7 @@ import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientO
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
+import { fitWindowToWorkArea } from "./windowFit";
 
 import "@/app/tokens.css";
 import "@/app/globals.css";
@@ -33,6 +34,7 @@ if (!root) throw new Error("LifeTrace root element is missing");
 installAppPreferences();
 
 async function start() {
+  void fitWindowToWorkArea();
   installTauriApiBridge();
   installVaultBridge();
   root!.innerHTML = '<div class="hx-loading"><span>LT</span><p>正在启动本地 SQLite 服务…</p></div>';
