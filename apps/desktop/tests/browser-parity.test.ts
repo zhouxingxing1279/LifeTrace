@@ -53,7 +53,7 @@ test("browser build remains a normal web application rather than a PWA", () => {
 });
 
 test("local browser authentication uses a cookie name accepted without HTTPS", () => {
-  const compose = readFileSync("deploy/cloud/docker-compose.local.yml", "utf8");
+  const compose = readFileSync("../../deploy/cloud/docker-compose.local.yml", "utf8");
   assert.match(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-lifetrace_session\}/);
   assert.doesNotMatch(compose, /AUTH_COOKIE_NAME:\s*\$\{AUTH_COOKIE_NAME:-__Host-/);
 });
