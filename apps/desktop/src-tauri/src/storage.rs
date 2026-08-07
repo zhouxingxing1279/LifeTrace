@@ -118,8 +118,7 @@ fn locator_path(app: &AppHandle, default_data_dir: &Path) -> Result<PathBuf, Str
         if directory.starts_with(default_data_dir) || default_data_dir.starts_with(&directory) {
             continue;
         }
-        fs::create_dir_all(&directory)
-            .map_err(|value| error("创建独立存储配置目录失败", value))?;
+        fs::create_dir_all(&directory).map_err(|value| error("创建独立存储配置目录失败", value))?;
         return Ok(directory.join(CONFIG_FILE));
     }
 
@@ -135,13 +134,11 @@ fn load_config(path: &Path) -> Result<StorageConfig, String> {
 }
 
 fn save_config(path: &Path, config: &StorageConfig) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "存储配置路径无效".to_owned())?;
+    let parent = path.parent().ok_or_else(|| "存储配置路径无效".to_owned())?;
     fs::create_dir_all(parent).map_err(|value| error("创建存储配置目录失败", value))?;
     let temporary = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(config)
-        .map_err(|value| error("序列化存储配置失败", value))?;
+    let bytes =
+        serde_json::to_vec_pretty(config).map_err(|value| error("序列化存储配置失败", value))?;
     fs::write(&temporary, bytes).map_err(|value| error("写入存储配置失败", value))?;
     if path.exists() {
         fs::remove_file(path).map_err(|value| error("替换存储配置失败", value))?;
@@ -172,7 +169,8 @@ fn should_skip(relative: &Path) -> bool {
 
 fn collect_files(root: &Path) -> Result<Vec<FileEntry>, String> {
     fn walk(root: &Path, current: &Path, output: &mut Vec<FileEntry>) -> Result<(), String> {
-        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))? {
+        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))?
+        {
             let entry = entry.map_err(|value| error("读取存储目录项失败", value))?;
             let path = entry.path();
             let file_type = entry
@@ -422,7 +420,8 @@ fn remove_stale_entries(source: &Path, target: &Path) -> Result<(), String> {
     if !target.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))? {
+    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))?
+    {
         let entry = entry.map_err(|value| error("读取新存储目录失败", value))?;
         let name = entry.file_name();
         let name_text = name.to_string_lossy();
@@ -489,7 +488,11 @@ fn finalize_pending(pending: &PendingMigration, locator: &Path) -> Result<(), St
     write_marker(&pending.target)
 }
 
-fn commit_migration(config: &mut StorageConfig, locator: &Path, pending: &PendingMigration) -> Result<(), String> {
+fn commit_migration(
+    config: &mut StorageConfig,
+    locator: &Path,
+    pending: &PendingMigration,
+) -> Result<(), String> {
     config.active_data_dir = Some(pending.target.clone());
     config.pending_migration = None;
     config.cleanup_pending = Some(pending.source.clone());
@@ -698,9 +701,16 @@ mod tests {
             .unwrap();
         assert_eq!(value, "ok");
         let path: String = reopened
-            .query_row("SELECT storage_path FROM note_attachments WHERE id='a'", [], |row| row.get(0))
+            .query_row(
+                "SELECT storage_path FROM note_attachments WHERE id='a'",
+                [],
+                |row| row.get(0),
+            )
             .unwrap();
-        assert_eq!(path, target.join("attachments/n1/a.txt").display().to_string());
+        assert_eq!(
+            path,
+            target.join("attachments/n1/a.txt").display().to_string()
+        );
 
         fs::remove_dir_all(source).ok();
         fs::remove_dir_all(target).ok();
