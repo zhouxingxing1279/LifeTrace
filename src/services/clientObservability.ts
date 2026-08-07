@@ -487,9 +487,19 @@ export function bindFetch(fetcher: FetchLike, owner?: FetchOwner): FetchLike {
 }
 
 function requestUrl(input: RequestInfo | URL): string {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.toString();
-  return input.url;
+  const raw = typeof input === "string"
+    ? input
+    : input instanceof URL
+      ? input.toString()
+      : input.url;
+  try {
+    const base = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(raw, base);
+    const origin = parsed.origin === "null" ? "" : parsed.origin;
+    return `${origin}${parsed.pathname}`;
+  } catch {
+    return raw.split(/[?#]/, 1)[0] || "unknown-request";
+  }
 }
 
 export async function instrumentedFetch(
