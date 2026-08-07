@@ -63,11 +63,14 @@ test("habit review and workout factories produce syncable payloads", () => {
   const log = createHabitLog("u", "d", habit.meta.id, 35, "完成音阶练习", "2026-08-07");
   const review = createDailyReview("u", "d", { reviewDate: "2026-08-07", energy: 4, mood: 4, bestThing: "完成训练", tomorrowPriority: "阅读" });
   const workout = createWorkout("u", "d", { name: "胸肩训练", durationMinutes: 60, exerciseCount: 5, setCount: 20, volumeKg: 5200 });
+  const unnamedWorkout = createWorkout("u", "d", { durationMinutes: 45 });
   const note = createTrainingNote("u", "d", "卧推复盘", "下一次保持肩胛稳定", workout.meta.id);
   assert.equal(habit.name, "练钢琴");
   assert.equal(log.activityId, habit.meta.id);
   assert.equal(log.logDate, "2026-08-07");
   assert.equal(review.reviewDate, "2026-08-07");
   assert.equal(workout.durationSeconds, 3600);
+  assert.equal(unnamedWorkout.name, "训练");
+  assert.equal(unnamedWorkout.durationSeconds, 2700);
   assert.equal(note.workoutId, workout.meta.id);
 });
