@@ -138,7 +138,6 @@ export default function Dashboard({
                 type="button"
                 className="lt-today-task-row"
                 key={activity.id}
-                onDoubleClick={() => record(activity)}
                 onClick={() => record(activity)}
               >
                 <span className="lt-task-check" aria-hidden="true" />
