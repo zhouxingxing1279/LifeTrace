@@ -88,10 +88,6 @@ let globalHandlersInstalled = false;
 let tauriTransportUnavailable = false;
 let tauriInvokePromise: Promise<typeof import("@tauri-apps/api/core").invoke> | null = null;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
 function detectRuntime(): ClientRuntime {
   if (typeof window !== "undefined") {
     if ("__TAURI_INTERNALS__" in window) return "tauri";
@@ -197,13 +193,14 @@ export function serializeClientError(
 }
 
 function persistBrowserEvent(event: ClientLogEvent): void {
-  if (typeof window === "undefined" || !window.localStorage) return;
+  if (typeof window === "undefined") return;
   try {
-    const raw = window.localStorage.getItem(LOG_STORAGE_KEY);
+    const storage = window.localStorage;
+    const raw = storage.getItem(LOG_STORAGE_KEY);
     const existing = raw ? JSON.parse(raw) as unknown : [];
     const events = Array.isArray(existing) ? existing : [];
     events.push(event);
-    window.localStorage.setItem(
+    storage.setItem(
       LOG_STORAGE_KEY,
       JSON.stringify(events.slice(-MAX_PERSISTED_EVENTS)),
     );
@@ -484,7 +481,7 @@ export function bindFetch(fetcher: FetchLike, owner?: FetchOwner): FetchLike {
       : undefined);
 
   if (inferredOwner && inferredOwner.fetch === fetcher) {
-    return (input, init) => inferredOwner.fetch(input, init);
+    return (input, init) => fetcher.call(inferredOwner, input, init);
   }
   return (input, init) => fetcher(input, init);
 }
