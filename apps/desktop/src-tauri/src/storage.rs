@@ -545,7 +545,7 @@ fn retry_old_directory_cleanup(config_path: &Path) -> Result<(), String> {
 }
 
 pub fn schedule_pending_cleanup(config_path: PathBuf) {
-    tokio::task::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         if let Err(value) = retry_old_directory_cleanup(&config_path) {
             eprintln!("LifeTrace old storage cleanup deferred: {value}");
         }
@@ -629,7 +629,7 @@ pub fn storage_migrate(
     let locator = state.config_path.clone();
     let status = Arc::clone(&state.status);
     let target_for_task = target.clone();
-    tokio::task::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || {
         let result = bulk_copy(&source, &target_for_task, &locator, &status).and_then(|_| {
             if let Ok(mut value) = status.lock() {
                 value.phase = "finalizing".to_owned();
