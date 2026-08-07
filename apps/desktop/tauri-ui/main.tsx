@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
 import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
+import { AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
@@ -22,6 +23,7 @@ import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
 import "@/app/local-vault.css";
 import "@/app/settings.css";
+import "@/app/account-settings-redesign.css";
 import "@/app/ui-foundation.css";
 import "@/app/ui-menus.css";
 
@@ -45,6 +47,7 @@ async function start() {
       <StrictMode>
         <ClientErrorBoundary>
           <HengXuShell />
+          <AccountEntryHost />
           <MobileUploadConnectionStatus />
         </ClientErrorBoundary>
       </StrictMode>,
@@ -54,7 +57,7 @@ async function start() {
       const state = useCloudAuthStore.getState();
       clientLogger.info("cloud.auth.auto_restore_finished", {
         authenticated: state.authenticated,
-        bindingRequired: state.binding?.bindingRequired ?? false,
+        profileId: state.binding?.profileId,
       });
     }).catch((error) => {
       clientLogger.warn("cloud.auth.auto_restore_failed", undefined, error);
