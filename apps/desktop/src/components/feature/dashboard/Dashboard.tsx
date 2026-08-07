@@ -103,7 +103,7 @@ export default function Dashboard({
             记笔记
           </Button>
           <Button variant="primary" icon={<Plus aria-hidden="true" />} onClick={() => go("habits")}>
-            新建记录
+            管理坚持
           </Button>
         </div>
       </div>
@@ -150,7 +150,7 @@ export default function Dashboard({
                 <span className="lt-row-action">记录 <ChevronRight aria-hidden="true" /></span>
               </button>
             ))}
-            {!pending.length ? (
+            {activities.length > 0 && !pending.length ? (
               <div className="lt-today-done-state">
                 <Check aria-hidden="true" />
                 <strong>今天的目标已经完成</strong>
