@@ -1,0 +1,52 @@
+name: Fix storage Windows path assertion
+
+on:
+  push:
+    branches:
+      - feat/storage-location-migration
+    paths:
+      - .github/workflows/fix-storage-windows-test.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/storage-location-migration
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Use platform-native PathBuf assertion
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/src/storage.rs")
+          text = path.read_text(encoding="utf-8")
+          old = '''        assert_eq!(
+              path,
+              target.join("attachments/n1/a.txt").display().to_string()
+          );
+          '''
+          new = '''        assert_eq!(
+              PathBuf::from(path),
+              target.join("attachments").join("n1").join("a.txt")
+          );
+          '''
+          if old not in text:
+              raise SystemExit("storage path assertion not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Format Rust
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit test fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/storage.rs
+          git commit -m "test(storage): compare migrated paths portably on Windows"
+          git push origin HEAD:feat/storage-location-migration
