@@ -5,8 +5,18 @@ import { readFile } from "node:fs/promises";
 test("signed-out desktop does not mount the business shell", async () => {
   const source = await readFile("src/components/DesktopApp.tsx", "utf8");
   assert.match(source, /const hasIdentity = Boolean\(user && \(authenticated \|\| phase === "offline"\)\)/);
-  assert.match(source, /if \(!hasIdentity\)[\s\S]*SignedOutShell[\s\S]*AccountEntryHost/);
+  assert.match(source, /if \(!hasIdentity\)[\s\S]*SignedOutShell/);
   assert.match(source, /return <><HengXuShell\/><AccountEntryHost\/><\/>/);
+});
+
+test("signed-out shell keeps the account entry visible and opens login automatically", async () => {
+  const [desktop, account] = await Promise.all([
+    readFile("src/components/DesktopApp.tsx", "utf8"),
+    readFile("src/components/account/AccountEntry.tsx", "utf8"),
+  ]);
+  assert.match(desktop, /hx-sidebar-foot"><AccountEntry autoOpen=\{!restoring\}\/><\/div>/);
+  assert.match(account, /export function AccountEntry\(\{ autoOpen = false \}/);
+  assert.match(account, /if \(autoOpen\) setDialog\(\(current\) => current \?\? "login"\)/);
 });
 
 test("signed-out shell contains no business navigation or data widgets", async () => {
