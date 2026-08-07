@@ -8,23 +8,23 @@ on:
     paths:
       - "crates/lifetrace-contracts/**"
       - "crates/lifetrace-sync-client/**"
-      - "src-tauri/**"
-      - "src/**"
-      - "tauri-ui/**"
-      - "services/lifetrace-cloud/**"
+      - "apps/desktop/src-tauri/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/tauri-ui/**"
+      - "services/cloud/**"
       - "docs/epic-05/**"
-      - "package*.json"
+      - "apps/desktop/package*.json"
       - ".github/workflows/epic05-windows-sync.yml"
   pull_request:
     paths:
       - "crates/lifetrace-contracts/**"
       - "crates/lifetrace-sync-client/**"
-      - "src-tauri/**"
-      - "src/**"
-      - "tauri-ui/**"
-      - "services/lifetrace-cloud/**"
+      - "apps/desktop/src-tauri/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/tauri-ui/**"
+      - "services/cloud/**"
       - "docs/epic-05/**"
-      - "package*.json"
+      - "apps/desktop/package*.json"
       - ".github/workflows/epic05-windows-sync.yml"
   workflow_dispatch:
 
@@ -52,7 +52,7 @@ jobs:
           python3 - <<'PY'
           import sqlite3
           from pathlib import Path
-          path = Path('xunji_service/data/dictionary.db')
+          path = Path('apps/desktop/xunji_service/data/dictionary.db')
           path.parent.mkdir(parents=True, exist_ok=True)
           with sqlite3.connect(path) as db:
               db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
@@ -65,27 +65,28 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             crates/lifetrace-contracts
             crates/lifetrace-sync-client
-            src-tauri
+            apps/desktop/src-tauri
       - name: Rustfmt
         run: |
           cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml -- --check
-          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Pure sync core tests
         run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
       - name: Desktop SQLite and adapter tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Clippy pure sync core
         run: cargo clippy --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-targets --all-features -- -D warnings
       - name: Clippy desktop library
         run: |
-          cargo clippy --manifest-path src-tauri/Cargo.toml --lib -- \
+          cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- \
             -D warnings \
             -A dead_code \
             -A clippy::explicit_auto_deref \
@@ -104,7 +105,7 @@ jobs:
             -A clippy::unnecessary_lazy_evaluations
       - name: Frontend
         run: |
-          npm ci
+          npm ci --prefix apps/desktop
           npm run lint
           npm run test:unit
           npm run web:build
@@ -138,9 +139,9 @@ jobs:
           toolchain: 1.88.0
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: services/lifetrace-cloud
+          workspaces: services/cloud
       - name: Cloud PostgreSQL authentication, persistence and isolation regression
-        run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
+        run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
 
   windows-client:
     runs-on: windows-latest
@@ -150,8 +151,8 @@ jobs:
       - name: Create required bundled dictionary resource
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force xunji_service/data | Out-Null
-          python -c "import sqlite3; db=sqlite3.connect(r'xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+          New-Item -ItemType Directory -Force apps/desktop/xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'apps/desktop/xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -160,16 +161,17 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
             crates/lifetrace-sync-client
-            src-tauri
+            apps/desktop/src-tauri
       - name: Windows pure core and desktop tests
         run: |
           cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
-          cargo test --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Windows frontend build
         run: |
-          npm ci
+          npm ci --prefix apps/desktop
           npm run web:build

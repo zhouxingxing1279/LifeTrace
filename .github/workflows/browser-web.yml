@@ -3,30 +3,32 @@ name: Browser Web
 on:
   pull_request:
     paths:
-      - "web-client/**"
-      - "app/**"
-      - "public/**"
-      - "vite.browser.config.ts"
-      - "tests/web-*.test.ts"
-      - "tests/browser-*.test.ts"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "services/lifetrace-cloud/**"
+      - "apps/desktop/web-client/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/app/**"
+      - "apps/desktop/public/**"
+      - "apps/desktop/vite.browser.config.ts"
+      - "apps/desktop/tests/web-*.test.ts"
+      - "apps/desktop/tests/browser-*.test.ts"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/tsconfig.json"
+      - "services/cloud/**"
       - ".github/workflows/browser-web.yml"
   push:
     branches: [main, agent/browser-app-parity]
     paths:
-      - "web-client/**"
-      - "app/**"
-      - "public/**"
-      - "vite.browser.config.ts"
-      - "tests/web-*.test.ts"
-      - "tests/browser-*.test.ts"
-      - "package.json"
-      - "package-lock.json"
-      - "tsconfig.json"
-      - "services/lifetrace-cloud/**"
+      - "apps/desktop/web-client/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/app/**"
+      - "apps/desktop/public/**"
+      - "apps/desktop/vite.browser.config.ts"
+      - "apps/desktop/tests/web-*.test.ts"
+      - "apps/desktop/tests/browser-*.test.ts"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/tsconfig.json"
+      - "services/cloud/**"
       - ".github/workflows/browser-web.yml"
   workflow_dispatch:
 
@@ -42,12 +44,16 @@ jobs:
     name: Typecheck, unit tests and builds
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - run: npm ci
       - name: Enforce browser cloud-only and no-photo boundaries
         shell: bash
@@ -76,7 +82,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-browser-web
-          path: dist-browser
+          path: apps/desktop/dist-browser
           if-no-files-found: error
           retention-days: 7
 
@@ -111,31 +117,31 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: services/lifetrace-cloud
+          workspaces: services/cloud
       - name: Resolve dependencies and capture lockfile
         shell: bash
-        run: cargo metadata --manifest-path services/lifetrace-cloud/Cargo.toml --format-version 1 > /dev/null
+        run: cargo metadata --manifest-path services/cloud/Cargo.toml --format-version 1 > /dev/null
       - name: Format and verify Rust
         shell: bash
         run: |
-          cargo fmt --manifest-path services/lifetrace-cloud/Cargo.toml
-          git diff -- services/lifetrace-cloud/src services/lifetrace-cloud/Cargo.toml > rustfmt.patch
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          git diff -- services/cloud/src services/cloud/Cargo.toml > rustfmt.patch
           if test -s rustfmt.patch; then
             cat rustfmt.patch
             exit 1
           fi
-      - run: cargo test --manifest-path services/lifetrace-cloud/Cargo.toml -- --test-threads=1
-      - run: cargo clippy --manifest-path services/lifetrace-cloud/Cargo.toml --all-targets -- -D warnings
+      - run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
+      - run: cargo clippy --manifest-path services/cloud/Cargo.toml --all-targets -- -D warnings
       - name: Require committed dependency lockfile
         shell: bash
-        run: git diff --exit-code -- services/lifetrace-cloud/Cargo.lock
+        run: git diff --exit-code -- services/cloud/Cargo.lock
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: browser-cloud-diagnostics
           path: |
             rustfmt.patch
-            services/lifetrace-cloud/src/routes/assistant.rs
-            services/lifetrace-cloud/Cargo.lock
+            services/cloud/src/routes/assistant.rs
+            services/cloud/Cargo.lock
           if-no-files-found: warn
           retention-days: 7

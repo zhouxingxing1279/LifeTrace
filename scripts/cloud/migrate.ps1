@@ -5,5 +5,5 @@ if (-not $env:DATABASE_URL) {
 }
 
 cargo run `
-    --manifest-path services/lifetrace-cloud/Cargo.toml `
+    --manifest-path services/cloud/Cargo.toml `
     --bin lifetrace-migrate

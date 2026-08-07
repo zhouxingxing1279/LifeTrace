@@ -1,7 +1,7 @@
 ========================================================
 LifeTrace 本地部署 · 常用命令说明
 ========================================================
-环境：后端跑在 WSL2（Ubuntu），Web 前端跑在 WSL2，
+环境：后端跑在 WSL2（Ubuntu），Browser Web 前端跑在 WSL2，
 桌面客户端在 Windows 构建运行。
 
 --------------------------------------------------------
@@ -9,7 +9,7 @@ LifeTrace 本地部署 · 常用命令说明
 --------------------------------------------------------
   后端（Cloud + PostgreSQL）  http://localhost:8787（Windows）
                               http://127.0.0.1:8787 （WSL）
-  Web/PWA 前端（开发模式）    http://127.0.0.1:5190（Windows 浏览器）
+  Browser Web（开发模式）     http://127.0.0.1:5190（Windows 浏览器）
   健康检查                    http://localhost:8787/health/ready
   数据库端口                  127.0.0.1:5432（仅本机）
 
@@ -53,17 +53,17 @@ LifeTrace 本地部署 · 常用命令说明
     exec -T postgres psql -U lifetrace -d lifetrace
 
 --------------------------------------------------------
-二、Web/PWA 前端（在 WSL 里执行）
+二、Browser Web 前端（在 WSL 里执行）
 --------------------------------------------------------
 启动开发服务器（自动跟随页面主机连后端，最稳定）：
   cd ~/projects/LifeTrace
-  npm run pwa:dev -- --port 5190
+  npm run browser:dev -- --port 5190
 
 停止开发服务器：
-  pkill -f "vite.web.config"
+  pkill -f "vite.browser.config"
 
-构建正式产物（输出到 dist-web/）：
-  npm run pwa:build
+构建正式产物（输出到 apps/desktop/dist-browser/）：
+  npm run browser:build
 
 浏览器访问：
   http://127.0.0.1:5190
@@ -103,7 +103,7 @@ Windows 仓库（桌面客户端代码）拉取：
   # 在 Windows 仓库操作（网络最稳，代理可用）
   cd D:\WorkSpace\LifeTrace
   git status                              # 先确认要提交哪些文件
-  git add <文件或目录>                    # 例如 git add src/services/cloudAuth.ts
+  git add <文件或目录>                    # 例如 git add apps/desktop/src/services/cloudAuth.ts
   git commit -m "说明这次改了什么"
   git push origin main                    # 直连失败时用：
   git -c http.proxy=http://127.0.0.1:7890 push origin main
@@ -128,13 +128,21 @@ Windows 仓库（桌面客户端代码）拉取：
 --------------------------------------------------------
 三、桌面客户端（在 Windows PowerShell 里执行）
 --------------------------------------------------------
-工作目录：
+仓库目录：
   cd D:\WorkSpace\LifeTrace
 
-开发模式运行：
+Desktop 实际项目目录：
+  D:\WorkSpace\LifeTrace\apps\desktop
+
+开发模式运行（根目录代理命令）：
   npm run dev
 
-打包安装程序：
+打包安装程序（根目录代理命令）：
+  npm run build
+
+也可以进入 Desktop 子项目直接运行：
+  cd apps\desktop
+  npm run dev
   npm run build
 
 客户端登录时云服务地址填：
@@ -149,7 +157,7 @@ Windows 仓库（桌面客户端代码）拉取：
   export LIFETRACE_ENV=development
   export DEV_AUTH_ENABLED=true
   export AUTH_REGISTRATION_MODE=disabled
-  cargo run --manifest-path services/lifetrace-cloud/Cargo.toml \
+  cargo run --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-admin \
     -- bootstrap-user \
     --email "你的邮箱" \
@@ -178,12 +186,11 @@ Windows 仓库（桌面客户端代码）拉取：
   3. 备份文件在 backups/postgres/，不提交。
   4. 停止服务用 stop.sh（down），不要加 -v，否则会删数据卷。
   5. 本地 Compose 只绑定 127.0.0.1，不要改成公网暴露。
-  6. 前端默认直接请求“页面同主机”的 8787 端口（跨端口但同站，
+  6. Browser Web 默认直接请求“页面同主机”的 8787 端口（跨端口但同站，
      会话 Cookie 才能正常发送）。如需覆盖可用
      VITE_LIFETRACE_CLOUD_URL=http://主机:8787 指定。
   7. 浏览器访问前端时如果仍显示旧内容/旧报错，
-     用无痕窗口，或在 F12 → Application 里 Unregister Service Worker 后
-     清理站点数据，再刷新（Ctrl+Shift+R 硬刷新）。
+     用无痕窗口，或清理站点数据后再刷新（Ctrl+Shift+R 硬刷新）。
   8. 常用管理脚本：
        ./scripts/local-wsl/start.sh    启动
        ./scripts/local-wsl/stop.sh     停止
@@ -193,5 +200,5 @@ Windows 仓库（桌面客户端代码）拉取：
        ./scripts/local-wsl/update.sh   更新部署
 
 ========================================================
-生成时间：2026-08-06
+更新：2026-08-07（Monorepo Desktop / Cloud 拆分）
 ========================================================
