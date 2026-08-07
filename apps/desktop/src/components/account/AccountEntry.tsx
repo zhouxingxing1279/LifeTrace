@@ -142,10 +142,10 @@ function AccountDialog({ initialMode, close }: { initialMode: AuthDialogMode; cl
   </div>;
 }
 
-function AccountEntry() {
+export function AccountEntry({ autoOpen = false }: { autoOpen?: boolean }) {
   const auth = useCloudAuthStore();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [dialog, setDialog] = useState<AuthDialogMode | null>(null);
+  const [dialog, setDialog] = useState<AuthDialogMode | null>(autoOpen ? "login" : null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -153,6 +153,10 @@ function AccountEntry() {
     window.addEventListener("lifetrace:open-auth", openAuth);
     return () => window.removeEventListener("lifetrace:open-auth", openAuth);
   }, []);
+
+  useEffect(() => {
+    if (autoOpen) setDialog((current) => current ?? "login");
+  }, [autoOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
