@@ -4,7 +4,7 @@ use axum::body::{to_bytes, Body};
 use axum::http::{Method, Request, StatusCode};
 use lifetrace_cloud::auth::security::RequestContext;
 use lifetrace_cloud::{app, AppState, Config};
-use lifetrace_contracts::auth::v1::{RegisterRequestV1, Scope};
+use lifetrace_contracts::auth::v1::RegisterRequestV1;
 use lifetrace_contracts::sync::v1::AppId;
 use serde_json::{json, Value};
 use tower::ServiceExt;
