@@ -1,0 +1,44 @@
+name: Patch storage runtime
+
+on:
+  push:
+    branches:
+      - fix/windows-startup-storage-runtime
+    paths:
+      - .github/workflows/patch-storage-runtime.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/windows-startup-storage-runtime
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Use the Tauri-managed async runtime
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('apps/desktop/src-tauri/src/storage.rs')
+          text = path.read_text(encoding='utf-8')
+          count = text.count('tokio::task::spawn_blocking')
+          if count != 2:
+              raise SystemExit(f'expected 2 raw tokio spawn_blocking calls, found {count}')
+          text = text.replace('tokio::task::spawn_blocking', 'tauri::async_runtime::spawn_blocking')
+          path.write_text(text, encoding='utf-8')
+      - name: Format Rust
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/storage.rs
+          git commit -m "fix(storage): use Tauri runtime for blocking background jobs"
+          git push origin HEAD:fix/windows-startup-storage-runtime
