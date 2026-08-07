@@ -24,22 +24,22 @@ jobs:
       - name: Use platform-native PathBuf assertion
         shell: python
         run: |
+          import re
           from pathlib import Path
           path = Path("apps/desktop/src-tauri/src/storage.rs")
           text = path.read_text(encoding="utf-8")
-          old = '''        assert_eq!(
-              path,
-              target.join("attachments/n1/a.txt").display().to_string()
-          );
-          '''
-          new = '''        assert_eq!(
+          pattern = re.compile(
+              r'assert_eq!\(\s*path,\s*target\.join\("attachments/n1/a\.txt"\)\.display\(\)\.to_string\(\)\s*\);',
+              re.MULTILINE,
+          )
+          replacement = '''assert_eq!(
               PathBuf::from(path),
               target.join("attachments").join("n1").join("a.txt")
-          );
-          '''
-          if old not in text:
-              raise SystemExit("storage path assertion not found")
-          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          );'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f"expected one storage path assertion, replaced {count}")
+          path.write_text(text, encoding="utf-8")
       - name: Format Rust
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Commit test fix
