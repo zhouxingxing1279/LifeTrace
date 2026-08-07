@@ -7,6 +7,11 @@ import {
 } from "./types";
 import { API_BASE } from "./base";
 import { browserFetch } from "./http";
+import {
+  ClientRequestError,
+  bindFetch,
+  clientLogger,
+} from "../../../src/services/clientObservability";
 
 async function readJson(response: Response): Promise<unknown> {
   const raw = await response.text();
@@ -30,18 +35,61 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path}`;
 }
 
+function safeApiPath(value: string): string {
+  return value.split(/[?#]/, 1)[0] || "unknown-request";
+}
+
+function cloudTransportError(cause: unknown, fallback: string): Error {
+  if (cause instanceof ClientRequestError && cause.category === "programming") {
+    return new Error(`LifeTrace 客户端请求执行失败，请查看诊断日志（错误编号 ${cause.errorId}）`, {
+      cause,
+    });
+  }
+  return new Error(fallback, { cause });
+}
+
+function logTransportFailure(module: string, action: string, cause: unknown): void {
+  if (cause instanceof ClientRequestError) return;
+  clientLogger.error("cloud.web.transport_failed", {
+    module,
+    action: safeApiPath(action),
+  }, cause);
+}
+
+function logHttpFailure(module: string, action: string, response: Response, error: Error): void {
+  clientLogger.error("cloud.web.http_failed", {
+    module,
+    action: safeApiPath(action),
+    status: response.status,
+    stage: "response.http",
+    requestSent: true,
+  }, error);
+}
+
 export class AuthApi {
-  constructor(private readonly fetcher: FetchLike = browserFetch) {}
+  private readonly fetcher: FetchLike;
+
+  constructor(fetcher: FetchLike = browserFetch) {
+    this.fetcher = bindFetch(fetcher);
+  }
 
   private async request<T>(url: string, init: RequestInit = {}, csrfToken?: string): Promise<T> {
     const headers = new Headers(init.headers);
     if (init.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
     if (csrfToken) headers.set("x-csrf-token", csrfToken);
     let response: Response;
-    try { response = await this.fetcher(apiUrl(url), { ...init, credentials: "include", headers }); }
-    catch (cause) { throw new Error(`无法连接 LifeTrace 云端，请检查网络后重试（底层:${cause instanceof Error ? `${cause.name}: ${cause.message}` : String(cause)}）`); }
+    try {
+      response = await this.fetcher(apiUrl(url), { ...init, credentials: "include", headers });
+    } catch (cause) {
+      logTransportFailure("web-auth", url, cause);
+      throw cloudTransportError(cause, "无法连接 LifeTrace 云端，请检查网络后重试");
+    }
     const payload = await readJson(response);
-    if (!response.ok) throw new Error(errorMessage(payload, `请求失败 (${response.status})`));
+    if (!response.ok) {
+      const error = new Error(errorMessage(payload, `请求失败 (${response.status})`));
+      logHttpFailure("web-auth", url, response, error);
+      throw error;
+    }
     return payload as T;
   }
 
@@ -87,9 +135,16 @@ export class CloudConflictError extends Error {
 export class CloudDataStore {
   private state: CloudState = { cursor: null, entities: {}, conflicts: [], lastLoadedAt: null };
   private csrfToken: string;
+  private readonly fetcher: FetchLike;
 
-  constructor(private readonly userId: string, private readonly deviceId: string, csrfToken: string, private readonly fetcher: FetchLike = browserFetch) {
+  constructor(
+    private readonly userId: string,
+    private readonly deviceId: string,
+    csrfToken: string,
+    fetcher: FetchLike = browserFetch,
+  ) {
     this.csrfToken = csrfToken.trim();
+    this.fetcher = bindFetch(fetcher);
   }
 
   setCsrfToken(token: string): void { this.csrfToken = token.trim(); }
@@ -105,10 +160,18 @@ export class CloudDataStore {
     const headers = new Headers({ "content-type": "application/json" });
     if (this.csrfToken) headers.set("x-csrf-token", this.csrfToken);
     let response: Response;
-    try { response = await this.fetcher(apiUrl(url), { method: "POST", credentials: "include", headers, body: JSON.stringify(body) }); }
-    catch { throw new Error("无法连接 LifeTrace 云端，数据尚未保存"); }
+    try {
+      response = await this.fetcher(apiUrl(url), { method: "POST", credentials: "include", headers, body: JSON.stringify(body) });
+    } catch (cause) {
+      logTransportFailure("web-sync", url, cause);
+      throw cloudTransportError(cause, "无法连接 LifeTrace 云端，数据尚未保存");
+    }
     const payload = await readJson(response);
-    if (!response.ok) throw new Error(errorMessage(payload, `云端请求失败 (${response.status})`));
+    if (!response.ok) {
+      const error = new Error(errorMessage(payload, `云端请求失败 (${response.status})`));
+      logHttpFailure("web-sync", url, response, error);
+      throw error;
+    }
     return payload as T;
   }
 
