@@ -1,7 +1,3 @@
-/* Page-level overflow menu is intentionally removed. Object-level menus and
-   right-click actions remain available where they are useful. */
-.hx-page-actions{display:none!important}
-
 /* Signed-out state: do not expose any business navigation or content. */
 .hx-auth-shell{min-height:100vh}
 .hx-auth-shell>aside{display:flex;flex-direction:column}

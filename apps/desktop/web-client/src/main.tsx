@@ -11,7 +11,6 @@ import "../../app/fitness-app.css";
 import "../../app/english.css";
 import "../../app/xunji-import.css";
 import "../../app/notes.css";
-import "../../app/redesign.css";
 import "../../app/persist-project.css";
 import "../../app/settings.css";
 import "./styles.css";

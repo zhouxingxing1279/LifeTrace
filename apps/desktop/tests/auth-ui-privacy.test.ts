@@ -29,10 +29,13 @@ test("signed-out shell contains no business navigation or data widgets", async (
   }
 });
 
-test("auth dialog cannot overflow horizontally and page-level dots are removed", async () => {
+test("auth dialog cannot overflow horizontally and topbar actions are a real entry point", async () => {
   const css = await readFile("app/auth-shell-fixes.css", "utf8");
-  assert.match(css, /\.hx-page-actions\{display:none!important\}/);
+  assert.equal(css.includes(".hx-page-actions{display:none!important}"), false);
   assert.match(css, /\.hx-account-dialog\{[^}]*overflow-x:hidden!important/);
   assert.match(css, /\.hx-account-form\{[^}]*flex-direction:column!important/);
   assert.match(css, /\.hx-account-form input,[\s\S]*width:100%!important/);
+  const shell = await readFile("src/components/layout/AppShell.tsx", "utf8");
+  assert.match(shell, /className="hx-page-actions"/);
+  assert.match(shell, /CommandPalette/);
 });
