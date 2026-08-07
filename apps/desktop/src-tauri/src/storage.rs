@@ -96,14 +96,34 @@ fn error(context: &str, value: impl std::fmt::Display) -> String {
     format!("{context}: {value}")
 }
 
-fn locator_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let directory = app
+fn locator_path(app: &AppHandle, default_data_dir: &Path) -> Result<PathBuf, String> {
+    let config_candidate = app
+        .path()
+        .app_config_dir()
+        .ok()
+        .map(|path| path.join("storage-config"));
+    let local_candidate = app
         .path()
         .app_local_data_dir()
-        .map_err(|value| error("无法读取本地配置目录", value))?
-        .join("storage-config");
-    fs::create_dir_all(&directory).map_err(|value| error("创建本地配置目录失败", value))?;
-    Ok(directory.join(CONFIG_FILE))
+        .ok()
+        .map(|path| path.join("storage-config"));
+    let sibling_candidate = default_data_dir
+        .parent()
+        .map(|path| path.join(".lifetrace-storage-config"));
+
+    for directory in [config_candidate, local_candidate, sibling_candidate]
+        .into_iter()
+        .flatten()
+    {
+        if directory.starts_with(default_data_dir) || default_data_dir.starts_with(&directory) {
+            continue;
+        }
+        fs::create_dir_all(&directory)
+            .map_err(|value| error("创建独立存储配置目录失败", value))?;
+        return Ok(directory.join(CONFIG_FILE));
+    }
+
+    Err("无法找到与 LifeTrace 数据目录分离的存储配置位置".to_owned())
 }
 
 fn load_config(path: &Path) -> Result<StorageConfig, String> {
@@ -115,13 +135,11 @@ fn load_config(path: &Path) -> Result<StorageConfig, String> {
 }
 
 fn save_config(path: &Path, config: &StorageConfig) -> Result<(), String> {
-    let parent = path
-        .parent()
-        .ok_or_else(|| "存储配置路径无效".to_owned())?;
+    let parent = path.parent().ok_or_else(|| "存储配置路径无效".to_owned())?;
     fs::create_dir_all(parent).map_err(|value| error("创建存储配置目录失败", value))?;
     let temporary = path.with_extension("json.tmp");
-    let bytes = serde_json::to_vec_pretty(config)
-        .map_err(|value| error("序列化存储配置失败", value))?;
+    let bytes =
+        serde_json::to_vec_pretty(config).map_err(|value| error("序列化存储配置失败", value))?;
     fs::write(&temporary, bytes).map_err(|value| error("写入存储配置失败", value))?;
     if path.exists() {
         fs::remove_file(path).map_err(|value| error("替换存储配置失败", value))?;
@@ -194,7 +212,8 @@ fn validate_target(source: &Path, target: &Path, locator: &Path) -> Result<(), S
     let source = fs::canonicalize(source).map_err(|value| error("读取当前存储目录失败", value))?;
     let target = fs::canonicalize(target).map_err(|value| error("读取新存储目录失败", value))?;
     let locator_parent = locator.parent().unwrap_or(locator);
-    let locator_parent = fs::canonicalize(locator_parent).unwrap_or_else(|_| locator_parent.to_path_buf());
+    let locator_parent =
+        fs::canonicalize(locator_parent).unwrap_or_else(|_| locator_parent.to_path_buf());
 
     if source == target || target.starts_with(&source) || source.starts_with(&target) {
         return Err("新存储目录不能与当前目录相同，也不能互相包含".to_owned());
@@ -277,15 +296,21 @@ fn update_progress(status: &Arc<Mutex<StorageStatus>>, files: u64, bytes: u64) {
     }
 }
 
-fn bulk_copy(source: &Path, target: &Path, locator: &Path, status: &Arc<Mutex<StorageStatus>>) -> Result<(), String> {
+fn bulk_copy(
+    source: &Path,
+    target: &Path,
+    locator: &Path,
+    status: &Arc<Mutex<StorageStatus>>,
+) -> Result<(), String> {
     validate_target(source, target, locator)?;
+    write_marker(target)?;
     let files = collect_files(source)?;
     let database_size = fs::metadata(source.join(DATABASE_FILE))
         .map(|value| value.len())
         .unwrap_or(0);
     let bytes_total = files.iter().map(|entry| entry.size).sum::<u64>() + database_size;
     if let Ok(mut value) = status.lock() {
-        value.files_total = files.len() as u64 + u64::from(database_size > 0);
+        value.files_total = files.len() as u64 + if database_size > 0 { 1 } else { 0 };
         value.bytes_total = bytes_total;
     }
 
@@ -312,7 +337,7 @@ fn bulk_copy(source: &Path, target: &Path, locator: &Path, status: &Arc<Mutex<St
         copied_bytes += database_size;
         update_progress(status, copied_files, copied_bytes);
     }
-    write_marker(target)
+    Ok(())
 }
 
 fn modified(path: &Path) -> Option<SystemTime> {
@@ -323,7 +348,7 @@ fn copy_incremental(source: &Path, target: &Path) -> Result<(), String> {
     for entry in collect_files(source)? {
         let destination = target.join(&entry.relative);
         let should_copy = match fs::metadata(&destination) {
-            Ok(metadata) if entry.size <= LARGE_FILE_THRESHOLD => true,
+            Ok(_) if entry.size <= LARGE_FILE_THRESHOLD => true,
             Ok(metadata) if metadata.len() != entry.size => true,
             Ok(_) => match (modified(&entry.source), modified(&destination)) {
                 (Some(source_time), Some(target_time)) => source_time > target_time,
@@ -356,9 +381,11 @@ fn remove_stale_entries(source: &Path, target: &Path) -> Result<(), String> {
             .map_err(|value| error("读取新存储文件类型失败", value))?;
         if !source_path.exists() {
             if file_type.is_dir() {
-                fs::remove_dir_all(&target_path).map_err(|value| error("清理已删除目录副本失败", value))?;
+                fs::remove_dir_all(&target_path)
+                    .map_err(|value| error("清理已删除目录副本失败", value))?;
             } else {
-                fs::remove_file(&target_path).map_err(|value| error("清理已删除文件副本失败", value))?;
+                fs::remove_file(&target_path)
+                    .map_err(|value| error("清理已删除文件副本失败", value))?;
             }
         } else if file_type.is_dir() && source_path.is_dir() {
             remove_stale_entries(&source_path, &target_path)?;
@@ -373,7 +400,10 @@ fn verify_tree(source: &Path, target: &Path) -> Result<(), String> {
         let metadata = fs::metadata(&destination)
             .map_err(|_| format!("迁移校验失败，目标文件缺失: {}", entry.relative.display()))?;
         if metadata.len() != entry.size {
-            return Err(format!("迁移校验失败，文件大小不一致: {}", entry.relative.display()));
+            return Err(format!(
+                "迁移校验失败，文件大小不一致: {}",
+                entry.relative.display()
+            ));
         }
     }
     if source.join(DATABASE_FILE).is_file() {
@@ -409,7 +439,7 @@ pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String>
         .path()
         .app_data_dir()
         .map_err(|value| error("无法读取默认数据目录", value))?;
-    let locator = locator_path(app)?;
+    let locator = locator_path(app, &default_data_dir)?;
     let mut config = load_config(&locator)?;
 
     if let Some(pending) = config.pending_migration.clone() {
@@ -442,7 +472,10 @@ pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String>
         .clone()
         .unwrap_or_else(|| default_data_dir.clone());
     if config.active_data_dir.is_some() && !current_data_dir.is_dir() {
-        return Err(format!("当前 LifeTrace 存储位置不可用: {}", current_data_dir.display()));
+        return Err(format!(
+            "当前 LifeTrace 存储位置不可用: {}",
+            current_data_dir.display()
+        ));
     }
     fs::create_dir_all(&current_data_dir)
         .map_err(|value| error("创建 LifeTrace 数据目录失败", value))?;
@@ -459,7 +492,10 @@ pub fn storage_status(state: State<'_, StorageState>) -> StorageStatus {
 }
 
 #[tauri::command]
-pub fn storage_migrate(state: State<'_, StorageState>, target_path: String) -> Result<StorageStatus, String> {
+pub fn storage_migrate(
+    state: State<'_, StorageState>,
+    target_path: String,
+) -> Result<StorageStatus, String> {
     let target = PathBuf::from(target_path.trim());
     if target.as_os_str().is_empty() {
         return Err("请选择新的存储文件夹".to_owned());
@@ -581,13 +617,18 @@ mod tests {
         fs::create_dir_all(locator.parent().unwrap()).unwrap();
         fs::write(source.join("vault/item.bin"), b"secret").unwrap();
         let connection = Connection::open(source.join(DATABASE_FILE)).unwrap();
-        connection.execute_batch("CREATE TABLE t(id INTEGER); INSERT INTO t VALUES(1);").unwrap();
+        connection
+            .execute_batch("CREATE TABLE t(id INTEGER); INSERT INTO t VALUES(1);")
+            .unwrap();
         drop(connection);
         let status = Arc::new(Mutex::new(StorageStatus::idle(&source, &source)));
         bulk_copy(&source, &target, &locator, &status).unwrap();
 
         finalize_pending(
-            &PendingMigration { source: source.clone(), target: target.clone() },
+            &PendingMigration {
+                source: source.clone(),
+                target: target.clone(),
+            },
             &locator,
         )
         .unwrap();
