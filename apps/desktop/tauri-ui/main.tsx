@@ -6,7 +6,6 @@ import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectio
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
-import { installSkinEngine } from "@/src/services/skinEngine";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
@@ -24,7 +23,6 @@ import "@/app/settings.css";
 import "@/app/account-settings-redesign.css";
 import "@/app/ui-menus.css";
 import "@/app/auth-shell-fixes.css";
-import "@/app/skin-studio.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
@@ -33,7 +31,6 @@ const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
 
 installAppPreferences();
-installSkinEngine();
 
 async function start() {
   installTauriApiBridge();
