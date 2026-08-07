@@ -56,7 +56,7 @@ function AccountDialog({ initialMode, close }: { initialMode: AuthDialogMode; cl
 
   const registrationMode = auth.capabilities?.registrationMode;
   const registrationAllowed = registrationMode !== "disabled";
-  const passwordMinLength = auth.capabilities?.passwordMinLength ?? 15;
+  const passwordMinLength = auth.capabilities?.passwordMinLength ?? 9;
 
   useEffect(() => {
     if (mode === "register" && registrationMode === "disabled") setMode("login");
@@ -171,7 +171,7 @@ export function AccountEntry({ autoOpen = false }: { autoOpen?: boolean }) {
   const status = auth.phase === "bootstrapping" || auth.phase === "refreshing"
     ? "正在恢复账户…"
     : auth.phase === "offline" && auth.user
-      ? "离线 · 保持登录"
+      ? "离线 · 自动重连"
       : auth.authenticated
         ? "已登录"
         : "同步你的数据";

@@ -13,7 +13,7 @@ export default function AccountSecurityPanel() {
   const changePassword = async (event: React.FormEvent) => {
     event.preventDefault();
     setMessage("");
-    const minLength = auth.capabilities?.passwordMinLength ?? 15;
+    const minLength = auth.capabilities?.passwordMinLength ?? 9;
     if (newPassword !== confirmPassword) {
       setMessage("两次输入的新密码不一致");
       return;

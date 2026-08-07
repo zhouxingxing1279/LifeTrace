@@ -90,7 +90,7 @@ impl Default for Config {
             auth_argon2_memory_kib: 19_456,
             auth_argon2_iterations: 2,
             auth_argon2_parallelism: 1,
-            auth_password_min_length: 15,
+            auth_password_min_length: 9,
             auth_password_max_bytes: 512,
             auth_password_blocklist_path: None,
             auth_password_pepper: Some("development-password-pepper".to_owned()),

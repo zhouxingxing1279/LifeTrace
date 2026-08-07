@@ -30,6 +30,7 @@ services:
       MIGRATION_ON_STARTUP: "true"
       DEV_AUTH_ENABLED: "true"
       AUTH_REGISTRATION_MODE: ${AUTH_REGISTRATION_MODE:-disabled}
+      AUTH_PASSWORD_MIN_LENGTH: "${AUTH_PASSWORD_MIN_LENGTH:-9}"
       AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-lifetrace_session}
       DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-dev-token}
       DEV_AUTH_USER_ID: ${DEV_AUTH_USER_ID:-dev-user}
