@@ -95,7 +95,7 @@ export function createDailyReview(userId: string, deviceId: string, input: Daily
 }
 
 export interface WorkoutInput {
-  name: string;
+  name?: string;
   occurredAt?: string;
   durationMinutes?: number;
   exerciseCount?: number;
@@ -109,7 +109,7 @@ export function createWorkout(userId: string, deviceId: string, input: WorkoutIn
   const occurredAt = input.occurredAt ?? new Date().toISOString();
   return {
     meta: baseMeta(userId, deviceId), source: input.source ?? "manual", sourceId: null,
-    name: input.name.trim() || "训练", occurredAt, localDate: localDate(new Date(occurredAt)),
+    name: input.name?.trim() || "训练", occurredAt, localDate: localDate(new Date(occurredAt)),
     durationSeconds: Math.max(0, Math.round((input.durationMinutes ?? 0) * 60)),
     exerciseCount: Math.max(0, Math.round(input.exerciseCount ?? 0)),
     setCount: Math.max(0, Math.round(input.setCount ?? 0)), plannedSetCount: null,
