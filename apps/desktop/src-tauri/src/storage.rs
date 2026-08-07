@@ -717,8 +717,8 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            path,
-            target.join("attachments/n1/a.txt").display().to_string()
+            PathBuf::from(path),
+            target.join("attachments").join("n1").join("a.txt")
         );
 
         fs::remove_dir_all(source).ok();
