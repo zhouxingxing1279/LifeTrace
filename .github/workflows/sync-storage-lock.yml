@@ -1,0 +1,36 @@
+name: Sync storage branch lock
+
+on:
+  push:
+    branches:
+      - feat/storage-location-migration
+    paths:
+      - .github/workflows/sync-storage-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/storage-location-migration
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Regenerate lockfile metadata without dependency upgrades
+        working-directory: apps/desktop/src-tauri
+        run: cargo update -p lifetrace --precise 0.2.3
+      - name: Verify locked desktop metadata
+        working-directory: apps/desktop
+        run: cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
+      - name: Commit lockfile
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/Cargo.lock
+          git commit -m "chore: sync desktop Cargo.lock for 0.2.3"
+          git push origin HEAD:feat/storage-location-migration
