@@ -108,8 +108,8 @@ export default function AISettingsPanel({ section = "all" }: { section?: "all" |
   };
 
   return <>
-    {(section === "all" || section === "preferences") && <section className="hx-settings-page-section hx-settings-basic">
-      <header><h2>外观</h2><p>调整当前设备上的显示方式，不影响个人数据。</p></header>
+    {(section === "all" || section === "preferences") && <section id="settings-general" className="hx-settings-page-section hx-settings-basic">
+      <header><h2>常规与外观</h2><p>调整当前设备上的显示方式，不影响个人数据。</p></header>
       <div className="hx-setting-rows">
         <div className="hx-setting-row"><div><Monitor /><span><strong>主题</strong><small>跟随系统，或固定使用浅色、深色。</small></span></div><select value={preferences.theme} onChange={(event) => updatePreferences({ theme: event.target.value as AppPreferences["theme"] })}><option value="system">跟随系统</option><option value="light">浅色</option><option value="dark">深色</option></select></div>
         <div className="hx-setting-row"><div><Activity /><span><strong>界面密度</strong><small>紧凑模式会减少列表和工具栏留白。</small></span></div><select value={preferences.density} onChange={(event) => updatePreferences({ density: event.target.value as AppPreferences["density"] })}><option value="comfortable">舒适</option><option value="compact">紧凑</option></select></div>
@@ -119,7 +119,7 @@ export default function AISettingsPanel({ section = "all" }: { section?: "all" |
       <footer className="hx-settings-page-actions"><button type="button" className="hx-btn secondary" onClick={resetPreferences}><RotateCcw />恢复默认</button></footer>
     </section>}
 
-    {(section === "all" || section === "ai") && <section className="hx-settings-page-section hx-ai-settings">
+    {(section === "all" || section === "ai") && <section id="settings-ai" className="hx-settings-page-section hx-ai-settings">
       <header><h2>AI 服务</h2><p>配置 LifeTrace AI 管家使用的模型与 API Key。</p></header>
       <form className="hx-settings-standard-form" onSubmit={save}>
         <div className="hx-setting-rows">
