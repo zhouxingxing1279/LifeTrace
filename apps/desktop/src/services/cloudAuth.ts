@@ -29,6 +29,17 @@ export type CloudTokenResponse = {
   scopes: string[];
 };
 
+export type CloudAuthCapabilities = {
+  registrationMode: string;
+  passwordMinLength: number;
+  passwordMaxBytes: number;
+  accessTokenTtlSeconds: number;
+  refreshIdleTtlSeconds: number;
+  refreshAbsoluteTtlSeconds: number;
+  webSessionEnabled: boolean;
+  supportedApps: string[];
+};
+
 export type CloudAuthSnapshot = {
   user?: CloudAuthUser;
   session?: CloudAuthSession;
@@ -73,6 +84,13 @@ function normalizeOrigin(value: string): string {
   return parsed.origin;
 }
 
+class CloudHttpError extends Error {
+  constructor(message: string, readonly status: number, readonly code?: string) {
+    super(message);
+    this.name = "CloudHttpError";
+  }
+}
+
 async function parseResponse<T>(response: Response, action: string): Promise<T> {
   if (response.ok) {
     try {
@@ -96,7 +114,11 @@ async function parseResponse<T>(response: Response, action: string): Promise<T> 
     }, cause);
     return {};
   }) as { message?: string; code?: string };
-  const error = new Error(payload.message || payload.code || `云服务返回 HTTP ${response.status}`);
+  const error = new CloudHttpError(
+    payload.message || payload.code || `云服务返回 HTTP ${response.status}`,
+    response.status,
+    payload.code,
+  );
   clientLogger.error("cloud.response.http_failed", {
     action,
     status: response.status,
@@ -104,6 +126,19 @@ async function parseResponse<T>(response: Response, action: string): Promise<T> 
     requestSent: true,
   }, error);
   throw error;
+}
+
+function nativeRequestPayload(email: string, password: string) {
+  return {
+    email,
+    password,
+    appId: APP_ID,
+    deviceId: deviceId(),
+    deviceName: "LifeTrace Windows Desktop",
+    platform: "windows",
+    clientVersion: "0.2.1",
+    requestedScopes: [],
+  };
 }
 
 export class CloudAuthClient {
@@ -117,12 +152,31 @@ export class CloudAuthClient {
     clientLogger.info("cloud.auth.configured", { origin: this.origin });
   }
 
+  configuredOrigin(): string {
+    return this.origin;
+  }
+
   state(): CloudAuthSnapshot {
     return { ...this.snapshot, scopes: [...this.snapshot.scopes] };
   }
 
   private ensureOrigin() {
-    if (!this.origin) throw new Error("请先填写云服务地址");
+    if (!this.origin) throw new Error("云服务尚未配置");
+  }
+
+  async hasStoredCredential(): Promise<boolean> {
+    try {
+      return Boolean(await credentialApi().get());
+    } catch (error) {
+      clientLogger.warn("cloud.auth.credential_probe_failed", undefined, error);
+      return false;
+    }
+  }
+
+  async capabilities(): Promise<CloudAuthCapabilities> {
+    this.ensureOrigin();
+    const response = await fetch(`${this.origin}/api/v1/auth/capabilities`);
+    return parseResponse<CloudAuthCapabilities>(response, "capabilities");
   }
 
   async login(email: string, password: string): Promise<CloudAuthSnapshot> {
@@ -132,14 +186,7 @@ export class CloudAuthClient {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        email,
-        password,
-        appId: APP_ID,
-        deviceId: deviceId(),
-        deviceName: "LifeTrace Windows Desktop",
-        platform: "windows",
-        clientVersion: "0.2.1",
-        requestedScopes: [],
+        ...nativeRequestPayload(email, password),
         publicDevice: false,
       }),
     });
@@ -149,6 +196,50 @@ export class CloudAuthClient {
       sessionId: snapshot.session?.id,
     });
     return snapshot;
+  }
+
+  async register(input: {
+    email: string;
+    password: string;
+    displayName?: string;
+    inviteToken?: string;
+  }): Promise<CloudAuthSnapshot> {
+    this.ensureOrigin();
+    clientLogger.info("cloud.auth.register_started", { origin: this.origin });
+    const response = await fetch(`${this.origin}/api/v1/auth/register`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        ...nativeRequestPayload(input.email, input.password),
+        displayName: input.displayName?.trim() || undefined,
+        inviteToken: input.inviteToken?.trim() || undefined,
+      }),
+    });
+    const snapshot = await this.acceptTokens(await parseResponse<CloudTokenResponse>(response, "register"));
+    clientLogger.info("cloud.auth.register_succeeded", {
+      userId: snapshot.user?.id,
+      sessionId: snapshot.session?.id,
+    });
+    return snapshot;
+  }
+
+  async forgotPassword(email: string): Promise<void> {
+    this.ensureOrigin();
+    const response = await fetch(`${this.origin}/api/v1/auth/password/forgot`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    await parseResponse<{ accepted: boolean }>(response, "forgot-password");
+  }
+
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    const response = await this.request("/api/v1/auth/password/change", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    await parseResponse<{ accepted: boolean }>(response, "change-password");
   }
 
   private async acceptTokens(tokens: CloudTokenResponse): Promise<CloudAuthSnapshot> {
@@ -200,11 +291,11 @@ export class CloudAuthClient {
   async restore(): Promise<CloudAuthSnapshot> {
     try {
       await this.refresh();
+      return this.state();
     } catch (error) {
       clientLogger.warn("cloud.auth.restore_failed", undefined, error);
-      await this.clearLocal();
+      throw error;
     }
-    return this.state();
   }
 
   async request(input: string, init: RequestInit = {}): Promise<Response> {
