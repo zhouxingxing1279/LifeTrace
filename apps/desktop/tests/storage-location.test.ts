@@ -10,16 +10,34 @@ test("storage migration runs bulk file copying off the UI/main thread", async ()
   assert.match(source, /value\.restart_required = true/);
 });
 
-test("old storage is removed only after final synchronization and verification", async () => {
+test("old storage is removed only by the post-verification commit stage", async () => {
   const source = await readFile("src-tauri/src/storage.rs", "utf8");
-  const finalize = source.indexOf("finalize_pending(&pending, &locator)?");
-  const activate = source.indexOf("config.active_data_dir = Some(pending.target.clone())");
-  const cleanup = source.indexOf("fs::remove_dir_all(&pending.source)");
-  assert.ok(finalize >= 0, "pending migration must be finalized");
-  assert.ok(activate > finalize, "new location must be activated after verification");
-  assert.ok(cleanup > activate, "old location must only be deleted after the new location is committed");
-  assert.match(source, /verify_tree\(&pending\.source, &pending\.target\)\?/);
+  const finalizeStart = source.indexOf("fn finalize_pending");
+  const commitStart = source.indexOf("fn commit_migration");
+  const cancelStart = source.indexOf("fn cancel_failed_migration");
+  const finalizeBody = source.slice(finalizeStart, commitStart);
+  const commitBody = source.slice(commitStart, cancelStart);
+
+  assert.ok(finalizeStart >= 0 && commitStart > finalizeStart);
+  assert.match(finalizeBody, /copy_incremental\(&pending\.source, &pending\.target\)\?/);
+  assert.match(finalizeBody, /remove_stale_entries\(&pending\.source, &pending\.target\)\?/);
+  assert.match(finalizeBody, /verify_tree\(&pending\.source, &pending\.target\)\?/);
+  assert.doesNotMatch(finalizeBody, /remove_dir_all\(&pending\.source\)/);
+  assert.match(commitBody, /config\.active_data_dir = Some\(pending\.target\.clone\(\)\)/);
+  assert.match(commitBody, /save_config\(locator, config\)\?/);
+  assert.match(commitBody, /fs::remove_dir_all\(&pending\.source\)/);
   assert.match(source, /PRAGMA integrity_check/);
+});
+
+test("failed final verification keeps the old directory active and never schedules deletion", async () => {
+  const source = await readFile("src-tauri/src/storage.rs", "utf8");
+  const cancelStart = source.indexOf("fn cancel_failed_migration");
+  const retryStart = source.indexOf("fn retry_old_directory_cleanup");
+  const cancelBody = source.slice(cancelStart, retryStart);
+  assert.match(cancelBody, /config\.active_data_dir = Some\(pending\.source\.clone\(\)\)/);
+  assert.match(cancelBody, /config\.pending_migration = None/);
+  assert.match(cancelBody, /config\.cleanup_pending = None/);
+  assert.doesNotMatch(cancelBody, /remove_dir_all/);
 });
 
 test("all desktop data roots are created from the resolved storage directory", async () => {
@@ -29,6 +47,13 @@ test("all desktop data roots are created from the resolved storage directory", a
   assert.match(source, /Runtime::new\(data_dir\.clone\(\)\)/);
   assert.match(source, /SyncDesktopState::new\(data_dir\.clone\(\)\)/);
   assert.match(source, /server::serve\(data_dir, resource_dir, photo_runtime, sync_state\)/);
+});
+
+test("migrated database rewrites note attachment absolute paths to the new root", async () => {
+  const source = await readFile("src-tauri/src/storage.rs", "utf8");
+  assert.match(source, /fn rewrite_local_file_paths/);
+  assert.match(source, /target_root[\s\S]*\.join\("attachments"\)/);
+  assert.match(source, /UPDATE note_attachments SET storage_path=\?1 WHERE id=\?2/);
 });
 
 test("settings exposes storage location picker, progress and restart completion", async () => {
