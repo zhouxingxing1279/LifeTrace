@@ -1,6 +1,6 @@
 [package]
 name = "lifetrace"
-version = "0.2.5"
+version = "0.2.4"
 description = "Lightweight local-first LifeTrace desktop application"
 edition = "2021"
 
