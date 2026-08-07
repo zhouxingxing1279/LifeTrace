@@ -68,8 +68,21 @@ jobs:
       - name: Apply deterministic UI refactor
         run: python3 scripts/apply_ui_refactor.py
 
-      - name: Normalize generated text
-        run: sed -i 's/[[:space:]]\+$//' src/components/HengXuShell.tsx
+      - name: Apply generated compatibility fixes
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/ui/feedback/confirm.tsx')
+          text = path.read_text(encoding='utf-8')
+          old = '    return () => listeners.delete(listener);'
+          new = '    return () => {\n      listeners.delete(listener);\n    };'
+          if old in text:
+              path.write_text(text.replace(old, new), encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('confirm cleanup pattern not found')
+          PY
+          sed -i 's/[[:space:]]\+$//' src/components/HengXuShell.tsx
 
       - name: Check generated patch formatting
         run: git diff --check
