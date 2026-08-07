@@ -433,11 +433,8 @@ impl SyncStore for SqliteSyncStore {
                         // 从未上传过则丢弃；已上传过则转为删除，保持云端一致，
                         // 避免一条过期变更永久阻塞 Push/Pull。
                         if base == "0" {
-                            tx.execute(
-                                "DELETE FROM sync_outbox WHERE change_id=?1",
-                                [&change_id],
-                            )
-                            .map_err(Self::db_error)?;
+                            tx.execute("DELETE FROM sync_outbox WHERE change_id=?1", [&change_id])
+                                .map_err(Self::db_error)?;
                             continue;
                         }
                         tx.execute(

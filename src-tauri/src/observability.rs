@@ -22,8 +22,7 @@ fn log_directory(app: &AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_log_dir()
         .map_err(|error| format!("resolve app log directory: {error}"))?;
-    fs::create_dir_all(&directory)
-        .map_err(|error| format!("create app log directory: {error}"))?;
+    fs::create_dir_all(&directory).map_err(|error| format!("create app log directory: {error}"))?;
     Ok(directory)
 }
 
@@ -57,8 +56,7 @@ fn rotate_if_needed(path: &Path, incoming_bytes: u64) -> Result<(), String> {
             fs::remove_file(&destination)
                 .map_err(|error| format!("remove rotated client log: {error}"))?;
         }
-        fs::rename(&source, &destination)
-            .map_err(|error| format!("rotate client log: {error}"))?;
+        fs::rename(&source, &destination).map_err(|error| format!("rotate client log: {error}"))?;
     }
     Ok(())
 }
@@ -120,10 +118,7 @@ pub fn client_log_path(app: AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn client_log_read_recent(
-    app: AppHandle,
-    max_bytes: Option<usize>,
-) -> Result<String, String> {
+pub fn client_log_read_recent(app: AppHandle, max_bytes: Option<usize>) -> Result<String, String> {
     let _guard = LOG_LOCK
         .lock()
         .map_err(|_| "client log lock poisoned".to_string())?;
@@ -135,8 +130,7 @@ pub fn client_log_read_recent(
     let limit = max_bytes
         .unwrap_or(256 * 1024)
         .clamp(4 * 1024, MAX_READ_BYTES);
-    let mut file =
-        fs::File::open(&path).map_err(|error| format!("open client log: {error}"))?;
+    let mut file = fs::File::open(&path).map_err(|error| format!("open client log: {error}"))?;
     let length = file
         .metadata()
         .map_err(|error| format!("read client log metadata: {error}"))?
