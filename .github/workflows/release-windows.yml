@@ -132,7 +132,7 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($entry.signature)) {
             throw "platforms.windows-x86_64.signature 为空。"
           }
-          if ($entry.url -notmatch "^https://github\.com/zhouxingxing1279/LifeTrace-Releases/releases/") {
+          if ($entry.url -notmatch "^https://(?:github\.com/zhouxingxing1279/LifeTrace-Releases/releases/|api\.github\.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/assets/)") {
             throw "platforms.windows-x86_64.url 未指向公开 LifeTrace-Releases 仓库：$($entry.url)"
           }
           Write-Output "latest.json 验证通过：version=$($json.version)，url=$($entry.url)"
