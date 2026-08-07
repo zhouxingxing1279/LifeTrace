@@ -118,8 +118,7 @@ fn locator_path(app: &AppHandle, default_data_dir: &Path) -> Result<PathBuf, Str
         if directory.starts_with(default_data_dir) || default_data_dir.starts_with(&directory) {
             continue;
         }
-        fs::create_dir_all(&directory)
-            .map_err(|value| error("创建独立存储配置目录失败", value))?;
+        fs::create_dir_all(&directory).map_err(|value| error("创建独立存储配置目录失败", value))?;
         return Ok(directory.join(CONFIG_FILE));
     }
 
@@ -170,7 +169,8 @@ fn should_skip(relative: &Path) -> bool {
 
 fn collect_files(root: &Path) -> Result<Vec<FileEntry>, String> {
     fn walk(root: &Path, current: &Path, output: &mut Vec<FileEntry>) -> Result<(), String> {
-        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))? {
+        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))?
+        {
             let entry = entry.map_err(|value| error("读取存储目录项失败", value))?;
             let path = entry.path();
             let file_type = entry
@@ -367,7 +367,8 @@ fn remove_stale_entries(source: &Path, target: &Path) -> Result<(), String> {
     if !target.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))? {
+    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))?
+    {
         let entry = entry.map_err(|value| error("读取新存储目录失败", value))?;
         let name = entry.file_name();
         let name_text = name.to_string_lossy();
