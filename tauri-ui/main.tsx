@@ -1,8 +1,10 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
 import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
 import { installAppPreferences } from "@/src/services/appPreferences";
+import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
@@ -18,6 +20,8 @@ import "@/app/photo-sync.css";
 import "@/app/local-vault.css";
 import "@/app/settings.css";
 
+installGlobalErrorHandlers();
+
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
 
@@ -27,15 +31,20 @@ async function start() {
   installTauriApiBridge();
   installVaultBridge();
   root!.innerHTML = '<div class="hx-loading"><span>LT</span><p>正在启动本地 SQLite 服务…</p></div>';
+  clientLogger.info("desktop.start.begin");
   try {
     await waitForTauriBackend();
+    clientLogger.info("desktop.backend.ready");
     createRoot(root!).render(
       <StrictMode>
-        <HengXuShell />
-        <MobileUploadConnectionStatus />
+        <ClientErrorBoundary>
+          <HengXuShell />
+          <MobileUploadConnectionStatus />
+        </ClientErrorBoundary>
       </StrictMode>,
     );
   } catch (error) {
+    clientLogger.fatal("desktop.start.failed", undefined, error);
     const message = error instanceof Error ? error.message : "本地服务启动失败";
     root!.innerHTML = "";
     const panel = document.createElement("div");
