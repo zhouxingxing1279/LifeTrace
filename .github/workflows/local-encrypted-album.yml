@@ -5,23 +5,23 @@ on:
     branches:
       - agent/local-encrypted-album
     paths:
-      - "src-tauri/**"
-      - "src/components/LocalVaultModule.tsx"
-      - "src/components/PhotoSyncModule.tsx"
-      - "src/components/PhotoSyncDashboard.tsx"
-      - "src/types/electron.d.ts"
-      - "tauri-ui/**"
-      - "app/local-vault.css"
+      - "apps/desktop/src-tauri/**"
+      - "apps/desktop/src/components/LocalVaultModule.tsx"
+      - "apps/desktop/src/components/PhotoSyncModule.tsx"
+      - "apps/desktop/src/components/PhotoSyncDashboard.tsx"
+      - "apps/desktop/src/types/electron.d.ts"
+      - "apps/desktop/tauri-ui/**"
+      - "apps/desktop/app/local-vault.css"
       - ".github/workflows/local-encrypted-album.yml"
   pull_request:
     paths:
-      - "src-tauri/**"
-      - "src/components/LocalVaultModule.tsx"
-      - "src/components/PhotoSyncModule.tsx"
-      - "src/components/PhotoSyncDashboard.tsx"
-      - "src/types/electron.d.ts"
-      - "tauri-ui/**"
-      - "app/local-vault.css"
+      - "apps/desktop/src-tauri/**"
+      - "apps/desktop/src/components/LocalVaultModule.tsx"
+      - "apps/desktop/src/components/PhotoSyncModule.tsx"
+      - "apps/desktop/src/components/PhotoSyncDashboard.tsx"
+      - "apps/desktop/src/types/electron.d.ts"
+      - "apps/desktop/tauri-ui/**"
+      - "apps/desktop/app/local-vault.css"
       - ".github/workflows/local-encrypted-album.yml"
   workflow_dispatch:
 
@@ -32,6 +32,9 @@ jobs:
   vault-security-and-build:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri Linux dependencies
@@ -59,9 +62,10 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: apps/desktop/src-tauri
       - name: Enforce local-only boundary
         shell: bash
         run: |
@@ -124,16 +128,16 @@ jobs:
         with:
           name: local-vault-diagnostics
           path: |
-            vault-test.log
-            src-tauri/src/vault.rs
-            src-tauri/src/vault/
-            src-tauri/src/lib.rs
-            src-tauri/Cargo.toml
-            src-tauri/Cargo.lock
-            src/components/LocalVaultModule.tsx
-            src/components/PhotoSyncModule.tsx
-            src/types/electron.d.ts
-            tauri-ui/vaultBridge.ts
-            tauri-ui/main.tsx
-            app/local-vault.css
+            apps/desktop/vault-test.log
+            apps/desktop/src-tauri/src/vault.rs
+            apps/desktop/src-tauri/src/vault/
+            apps/desktop/src-tauri/src/lib.rs
+            apps/desktop/src-tauri/Cargo.toml
+            apps/desktop/src-tauri/Cargo.lock
+            apps/desktop/src/components/LocalVaultModule.tsx
+            apps/desktop/src/components/PhotoSyncModule.tsx
+            apps/desktop/src/types/electron.d.ts
+            apps/desktop/tauri-ui/vaultBridge.ts
+            apps/desktop/tauri-ui/main.tsx
+            apps/desktop/app/local-vault.css
           if-no-files-found: warn

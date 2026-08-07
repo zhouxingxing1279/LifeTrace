@@ -20,7 +20,7 @@ services:
     profiles: ["cloud"]
     build:
       context: ../..
-      dockerfile: services/lifetrace-cloud/Dockerfile
+      dockerfile: services/cloud/Dockerfile
     environment:
       LIFETRACE_ENV: development
       LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787

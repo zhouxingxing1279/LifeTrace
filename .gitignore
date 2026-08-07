@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+/apps/desktop/node_modules
 /.pnp
 .pnp.*
 .yarn/*
@@ -12,6 +13,7 @@
 
 # testing
 /coverage
+/apps/desktop/coverage
 
 # next.js
 /.next/
@@ -58,16 +60,17 @@ yarn-error.log*
 # vercel
 .vercel
 
-# typescript
+# typescript / frontend build outputs
 next-env.d.ts
 *.tsbuildinfo
-/dist/
-/dist-tauri/
-/dist-web/
-/src-tauri/target/
+/apps/desktop/dist/
+/apps/desktop/dist-tauri/
+/apps/desktop/dist-browser/
+/apps/desktop/dist-web/
+/apps/desktop/src-tauri/target/
+/apps/desktop/src-tauri/gen/
 /crates/*/target/
 /tools/*/target/
-/src-tauri/gen/
 /build/
 /release/
 /release-runtime/
@@ -83,9 +86,9 @@ ios/**/DerivedData/
 ios/**/*.xcuserstate
 ios/**/xcuserdata/
 /.venv-xunji/
-/xunji_service/debug/
-/xunji_service/data/dictionary.db
-/xunji_service/data/dictionary-import.log
+/apps/desktop/xunji_service/debug/
+/apps/desktop/xunji_service/data/dictionary.db
+/apps/desktop/xunji_service/data/dictionary-import.log
 /.xunji-*.log
 /.codex-server*.log
 /.desktop-runtime.log
@@ -96,7 +99,7 @@ ios/**/xcuserdata/
 /.ui-redesign-dev*.log
 **/__pycache__/
 *.py[cod]
-/public/hengxu-local-ca.cer
+/apps/desktop/public/hengxu-local-ca.cer
 /恒序个人管理平台整合Demo/
 
 # Rust service build outputs

@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "要发布的版本（必须与 package.json / tauri.conf.json / Cargo.toml 一致），例如 0.2.2"
+        description: "要发布的版本（必须与 apps/desktop/package.json / tauri.conf.json / Cargo.toml 一致），例如 0.2.2"
         required: false
         type: string
 
@@ -24,13 +24,14 @@ jobs:
       - name: Create required bundled dictionary resource
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force xunji_service/data | Out-Null
-          python -c "import sqlite3; db=sqlite3.connect(r'xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+          New-Item -ItemType Directory -Force apps/desktop/xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'apps/desktop/xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -40,10 +41,10 @@ jobs:
         with:
           workspaces: |
             crates/lifetrace-sync-client
-            src-tauri
+            apps/desktop/src-tauri
 
       - name: Install npm dependencies
-        run: npm ci
+        run: npm ci --prefix apps/desktop
 
       - name: Check version consistency
         run: node scripts/check-version-consistency.mjs
@@ -52,7 +53,7 @@ jobs:
         id: tag
         shell: pwsh
         run: |
-          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $config = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $requested = "${{ inputs.version }}"
           if ([string]::IsNullOrWhiteSpace($requested)) {
             $requested = $config.version
@@ -72,7 +73,7 @@ jobs:
         id: release_notes
         shell: pwsh
         run: |
-          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $config = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $version = $config.version
           $body = "LifeTrace v$version 正式发布（Windows NSIS 安装包）。"
           $body += "`n`n更新内容：`n"
@@ -88,6 +89,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
+          projectPath: apps/desktop
           tagName: ${{ steps.tag.outputs.tag }}
           releaseName: LifeTrace ${{ steps.tag.outputs.tag }}
           releaseBody: ${{ steps.release_notes.outputs.body }}
@@ -105,7 +107,7 @@ jobs:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
         run: |
           $ErrorActionPreference = "Stop"
-          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $config = Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
           $expectedVersion = $config.version
           $tag = $env:RELEASE_TAG
           if ($tag -ne "v$expectedVersion") {

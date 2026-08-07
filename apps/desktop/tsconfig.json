@@ -36,7 +36,7 @@
     "src/hooks/**/*.ts",
     "src/services/**/*.ts",
     "src/types/**/*.ts",
-    "contracts/typescript/**/*.ts",
+    "../../contracts/typescript/**/*.ts",
     "vite.tauri.config.ts",
     "vite.browser.config.ts",
     "src/ui/**/*.ts",

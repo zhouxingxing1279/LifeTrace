@@ -3,21 +3,25 @@ name: Vault Tab Auto Lock
 on:
   pull_request:
     paths:
-      - "src/components/PhotoSyncModule.tsx"
-      - "src/lib/vaultAutoLock.ts"
-      - "tests/vault-auto-lock.test.ts"
+      - "apps/desktop/src/components/PhotoSyncModule.tsx"
+      - "apps/desktop/src/lib/vaultAutoLock.ts"
+      - "apps/desktop/tests/vault-auto-lock.test.ts"
       - ".github/workflows/vault-tab-auto-lock.yml"
   workflow_dispatch:
 
 jobs:
   frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
       - run: npm ci
       - run: npm run test:unit
       - run: npm run lint

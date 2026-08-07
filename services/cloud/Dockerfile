@@ -5,11 +5,11 @@ WORKDIR /build
 ENV CARGO_NET_RETRY=10 \
     CARGO_HTTP_TIMEOUT=600
 COPY crates ./crates
-COPY services/lifetrace-cloud ./services/lifetrace-cloud
+COPY services/cloud ./services/cloud
 RUN cargo build --release \
     --config 'source.crates-io.replace-with="rsproxy-sparse"' \
     --config 'source.rsproxy-sparse.registry="sparse+https://rsproxy.cn/index/"' \
-    --manifest-path services/lifetrace-cloud/Cargo.toml \
+    --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-cloud
 
 FROM debian:bookworm-slim
@@ -18,7 +18,7 @@ RUN useradd --create-home --uid 10001 lifetrace \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=builder /build/services/lifetrace-cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
+COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
 USER lifetrace
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
