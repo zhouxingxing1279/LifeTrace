@@ -10,22 +10,33 @@ test("storage migration runs bulk file copying off the UI/main thread", async ()
   assert.match(source, /value\.restart_required = true/);
 });
 
-test("old storage is removed only by the post-verification commit stage", async () => {
+test("old storage is committed only after verification and deleted by a background worker", async () => {
   const source = await readFile("src-tauri/src/storage.rs", "utf8");
   const finalizeStart = source.indexOf("fn finalize_pending");
   const commitStart = source.indexOf("fn commit_migration");
   const cancelStart = source.indexOf("fn cancel_failed_migration");
+  const cleanupStart = source.indexOf("fn retry_old_directory_cleanup");
+  const scheduleStart = source.indexOf("pub fn schedule_pending_cleanup");
+  const bootstrapStart = source.indexOf("pub fn bootstrap");
   const finalizeBody = source.slice(finalizeStart, commitStart);
   const commitBody = source.slice(commitStart, cancelStart);
+  const cleanupBody = source.slice(cleanupStart, scheduleStart);
+  const scheduleBody = source.slice(scheduleStart, bootstrapStart);
 
   assert.ok(finalizeStart >= 0 && commitStart > finalizeStart);
   assert.match(finalizeBody, /copy_incremental\(&pending\.source, &pending\.target\)\?/);
   assert.match(finalizeBody, /remove_stale_entries\(&pending\.source, &pending\.target\)\?/);
   assert.match(finalizeBody, /verify_tree\(&pending\.source, &pending\.target\)\?/);
-  assert.doesNotMatch(finalizeBody, /remove_dir_all\(&pending\.source\)/);
+  assert.doesNotMatch(finalizeBody, /remove_dir_all/);
+
   assert.match(commitBody, /config\.active_data_dir = Some\(pending\.target\.clone\(\)\)/);
-  assert.match(commitBody, /save_config\(locator, config\)\?/);
-  assert.match(commitBody, /fs::remove_dir_all\(&pending\.source\)/);
+  assert.match(commitBody, /config\.cleanup_pending = Some\(pending\.source\.clone\(\)\)/);
+  assert.match(commitBody, /save_config\(locator, config\)/);
+  assert.doesNotMatch(commitBody, /remove_dir_all/);
+
+  assert.match(cleanupBody, /fs::remove_dir_all\(&old_path\)/);
+  assert.match(scheduleBody, /tokio::task::spawn_blocking/);
+  assert.match(scheduleBody, /retry_old_directory_cleanup\(&config_path\)/);
   assert.match(source, /PRAGMA integrity_check/);
 });
 
@@ -43,6 +54,7 @@ test("failed final verification keeps the old directory active and never schedul
 test("all desktop data roots are created from the resolved storage directory", async () => {
   const source = await readFile("src-tauri/src/lib.rs", "utf8");
   assert.match(source, /storage::bootstrap\(app\.handle\(\)\)/);
+  assert.match(source, /storage::schedule_pending_cleanup\(storage_config_path\)/);
   assert.match(source, /VaultState::new\(data_dir\.join\("vault"\)\)/);
   assert.match(source, /Runtime::new\(data_dir\.clone\(\)\)/);
   assert.match(source, /SyncDesktopState::new\(data_dir\.clone\(\)\)/);
