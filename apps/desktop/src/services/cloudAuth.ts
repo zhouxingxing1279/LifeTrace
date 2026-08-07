@@ -243,25 +243,38 @@ export class CloudAuthClient {
   }
 
   private async selectUserProfile(tokens: CloudTokenResponse): Promise<SessionBindingResult | undefined> {
-    if (!window.syncApi) return undefined;
+    const api = window.syncApi;
+    if (!api) return undefined;
 
-    let binding = await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId());
-    if (!binding.bindingRequired && binding.cloudUserId === tokens.user.id) return binding;
-
-    const profiles = await window.syncApi.profiles();
+    const profiles = await api.profiles();
     const existing = profiles.find((profile) => profile.cloudUserId === tokens.user.id);
     if (existing) {
-      await window.syncApi.setActiveProfile(existing.id);
+      // 先切换到目标用户自己的 Profile，再把 access token 交给同步层。
+      // 这样登录 A/B 时不会让当前激活的另一个用户 Profile 进入 pending 状态。
+      await api.setActiveProfile(existing.id);
+      let binding = await api.setSession(this.origin, tokens.accessToken, deviceId());
+      if (existing.cloudBindingState !== "bound") {
+        await api.bindCurrentProfile();
+        binding = await api.setSession(this.origin, tokens.accessToken, deviceId());
+      }
+      if (binding.cloudUserId !== tokens.user.id || binding.bindingRequired) {
+        throw new Error("无法切换到当前账号的数据空间");
+      }
       clientLogger.info("cloud.auth.profile_selected", { userId: tokens.user.id, profileId: existing.id });
-    } else {
-      const profileId = await window.syncApi.createCloudProfile(tokens.user.displayName || tokens.user.email || "LifeTrace 用户");
-      clientLogger.info("cloud.auth.profile_created", { userId: tokens.user.id, profileId });
+      return binding;
     }
 
-    binding = await window.syncApi.setSession(this.origin, tokens.accessToken, deviceId());
-    if (binding.cloudUserId !== tokens.user.id || binding.bindingRequired) {
-      throw new Error("无法切换到当前账号的数据空间");
+    // 新账号不接管任何已有用户的数据。优先切到未绑定的本地 Profile，仅用它建立
+    // 同步身份上下文，然后创建一个全新的、专属于该 cloudUserId 的 Profile。
+    const localProfile = profiles.find((profile) => !profile.cloudUserId);
+    if (localProfile) await api.setActiveProfile(localProfile.id);
+    await api.setSession(this.origin, tokens.accessToken, deviceId());
+    const profileId = await api.createCloudProfile(tokens.user.displayName || tokens.user.email || "LifeTrace 用户");
+    const binding = await api.setSession(this.origin, tokens.accessToken, deviceId());
+    if (binding.profileId !== profileId || binding.cloudUserId !== tokens.user.id || binding.bindingRequired) {
+      throw new Error("无法创建当前账号的数据空间");
     }
+    clientLogger.info("cloud.auth.profile_created", { userId: tokens.user.id, profileId });
     return binding;
   }
 
