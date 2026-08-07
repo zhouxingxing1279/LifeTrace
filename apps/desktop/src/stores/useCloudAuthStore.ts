@@ -62,8 +62,6 @@ type CloudAuthState = CloudAuthSnapshot & {
   changePassword(currentPassword: string, newPassword: string): Promise<boolean>;
   restore(): Promise<void>;
   logout(all?: boolean): Promise<void>;
-  bindCurrentProfile(): Promise<void>;
-  createCloudProfile(): Promise<void>;
   clearError(): void;
 };
 
@@ -95,6 +93,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
   },
 
   async initialize() {
+    if (get().initialized || get().loading) return;
     const origin = get().origin || readOrigin();
     set({ phase: "refreshing", loading: true, error: undefined });
     try {
@@ -188,32 +187,6 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
 
   async restore() {
     await get().initialize();
-  },
-
-  async bindCurrentProfile() {
-    const userId = get().user?.id;
-    if (!userId || !window.syncApi) return;
-    set({ loading: true, error: undefined });
-    try {
-      await window.syncApi.bindCurrentProfile();
-      set({ binding: { profileId: get().binding?.profileId || "", cloudUserId: userId, bindingRequired: false, alreadyBound: true }, loading: false });
-      await window.syncApi.now(false);
-    } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : String(error) });
-    }
-  },
-
-  async createCloudProfile() {
-    const user = get().user;
-    if (!user || !window.syncApi) return;
-    set({ loading: true, error: undefined });
-    try {
-      const profileId = await window.syncApi.createCloudProfile(user.displayName || user.email || "云端资料");
-      set({ binding: { profileId, cloudUserId: user.id, bindingRequired: false, alreadyBound: true }, loading: false });
-      await window.syncApi.now(true);
-    } catch (error) {
-      set({ loading: false, error: error instanceof Error ? error.message : String(error) });
-    }
   },
 
   async logout(all = false) {
