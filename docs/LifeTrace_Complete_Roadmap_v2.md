@@ -1,9 +1,9 @@
 # LifeTrace 完整产品与开发路线图 v3
 
-> 更新日期：2026-08-04  
+> 更新日期：2026-08-07  
 > 用途：将 LifeTrace 的基础架构、多端应用、业务模块、任务与邮件、轻量 AI 管家及日常使用闭环拆分为可独立设计、开发和验收的 GitHub Epic。  
 > 组织方式：每个大任务包含目标、子任务、依赖关系和验收标准，可继续拆分为 Issue、技术设计和迭代版本。  
-> 产品原则：**本地优先、离线可用、云端保存完整副本、统一领域服务、渐进式重构、AI 受控执行。**  
+> 产品原则：**本地优先、离线可用、云端保存完整副本、统一领域服务、渐进式重构、AI 受控执行、客户端与云端全链路可观测。**  
 > Android 应用规划：财务、笔记、英语、习惯可独立成 App；**健身不制作独立 App，也不在 LifeTrace 中重复建设完整训练模块，仅接入训记数据用于汇总、时间线和分析。**
 
 ## 1. 产品目标
@@ -833,7 +833,7 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 ### LifeTrace 负责
 
 - 扫描训记分享图中的二维码
-- 解析训记分享网页
+- 解析训记分享链接
 - 导入结构化训练结果
 - 保存训练日期、时长和训练摘要
 - 保存动作、组数、次数、重量等可获得数据
@@ -926,6 +926,7 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] LifeTrace 不提供重复的完整训练记录功能
 - [ ] 不需要安装额外的 LifeTrace Fitness App
 
+---
 
 # EPIC-12：文件、附件与对象存储
 
@@ -1321,11 +1322,11 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 
 ## 目标
 
-建立可重复构建、自动测试、灰度发布和回滚能力。
+建立可重复构建、自动测试、灰度发布和回滚能力，并通过自动化门禁防止客户端错误被静默吞掉、错误分类失真或原始异常链丢失。
 
 ## 子任务
 
-### 测试
+### 通用测试
 
 - [ ] 单元测试
 - [ ] 数据库 migration 测试
@@ -1338,9 +1339,43 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] 客户端时钟错误测试
 - [ ] 端到端测试
 
+### 客户端错误与日志测试
+
+- [ ] 验证浏览器原生 `fetch` 始终通过 `window.fetch(...)` 包装函数或 `bind(window)` 调用
+- [ ] 验证 `this.fetcher(...)` 不会改变原生 fetch 的调用对象
+- [ ] 在真实 Chromium 环境复现未绑定 fetch，并验证回归测试会失败
+- [ ] 验证 fetch 调用前异常记录 `stage=fetch.invoke`
+- [ ] 验证请求未产生时记录 `requestSent=false`
+- [ ] 验证编程错误不会被分类为网络错误
+- [ ] 验证原始 `error.name`、`message`、`stack` 和 `cause` 不丢失
+- [ ] 验证用户友好提示不会覆盖内部诊断信息
+- [ ] 验证 `window.error` 和 `unhandledrejection` 可被捕获
+- [ ] 验证 React ErrorBoundary 记录组件栈
+- [ ] 验证 preload、渲染进程退出和无响应事件可记录
+- [ ] 验证 Logger transport 失败不会阻断登录、保存和同步
+- [ ] 验证日志轮转、保留期限和大小限制
+- [ ] 验证诊断包导出前完成二次脱敏
+- [ ] 验证生产 Source Map 可还原堆栈
+
+### API 故障注入测试
+
+- [ ] 请求参数构造异常
+- [ ] fetch 调用阶段异常
+- [ ] 断网、DNS、连接拒绝和 TLS 异常
+- [ ] 请求超时与主动取消
+- [ ] HTTP 401、403、409、429、500
+- [ ] 空响应、非法 JSON 和响应读取失败
+- [ ] Token 刷新失败
+- [ ] 服务端已收到请求但业务执行失败
+- [ ] 服务端未收到请求时客户端仍有完整错误记录
+
 ### CI
 
 - [ ] TypeScript 类型检查
+- [ ] ESLint 严格检查并禁止 warning
+- [ ] 客户端单元测试
+- [ ] 可观测性专项测试
+- [ ] Chromium / Playwright 关键 E2E
 - [ ] Rust fmt
 - [ ] Rust clippy
 - [ ] Rust test
@@ -1350,6 +1385,10 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] Docker build
 - [ ] 依赖漏洞检查
 - [ ] migration 检查
+- [ ] hidden Source Map 生成与私有归档检查
+- [ ] 日志敏感字段扫描
+- [ ] 禁止裸用分散 `fetch` 的代码检查
+- [ ] 禁止丢弃 `cause` 的错误包装检查
 
 ### 环境
 
@@ -1359,6 +1398,8 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] 独立配置
 - [ ] 独立数据库
 - [ ] 独立对象存储前缀
+- [ ] 各环境独立日志级别
+- [ ] 生产环境默认关闭 debug，允许临时诊断模式
 
 ### 发布
 
@@ -1372,30 +1413,180 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] 灰度升级
 - [ ] 强制升级策略
 - [ ] 回滚流程
+- [ ] 每个版本记录 commit SHA、build number 和 Source Map
+- [ ] 发布前执行客户端错误故障注入验收
+- [ ] 发布后验证日志目录、诊断中心和 request ID 链路
 
 ## 依赖
 
-贯穿全部开发任务。
+贯穿全部开发任务，并与 EPIC-17、EPIC-19 联动。
 
 ## 验收标准
 
 - [ ] 主分支变更必须通过自动测试
+- [ ] 故意恢复未绑定 `window.fetch` 实现时 CI 必须失败
 - [ ] Staging 验证后才能部署 Production
 - [ ] 服务端和 Web 支持快速回滚
 - [ ] 旧客户端不会破坏新数据
 - [ ] Android 各 App 可以独立发布
+- [ ] 新增 API 调用默认接入统一 ApiClient 和 Logger
+- [ ] 新错误包装不会丢弃原始异常链
+- [ ] 生产错误可依据版本和 Source Map 定位源码
 
 ---
 
-# EPIC-19：监控、日志与运维
+# EPIC-19：监控、日志、客户端诊断与运维
 
 ## 目标
 
-让云端服务的同步、存储和安全状态可观测。
+建立覆盖客户端运行时、API 请求前阶段、网络传输、云端处理、同步、存储、安全和备份的端到端可观测体系。
+
+系统必须同时回答：
+
+```text
+用户执行了什么操作？
+错误发生在哪个运行时和模块？
+错误发生在请求发送前、传输中、响应后还是业务执行阶段？
+客户端是否获得 HTTP 响应？
+原始错误和 cause 链是什么？
+请求到达服务端后对应哪个 request ID？
+用户可以如何安全导出诊断信息？
+```
+
+只有云端日志不算完成。即使 HTTP 请求尚未产生，客户端也必须保留足够信息定位问题。
+
+完整实施细节见：
+
+```text
+docs/epic-19/LifeTrace_EPIC19_Client_Observability_Implementation_Plan.md
+```
 
 ## 子任务
 
-### 指标
+### 统一日志模型
+
+- [ ] 定义 `debug / info / warn / error / fatal`
+- [ ] 定义 JSON Lines 结构化日志格式
+- [ ] 定义日志 schema 版本
+- [ ] 定义统一事件命名 `<domain>.<action>.<state>`
+- [ ] 记录 appVersion、buildNumber、commit SHA、runtime 和 environment
+- [ ] 生成并传递 sessionId
+- [ ] 生成并传递 operationId
+- [ ] 每个 API 请求生成 clientTraceId
+- [ ] 服务端生成 requestId
+- [ ] 每个严重异常生成 errorId
+- [ ] 同步批次生成 syncBatchId
+
+### 客户端 Logger 核心
+
+- [ ] 建立统一 Logger 接口，业务代码不直接依赖零散 `console.log`
+- [ ] 实现安全 Error serializer
+- [ ] 递归保留 error name、message、stack、code 和 cause
+- [ ] 限制 cause 深度和单条日志大小
+- [ ] 处理循环引用和不可序列化对象
+- [ ] Logger 写入失败不得抛给业务层
+- [ ] 支持 child logger 注入模块和操作上下文
+- [ ] 支持有限、脱敏的 breadcrumb
+- [ ] 支持 Console、内存缓冲、本地文件和运行时桥接 transport
+
+### 前端全局异常捕获
+
+- [ ] 捕获 `window.error`
+- [ ] 捕获 `unhandledrejection`
+- [ ] 增加 React ErrorBoundary
+- [ ] 记录 React component stack
+- [ ] 记录当前路由、模块、operationId 和最近安全 breadcrumb
+- [ ] 开发环境可显示真实错误面板
+- [ ] 生产环境显示友好提示与 errorId
+- [ ] 用户提示与内部错误对象完全分离
+
+### Windows 运行时异常
+
+- [ ] Renderer 日志通过安全桥接写入本地文件
+- [ ] Electron 当前运行时监听 `console-message`
+- [ ] 监听 `preload-error`
+- [ ] 监听 `did-fail-load`
+- [ ] 监听 `render-process-gone`
+- [ ] 监听 `unresponsive`
+- [ ] 监听子进程退出
+- [ ] 迁移 Tauri 后以 transport adapter 替换，不修改 Logger 核心
+- [ ] Web/PWA 使用内存环形缓冲和 IndexedDB 错误摘要
+
+### API 请求阶段诊断
+
+- [ ] 建立统一 Instrumented ApiClient
+- [ ] 禁止核心业务代码分散裸用 `fetch`
+- [ ] 默认 fetcher 使用 `(input, init) => window.fetch(input, init)`
+- [ ] 支持测试注入 Mock Fetcher
+- [ ] 记录 `api.request.start`
+- [ ] 记录 `api.fetch.invoke`
+- [ ] 记录 `api.response.received`
+- [ ] 记录响应读取和解析阶段
+- [ ] 记录 `api.request.succeeded`
+- [ ] 记录 `api.request.failed`
+- [ ] 记录最后成功阶段和 durationMs
+- [ ] 记录 `requestSent` 诊断标志
+- [ ] 读取并关联服务端 `X-Request-Id`
+- [ ] 向服务端传递 `X-Client-Trace-Id` 和 `X-Operation-Id`
+
+### 错误分类
+
+- [ ] 区分 `programming`
+- [ ] 区分 `validation`
+- [ ] 区分 `network`
+- [ ] 区分 `timeout`
+- [ ] 区分 `aborted`
+- [ ] 区分 `http`
+- [ ] 区分 `authentication / authorization`
+- [ ] 区分 `conflict`
+- [ ] 区分 `parse`
+- [ ] 区分 `storage / database / sync / runtime`
+- [ ] 识别 `Illegal invocation`
+- [ ] 识别 `Can only call window.fetch on instance of Window`
+- [ ] 禁止仅凭 TypeError 判定网络错误
+- [ ] 禁止将所有异常包装成“无法连接 LifeTrace 云端”
+
+### 本地日志文件
+
+- [ ] `app.log`
+- [ ] `api.log`
+- [ ] `sync.log`
+- [ ] `audit.log`
+- [ ] `error.log`
+- [ ] 单文件大小限制
+- [ ] 日志轮转
+- [ ] 保留期限
+- [ ] 启动时异步清理旧日志
+- [ ] 写入失败降级且不影响业务
+- [ ] 生产默认 info，诊断模式临时开启 debug
+
+### 日志脱敏
+
+- [ ] Token、Cookie、Authorization 永不写入
+- [ ] 密码、授权码和 API Key 永不写入
+- [ ] 默认不记录请求体和响应体
+- [ ] URL 查询参数采用白名单
+- [ ] 笔记、邮件、健康和日记正文不进入日志
+- [ ] 加密相册密钥、绝对路径和文件名不进入日志
+- [ ] 完整银行卡号和财务明细默认不进入日志
+- [ ] 递归处理对象、数组和错误 cause
+- [ ] 诊断包导出前二次脱敏和敏感模式扫描
+
+### 诊断中心
+
+- [ ] 设置页新增“诊断与日志”
+- [ ] 展示版本、运行时、schema、协议和 API 环境
+- [ ] 展示最近启动、同步和错误时间
+- [ ] 展示最近 errorId
+- [ ] 打开日志目录
+- [ ] 复制最近错误摘要
+- [ ] 开启或关闭详细日志
+- [ ] 开启或关闭网络诊断
+- [ ] 清理旧日志
+- [ ] 导出脱敏诊断 ZIP
+- [ ] 开发版本提供打开 DevTools 入口
+
+### 云端指标
 
 - [ ] API 请求量
 - [ ] API 错误率
@@ -1404,20 +1595,36 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] 同步失败数
 - [ ] outbox 堆积
 - [ ] 冲突数量
-- [ ] 数据库连接
+- [ ] 数据库连接池
 - [ ] 文件上传失败率
 - [ ] 磁盘使用率
 - [ ] 备份状态
+- [ ] 按稳定 route template 聚合，禁止使用完整 URL 形成高基数标签
 
-### 日志
+### 服务端结构化日志与追踪
 
+- [ ] Axum request ID 中间件
+- [ ] 响应返回 `X-Request-Id`
+- [ ] 读取并关联 clientTraceId 和 operationId
+- [ ] 记录 route、method、status 和 duration
 - [ ] 应用日志
 - [ ] 同步日志
 - [ ] 安全日志
 - [ ] 审计日志
 - [ ] 备份日志
+- [ ] 数据库错误日志
+- [ ] 对象存储错误日志
 - [ ] 日志轮转
 - [ ] 日志脱敏
+
+### Source Map 与版本关联
+
+- [ ] 开发环境生成完整 Source Map
+- [ ] 生产环境生成 hidden Source Map
+- [ ] Source Map 不公开部署
+- [ ] 构建产物私有归档 Source Map
+- [ ] 日志记录版本、构建号和 commit SHA
+- [ ] 支持根据生产堆栈定位源码
 
 ### 告警
 
@@ -1429,21 +1636,52 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 - [ ] 登录失败异常
 - [ ] 对象存储失败
 - [ ] TLS 证书即将过期
+- [ ] Renderer 崩溃率异常
+- [ ] 客户端启动失败率异常
+- [ ] 特定版本 programming error 激增
+- [ ] 告警内容不包含敏感正文
+
+## 实施顺序
+
+```text
+Phase 0 立即修复 fetch 绑定并增加回归测试
+→ Phase 1 Logger、Error serializer、脱敏和本地文件
+→ Phase 2 全局异常捕获和运行时桥接
+→ Phase 3 Instrumented ApiClient、阶段日志和错误分类
+→ Phase 4 诊断中心与脱敏诊断包
+→ Phase 5 Axum requestId、服务端指标与告警
+→ Phase 6 CI 门禁、故障注入和持续治理
+```
 
 ## 依赖
 
 - EPIC-03 独立云端后端服务
+- EPIC-13 Web / PWA 客户端
+- EPIC-17 安全、隐私与数据生命周期
+- EPIC-18 测试、CI/CD 与发布
 
 ## 验收标准
 
-- [ ] 核心故障能够及时发现
-- [ ] 日志可通过 request ID 追踪
-- [ ] 告警内容不包含敏感正文
-- [ ] 可查看最近同步失败原因
+- [ ] 未打开 DevTools 时，Renderer 原始异常仍进入本地日志
+- [ ] fetch 调用对象错误记录为 `programming`
+- [ ] 请求发出前错误记录 `stage=fetch.invoke` 和 `requestSent=false`
+- [ ] 原始 error message、stack 和 cause 完整保留
+- [ ] 用户友好提示不会覆盖内部诊断信息
+- [ ] 每个严重错误具有 errorId
+- [ ] 已到达服务端的请求可以通过 requestId 追踪
+- [ ] 未到达服务端的请求也能通过客户端阶段日志定位
+- [ ] 核心 API 全部使用统一 ApiClient
+- [ ] 日志可通过 sessionId、operationId、clientTraceId、requestId 和 errorId 关联
+- [ ] 日志自动轮转，不会无限增长
+- [ ] 用户可以从设置页导出脱敏诊断包
+- [ ] 日志中不存在 Token、密码、Cookie 和完整敏感正文
+- [ ] 生产错误可依据 Source Map 定位源码
+- [ ] 故意恢复未绑定 fetch 时自动测试失败
+- [ ] 可查看最近同步失败和登录失败的真实原因
+- [ ] Logger 故障不会导致业务功能崩溃
 
 ---
 
----
 # EPIC-20：计划、任务、日历与等待事项
 
 ## 目标
@@ -2285,6 +2523,17 @@ Microsoft Graph
 
 # 推荐执行路线
 
+## 阶段 0：客户端可观测性基线
+
+```text
+EPIC-19 Phase 0 修复 fetch 绑定与增加回归测试
+→ EPIC-19 Phase 1 Logger、全局异常与本地日志
+→ EPIC-19 Phase 2 Instrumented ApiClient 与阶段诊断
+→ EPIC-18 CI 门禁
+```
+
+阶段目标：在继续扩展云端、同步和 AI 功能前，先保证安装版中发生的前端错误可见、可分类、可导出、可回归测试。该阶段不要求完成全部服务端监控，但必须完成客户端最小诊断闭环。
+
 ## 阶段 A：数据与同步地基
 
 ```text
@@ -2365,7 +2614,7 @@ EPIC-15 数据健康、备份与灾难恢复
 EPIC-16 AI 管家总体能力与治理
 EPIC-17 安全、隐私与数据生命周期
 EPIC-18 测试、CI/CD 与发布
-EPIC-19 监控、日志与运维
+EPIC-19 监控、日志、客户端诊断与运维
 ```
 
 ---
@@ -2375,14 +2624,18 @@ EPIC-19 监控、日志与运维
 当前不建议先制作复杂 AI 聊天页面。最近应优先完成：
 
 ```text
-1. 数据层重构方案与 Migration
-2. 统一领域模型和同步字段
-3. TransactionService 等领域服务抽取
-4. 云端 Push / Pull 同步原型
-5. Task、Event、Reminder、Waiting Item 模型
-6. 最小 AI Tool Registry
-7. AI 个人资料和偏好存储
-8. 自然语言记账
+1. 修复并回归测试 window.fetch 调用对象问题
+2. 建立客户端 Logger、全局异常捕获和本地日志文件
+3. 建立统一 Instrumented ApiClient 与错误分类
+4. 建立诊断中心最小版：最近错误、打开日志目录、导出诊断包
+5. 数据层重构方案与 Migration
+6. 统一领域模型和同步字段
+7. TransactionService 等领域服务抽取
+8. 云端 Push / Pull 同步原型
+9. Task、Event、Reminder、Waiting Item 模型
+10. 最小 AI Tool Registry
+11. AI 个人资料和偏好存储
+12. 自然语言记账
 ```
 
 ## 第一个可演示版本
@@ -2414,6 +2667,16 @@ EPIC-19 监控、日志与运维
 ---
 
 # 建议版本里程碑
+
+## Milestone -1：客户端可诊断
+
+- 修复所有原生 fetch 调用对象风险
+- 登录、同步、上传使用统一 ApiClient
+- 捕获前端全局错误和 Promise 异常
+- 安装版写入本地结构化日志
+- 错误保留 message、stack 和 cause
+- 设置页可查看 errorId 并导出脱敏诊断包
+- CI 能阻止未绑定 fetch 和吞掉原始异常的实现
 
 ## Milestone 0：数据可迁移
 
@@ -2537,3 +2800,6 @@ LifeTrace 仅提供：
 - 新增个人记忆字段必须标注敏感级别和有效期
 - 任何邮件、健康和金融能力都必须经过隐私检查
 - 任何跨端功能都必须包含离线、重试、冲突和迁移测试
+- 所有客户端 API 必须标注请求阶段、错误分类和关联 ID
+- 任何错误包装都必须保留原始 cause，禁止用统一友好提示覆盖内部异常
+- 新增日志事件必须通过脱敏检查并遵循统一命名规范
