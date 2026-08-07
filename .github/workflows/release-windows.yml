@@ -135,21 +135,11 @@ jobs:
           $tmpDir = $env:RUNNER_TEMP
           [System.IO.File]::WriteAllText("$tmpDir\latest.json", $direct)
           [System.IO.File]::WriteAllText("$tmpDir\latest.cn.json", $cn)
-          function Upload-Asset([string]$Name, [string]$Path) {
-            $body = [System.IO.File]::ReadAllBytes($Path)
-            for ($attempt = 1; $attempt -le 3; $attempt++) {
-              try {
-                Invoke-RestMethod -Method POST -Uri "$uploadUrl?name=$Name" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 120 | Out-Null
-                return
-              } catch {
-                if ($attempt -lt 3) { Start-Sleep -Seconds 3 } else { throw }
-              }
-            }
+          $env:GH_TOKEN = $env:GITHUB_TOKEN
+          gh release upload $env:RELEASE_TAG "$tmpDir\latest.json" "$tmpDir\latest.cn.json" --repo zhouxingxing1279/LifeTrace-Releases --clobber
+          if ($LASTEXITCODE -ne 0) {
+            throw "gh release upload failed with exit code $LASTEXITCODE"
           }
-          Upload-Asset "latest.cn.json" "$tmpDir\latest.cn.json"
-          Invoke-RestMethod -Method DELETE -Uri $latestAsset.url -Headers $headers -TimeoutSec 60 | Out-Null
-          Start-Sleep -Seconds 2
-          Upload-Asset "latest.json" "$tmpDir\latest.json"
           $verify = Invoke-RestMethod -Uri "https://api.github.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/$env:RELEASE_TAG" -Headers $headers -TimeoutSec 60
           $names = @($verify.assets | ForEach-Object { $_.name })
           if ($names -notcontains "latest.json" -or $names -notcontains "latest.cn.json") {
