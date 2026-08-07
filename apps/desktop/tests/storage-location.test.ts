@@ -2,9 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("storage migration runs bulk file copying off the UI/main thread", async () => {
+test("storage migration runs blocking work on Tauri's managed runtime", async () => {
   const source = await readFile("src-tauri/src/storage.rs", "utf8");
-  assert.match(source, /tokio::task::spawn_blocking/);
+  assert.doesNotMatch(source, /tokio::task::spawn_blocking/);
+  assert.match(source, /tauri::async_runtime::spawn_blocking/);
   assert.match(source, /bulk_copy\(&source, &target_for_task/);
   assert.match(source, /restart_required: false/);
   assert.match(source, /value\.restart_required = true/);
@@ -35,7 +36,7 @@ test("old storage is committed only after verification and deleted by a backgrou
   assert.doesNotMatch(commitBody, /remove_dir_all/);
 
   assert.match(cleanupBody, /fs::remove_dir_all\(&old_path\)/);
-  assert.match(scheduleBody, /tokio::task::spawn_blocking/);
+  assert.match(scheduleBody, /tauri::async_runtime::spawn_blocking/);
   assert.match(scheduleBody, /retry_old_directory_cleanup\(&config_path\)/);
   assert.match(source, /PRAGMA integrity_check/);
 });
