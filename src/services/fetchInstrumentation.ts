@@ -5,7 +5,8 @@ import {
   type FetchLike,
 } from "./clientObservability";
 
-const INSTRUMENTED_FETCH = Symbol.for("lifetrace.instrumented.fetch");
+const INSTRUMENTED_FETCH_KEY = "__lifetraceInstrumentedFetch" as const;
+type MarkedFetch = FetchLike & { [INSTRUMENTED_FETCH_KEY]?: boolean };
 let installed = false;
 
 function requestAction(input: RequestInfo | URL): string {
@@ -23,7 +24,7 @@ function requestAction(input: RequestInfo | URL): string {
 }
 
 function isAlreadyInstrumented(fetcher: FetchLike): boolean {
-  return Boolean((fetcher as FetchLike & { [INSTRUMENTED_FETCH]?: boolean })[INSTRUMENTED_FETCH]);
+  return Boolean((fetcher as MarkedFetch)[INSTRUMENTED_FETCH_KEY]);
 }
 
 export function installGlobalFetchInstrumentation(): void {
@@ -34,7 +35,7 @@ export function installGlobalFetchInstrumentation(): void {
   if (isAlreadyInstrumented(currentFetch)) return;
 
   const nativeFetch = bindFetch(currentFetch);
-  const observedFetch: FetchLike = (input, init) => instrumentedFetch(
+  const observedFetch: MarkedFetch = (input, init) => instrumentedFetch(
     nativeFetch,
     input,
     init,
@@ -45,7 +46,7 @@ export function installGlobalFetchInstrumentation(): void {
     },
   );
 
-  Object.defineProperty(observedFetch, INSTRUMENTED_FETCH, {
+  Object.defineProperty(observedFetch, INSTRUMENTED_FETCH_KEY, {
     configurable: false,
     enumerable: false,
     value: true,
