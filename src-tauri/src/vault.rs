@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     fs::{self, File},
     io::{Cursor, Read, Write},
     path::{Path, PathBuf},
@@ -1690,9 +1690,11 @@ pub async fn vault_restore_to_sync_album(
     state: State<'_, Arc<VaultState>>,
 ) -> std::result::Result<VaultAsset, String> {
     let vault = state.inner().clone();
-    tauri::async_runtime::spawn_blocking(move || command_result(vault.restore_to_sync_album(&asset_id)))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        command_result(vault.restore_to_sync_album(&asset_id))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -2093,4 +2095,3 @@ mod tests {
         assert!(!root.join("vault").exists());
     }
 }
-
