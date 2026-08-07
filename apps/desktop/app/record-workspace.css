@@ -1,0 +1,136 @@
+/* Master-detail workspace for data-heavy desktop screens. */
+.lt-record-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  min-height: 560px;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  overflow: hidden;
+  background: var(--ui-bg-surface);
+}
+
+.lt-record-list {
+  min-width: 0;
+  overflow: auto;
+}
+
+.lt-record-list .hx-table-wrap table {
+  min-width: 720px;
+}
+
+.lt-record-list .hx-table-wrap th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.lt-record-list .hx-table-wrap tbody tr {
+  cursor: default;
+  outline: none;
+}
+
+.lt-record-list .hx-table-wrap tbody tr.selected {
+  background: var(--ui-primary-soft);
+}
+
+.lt-record-list .hx-table-wrap tbody tr:focus-visible {
+  box-shadow: inset 3px 0 0 var(--ui-primary);
+}
+
+.lt-record-inspector {
+  min-width: 0;
+  padding: var(--ui-space-5);
+  border-left: 1px solid var(--ui-border);
+  background: var(--ui-bg-inset);
+}
+
+.lt-record-inspector > header {
+  display: grid;
+  gap: var(--ui-space-3);
+  padding-bottom: var(--ui-space-4);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.lt-record-inspector > header small {
+  color: var(--ui-muted);
+  font-size: var(--ui-font-caption);
+}
+
+.lt-record-inspector > header h2 {
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: var(--ui-font-section-title);
+  font-weight: var(--ui-font-weight-semibold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lt-record-inspector > header > strong {
+  font-size: 24px;
+  font-weight: var(--ui-font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.lt-record-inspector > header > strong.income { color: var(--ui-success); }
+.lt-record-inspector > header > strong.transfer { color: var(--ui-muted); }
+
+.lt-record-inspector dl {
+  display: grid;
+  gap: 0;
+  margin: var(--ui-space-3) 0 0;
+}
+
+.lt-record-inspector dl > div {
+  display: grid;
+  grid-template-columns: 68px minmax(0, 1fr);
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-3) 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.lt-record-inspector dt,
+.lt-record-inspector dd {
+  margin: 0;
+  font-size: var(--ui-font-secondary);
+}
+
+.lt-record-inspector dt { color: var(--ui-muted); }
+.lt-record-inspector dd { min-width: 0; overflow-wrap: anywhere; }
+
+.lt-inspector-actions {
+  display: flex;
+  gap: var(--ui-space-2);
+  margin-top: var(--ui-space-5);
+}
+
+.lt-inspector-hint {
+  margin: var(--ui-space-4) 0 0;
+  color: var(--ui-faint);
+  font-size: var(--ui-font-micro);
+  line-height: var(--ui-line-micro);
+}
+
+.lt-inspector-empty {
+  min-height: 300px;
+  display: grid;
+  place-items: center;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-secondary);
+  text-align: center;
+}
+
+@media (max-width: 1080px) {
+  .lt-record-workspace {
+    grid-template-columns: minmax(0, 1fr) 260px;
+  }
+}
+
+@media (max-width: 840px) {
+  .lt-record-workspace {
+    grid-template-columns: 1fr;
+  }
+  .lt-record-inspector {
+    border-top: 1px solid var(--ui-border);
+    border-left: 0;
+  }
+}
