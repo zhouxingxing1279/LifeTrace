@@ -27,6 +27,16 @@
 .hx-cloud-account .hx-sync-conflicts>div{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--hx-line);padding-top:10px}
 @media(max-width:760px){.hx-local-ownership-title{align-items:flex-start;flex-direction:column}.hx-ownership-rules{grid-template-columns:1fr}.hx-cloud-account .hx-sync-conflicts>div{align-items:flex-start;flex-direction:column}}
 
+/* Storage location migration */
+.hx-storage-migration-progress{margin-top:12px;padding:14px 16px;border:1px solid var(--hx-line);border-radius:12px;background:var(--hx-soft);display:grid;gap:8px}
+.hx-storage-migration-progress>div{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px}
+.hx-storage-migration-progress>div span{color:var(--hx-ink)}
+.hx-storage-migration-progress>div strong{font-size:11px;color:var(--hx-accent2)}
+.hx-storage-migration-progress progress{width:100%;height:8px;accent-color:var(--hx-accent)}
+.hx-storage-migration-progress small{font-size:9px;color:var(--hx-muted)}
+.hx-settings-note{margin:12px 0 0;color:var(--hx-muted);font-size:10px;line-height:1.7}
+#settings-storage .hx-setting-row small{max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
 /* App updater */
 .hx-update-modal{width:min(520px,100%)}
 .hx-update-body{padding:22px;display:grid;gap:16px}

@@ -1,10 +1,12 @@
-import { Bot, Cloud, Languages, Monitor, ShieldCheck, CircleHelp } from "lucide-react";
+import { Bot, Cloud, Languages, Monitor, ShieldCheck, CircleHelp, HardDrive } from "lucide-react";
 import CloudSyncSettingsPanel from "@/src/components/CloudSyncSettingsPanel";
+import StorageLocationPanel from "@/src/components/StorageLocationPanel";
 import AccountSecurityPanel from "@/src/components/account/AccountSecurityPanel";
 
 const sections = [
   ["settings-general", "常规与外观", Monitor],
   ["settings-sync", "数据与同步", Cloud],
+  ["settings-storage", "存储", HardDrive],
   ["settings-ai", "AI 服务", Bot],
   ["settings-translation", "翻译", Languages],
   ["settings-security", "账户与安全", ShieldCheck],
@@ -23,6 +25,7 @@ export default function CloudAccountPanel() {
       <nav>{sections.map(([id, label, Icon]) => <button key={id} type="button" onClick={() => jumpTo(id)}><Icon /><span>{label}</span></button>)}</nav>
     </aside>
     <CloudSyncSettingsPanel />
+    <StorageLocationPanel />
     <AccountSecurityPanel />
   </>;
 }

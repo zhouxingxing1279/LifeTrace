@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
+import { relaunch } from "@tauri-apps/plugin-process";
 
 const nativeFetch = window.fetch.bind(window);
 const backendOrigin = "http://127.0.0.1:3103";
@@ -53,6 +54,24 @@ export function installTauriApiBridge() {
     now: (forceSnapshot = false) => invoke("sync_now", { forceSnapshot }),
     conflicts: () => invoke("sync_conflicts"),
     resolveConflict: (conflictId, resolution) => invoke<void>("sync_resolve_conflict", { conflictId, resolution }),
+  };
+  window.storageApi = {
+    status: () => invoke<StorageMigrationStatus>("storage_status"),
+    async chooseAndMigrate() {
+      const targetPath = await open({
+        multiple: false,
+        directory: true,
+        title: "选择新的 LifeTrace 存储文件夹",
+      });
+      if (!targetPath) return { canceled: true };
+      try {
+        const status = await invoke<StorageMigrationStatus>("storage_migrate", { targetPath });
+        return { canceled: false, status };
+      } catch (error) {
+        return { canceled: false, error: String(error) };
+      }
+    },
+    restart: () => relaunch(),
   };
   const photoStatus = () => invoke<PhotoSyncDesktopResponse>("photo_status");
   window.mobileUploadApi = {

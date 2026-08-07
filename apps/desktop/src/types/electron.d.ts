@@ -19,6 +19,11 @@ declare global {
       get():Promise<string|null>;
       clear():Promise<void>;
     };
+    storageApi?: {
+      status():Promise<StorageMigrationStatus>;
+      chooseAndMigrate():Promise<{canceled:boolean;status?:StorageMigrationStatus;error?:string}>;
+      restart():Promise<void>;
+    };
     noteApi?: {
       selectAttachment(noteId:string):Promise<{ok:boolean;canceled?:boolean;error?:string;file?:Record<string,unknown>}>;
       openAttachment(noteId:string,fileName:string):Promise<{ok:boolean;error?:string}>;
@@ -66,6 +71,21 @@ declare global {
       deleteAll(confirmation:string):Promise<void>;
     };
   }
+
+  type StorageMigrationPhase = "idle" | "copying" | "finalizing" | "ready" | "error";
+  type StorageMigrationStatus = {
+    currentPath:string;
+    defaultPath:string;
+    targetPath?:string|null;
+    phase:StorageMigrationPhase;
+    filesTotal:number;
+    filesCopied:number;
+    bytesTotal:number;
+    bytesCopied:number;
+    progress:number;
+    restartRequired:boolean;
+    error?:string|null;
+  };
 
   type VaultStatus = {
     configured:boolean;
