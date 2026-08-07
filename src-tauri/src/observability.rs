@@ -36,7 +36,9 @@ fn rotated_path(path: &Path, index: usize) -> PathBuf {
 }
 
 fn rotate_if_needed(path: &Path, incoming_bytes: u64) -> Result<(), String> {
-    let current_bytes = fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0);
+    let current_bytes = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
     if current_bytes.saturating_add(incoming_bytes) <= MAX_LOG_BYTES {
         return Ok(());
     }
@@ -130,8 +132,11 @@ pub fn client_log_read_recent(
         return Ok(String::new());
     }
 
-    let limit = max_bytes.unwrap_or(256 * 1024).clamp(4 * 1024, MAX_READ_BYTES);
-    let mut file = fs::File::open(&path).map_err(|error| format!("open client log: {error}"))?;
+    let limit = max_bytes
+        .unwrap_or(256 * 1024)
+        .clamp(4 * 1024, MAX_READ_BYTES);
+    let mut file =
+        fs::File::open(&path).map_err(|error| format!("open client log: {error}"))?;
     let length = file
         .metadata()
         .map_err(|error| format!("read client log metadata: {error}"))?
