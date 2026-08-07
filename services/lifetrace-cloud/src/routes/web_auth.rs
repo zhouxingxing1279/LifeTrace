@@ -8,8 +8,8 @@ use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
 use lifetrace_contracts::auth::v1::{
-    AcceptedResponseV1, CsrfResponseV1, DeviceInstallationV1, DeviceListV1, Scope,
-    SessionListV1, UpdateDeviceRequestV1, WebLoginRequestV1, WebSessionResponseV1,
+    AcceptedResponseV1, CsrfResponseV1, DeviceInstallationV1, DeviceListV1, Scope, SessionListV1,
+    UpdateDeviceRequestV1, WebLoginRequestV1, WebSessionResponseV1,
 };
 use lifetrace_contracts::ErrorCode;
 use serde::Deserialize;
@@ -22,7 +22,7 @@ use crate::auth::security::{
     build_session_cookie, clear_session_cookie, cookie_value, PeerAddr, RequestContext,
 };
 use crate::auth::token::TokenKind;
-use crate::auth::{AuthCredential, AuthenticatedPrincipal, AuthService};
+use crate::auth::{AuthCredential, AuthService, AuthenticatedPrincipal};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -48,19 +48,13 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/web/session/logout", post(logout))
         .route("/api/v1/web/csrf", get(csrf))
         .route("/api/v1/web/devices", get(list_devices))
-        .route(
-            "/api/v1/web/devices/{device_id}",
-            patch(update_device),
-        )
+        .route("/api/v1/web/devices/{device_id}", patch(update_device))
         .route(
             "/api/v1/web/devices/{device_id}/revoke",
             post(revoke_device),
         )
         .route("/api/v1/web/sessions", get(list_sessions))
-        .route(
-            "/api/v1/web/sessions/{session_id}",
-            delete(revoke_session),
-        )
+        .route("/api/v1/web/sessions/{session_id}", delete(revoke_session))
 }
 
 fn context(state: &AppState, headers: &HeaderMap, peer: PeerAddr) -> RequestContext {
@@ -88,13 +82,15 @@ async fn consume_invite(
     if state.config.auth_registration_mode != "invite" {
         return Ok(());
     }
-    let raw = raw.filter(|value| !value.trim().is_empty()).ok_or_else(|| {
-        auth_error(
-            ErrorCode::AuthInviteInvalid,
-            "registration invite is required",
-            StatusCode::FORBIDDEN,
-        )
-    })?;
+    let raw = raw
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            auth_error(
+                ErrorCode::AuthInviteInvalid,
+                "registration invite is required",
+                StatusCode::FORBIDDEN,
+            )
+        })?;
     let tokens = state.auth_service.token_manager();
     let parsed = tokens.parse(TokenKind::Invite, raw).ok_or_else(|| {
         auth_error(
