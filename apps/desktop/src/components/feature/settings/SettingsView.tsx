@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import { noteApi } from "@/src/services/noteApi";
+import AppearanceSettingsPanel from "@/src/components/AppearanceSettingsPanel";
 import CloudAccountPanel from "@/src/components/CloudAccountPanel";
 import AISettingsPanel from "@/src/components/AISettingsPanel";
 import TranslationSettingsPanel from "@/src/components/TranslationSettingsPanel";
@@ -38,6 +39,7 @@ export default function SettingsView() {
   return (
     <div className="hx-view">
       <div className="hx-settings-grid">
+        <AppearanceSettingsPanel />
         <CloudAccountPanel />
         <AISettingsPanel />
         <TranslationSettingsPanel />

@@ -12,6 +12,11 @@ import {
 } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import { noteApi } from "@/src/services/noteApi";
+import {
+  applyAppPreferences,
+  readAppPreferences,
+  writeAppPreferences,
+} from "@/src/services/appPreferences";
 import AppShell from "@/src/components/layout/AppShell";
 import type { CommandItem } from "@/src/components/layout/CommandPalette";
 import {
@@ -43,8 +48,6 @@ import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import type { ToastPayload } from "@/src/ui/feedback/toastBus";
 import { escapeHtml, dayKey } from "@/src/utils/format";
 
-const DENSITY_KEY = "lifetrace:ui-density";
-
 export default function HengXuShell() {
   const { ready, storageError, initialize } = useLifeStore();
   const [view, setView] = useState<PlatformView>(() => {
@@ -58,6 +61,7 @@ export default function HengXuShell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toast, setToast] = useState("");
   const [toastDuration, setToastDuration] = useState(2200);
+  const [appearanceRevision, setAppearanceRevision] = useState(0);
 
   const makeLinkedNote = async (
     noteType: "habit_log" | "workout_review" | "expense_note",
@@ -108,12 +112,6 @@ export default function HengXuShell() {
   useEffect(() => {
     void initialize();
   }, [initialize]);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem(DENSITY_KEY);
-    document.documentElement.dataset.density =
-      stored === "compact" ? "compact" : "comfortable";
-  }, []);
 
   useEffect(() => {
     const receive = (event: Event) => {
@@ -167,18 +165,36 @@ export default function HengXuShell() {
   }
 
   const toggleDensity = () => {
-    const next =
-      document.documentElement.dataset.density === "compact"
-        ? "comfortable"
-        : "compact";
-    document.documentElement.dataset.density = next;
-    window.localStorage.setItem(DENSITY_KEY, next);
+    const current = readAppPreferences();
+    const density = current.density === "compact" ? "comfortable" as const : "compact" as const;
+    const next = { ...current, density };
+    writeAppPreferences(next);
+    applyAppPreferences(next);
+    setAppearanceRevision((value) => value + 1);
     window.dispatchEvent(
       new CustomEvent("hengxu-toast", {
-        detail: next === "compact" ? "已切换紧凑布局" : "已切换舒适布局",
+        detail: density === "compact" ? "已切换紧凑布局" : "已切换舒适布局",
       }),
     );
   };
+
+  const toggleTheme = () => {
+    const current = readAppPreferences();
+    const isDark = document.documentElement.dataset.theme === "dark";
+    const next = { ...current, theme: isDark ? "light" as const : "dark" as const };
+    writeAppPreferences(next);
+    applyAppPreferences(next);
+    setAppearanceRevision((value) => value + 1);
+    window.dispatchEvent(
+      new CustomEvent("hengxu-toast", {
+        detail: isDark ? "已切换浅色模式" : "已切换深色模式",
+      }),
+    );
+  };
+
+  const currentIsDark = document.documentElement.dataset.theme === "dark";
+  const currentDensity = readAppPreferences().density;
+  void appearanceRevision;
 
   const commandItems: CommandItem[] = [
     {
@@ -239,20 +255,17 @@ export default function HengXuShell() {
     },
     {
       id: "toggle-density",
-      label:
-        document.documentElement.dataset.density === "compact"
-          ? "切换舒适布局"
-          : "切换紧凑布局",
+      label: currentDensity === "compact" ? "切换舒适布局" : "切换紧凑布局",
       icon: Palette,
       group: "操作",
       execute: toggleDensity,
     },
     {
       id: "toggle-theme",
-      label: useLifeStore.getState().dark ? "切换到浅色主题" : "切换到深色主题",
-      icon: useLifeStore.getState().dark ? Sun : Moon,
+      label: currentIsDark ? "切换到浅色主题" : "切换到深色主题",
+      icon: currentIsDark ? Sun : Moon,
       group: "操作",
-      execute: () => useLifeStore.getState().toggleDark(),
+      execute: toggleTheme,
     },
   ];
 

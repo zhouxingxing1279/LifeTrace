@@ -8,7 +8,7 @@ import {
   X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { useLifeStore } from "@/src/stores/useLifeStore";
+import { applyAppPreferences, readAppPreferences } from "@/src/services/appPreferences";
 import { IconButton, Kbd, Tooltip } from "@/src/components/ui";
 import CommandPalette from "./CommandPalette";
 import type { CommandItem } from "./CommandPalette";
@@ -47,7 +47,6 @@ export default function AppShell({
   children,
   pageActions,
 }: AppShellProps) {
-  const dark = useLifeStore((state) => state.dark);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(
     () => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1",
@@ -56,13 +55,13 @@ export default function AppShell({
 
   useEffect(() => {
     const forced = new URLSearchParams(window.location.search).get("theme");
-    document.documentElement.dataset.theme =
-      forced === "dark" || forced === "light"
-        ? forced
-        : dark
-          ? "dark"
-          : "light";
-  }, [dark]);
+    if (forced === "dark" || forced === "light") {
+      document.documentElement.dataset.theme = forced;
+      document.documentElement.style.colorScheme = forced;
+      return;
+    }
+    applyAppPreferences(readAppPreferences());
+  }, []);
 
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
