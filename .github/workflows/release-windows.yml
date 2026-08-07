@@ -102,6 +102,61 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
 
+      - name: Rewrite updater URLs and generate China mirror manifest
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/$env:RELEASE_TAG" -Headers $headers -TimeoutSec 60
+          $assetById = @{}
+          foreach ($asset in $release.assets) {
+            $assetById[[string]$asset.id] = $asset.name
+          }
+          $latestAsset = $release.assets | Where-Object { $_.name -eq "latest.json" } | Select-Object -First 1
+          if (-not $latestAsset) {
+            throw "latest.json asset not found in release $env:RELEASE_TAG"
+          }
+          $json = Invoke-RestMethod -Uri $latestAsset.url -Headers $headers -TimeoutSec 60
+          foreach ($platform in $json.platforms.PSObject.Properties) {
+            $url = [string]$platform.Value.url
+            if ($url -match "releases/assets/(\d+)$") {
+              $assetName = $assetById[$Matches[1]]
+              if ($assetName) {
+                $platform.Value.url = "https://github.com/zhouxingxing1279/LifeTrace-Releases/releases/download/$env:RELEASE_TAG/$assetName"
+              }
+            }
+          }
+          $direct = $json | ConvertTo-Json -Depth 10 -Compress
+          $cn = $direct -replace "https://github.com/zhouxingxing1279/LifeTrace-Releases", "https://gh-proxy.com/https://github.com/zhouxingxing1279/LifeTrace-Releases"
+          $uploadUrl = $release.upload_url -replace '\{[^}]*\}', ''
+          $tmpDir = $env:RUNNER_TEMP
+          [System.IO.File]::WriteAllText("$tmpDir\latest.json", $direct)
+          [System.IO.File]::WriteAllText("$tmpDir\latest.cn.json", $cn)
+          function Upload-Asset([string]$Name, [string]$Path) {
+            $body = [System.IO.File]::ReadAllBytes($Path)
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Invoke-RestMethod -Method POST -Uri "$uploadUrl?name=$Name" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 120 | Out-Null
+                return
+              } catch {
+                if ($attempt -lt 3) { Start-Sleep -Seconds 3 } else { throw }
+              }
+            }
+          }
+          Upload-Asset "latest.cn.json" "$tmpDir\latest.cn.json"
+          Invoke-RestMethod -Method DELETE -Uri $latestAsset.url -Headers $headers -TimeoutSec 60 | Out-Null
+          Start-Sleep -Seconds 2
+          Upload-Asset "latest.json" "$tmpDir\latest.json"
+          $verify = Invoke-RestMethod -Uri "https://api.github.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/$env:RELEASE_TAG" -Headers $headers -TimeoutSec 60
+          $names = @($verify.assets | ForEach-Object { $_.name })
+          if ($names -notcontains "latest.json" -or $names -notcontains "latest.cn.json") {
+            throw "Asset verification failed: $($names -join ', ')"
+          }
+          Write-Output "Published rewritten latest.json (github.com URLs) and latest.cn.json (gh-proxy.com URLs)"
+
       - name: Verify published updater metadata
         shell: pwsh
         env:
