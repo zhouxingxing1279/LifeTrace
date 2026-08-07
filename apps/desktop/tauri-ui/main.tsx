@@ -25,8 +25,6 @@ import "@/app/account-settings-redesign.css";
 import "@/app/ui-foundation.css";
 import "@/app/ui-menus.css";
 import "@/app/auth-shell-fixes.css";
-import "@/app/editorial-fonts.css";
-import "@/app/editorial.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();

@@ -5,10 +5,9 @@ import QRCodeGenerator from "qrcode";
 import {
   Archive, BarChart3, BookOpen, Bot, CalendarDays, Check, ChevronRight,
   CircleDollarSign, Copy, Dumbbell, FileUp, Home, LoaderCircle, Menu, Pencil, Plus,
-  Images, Languages, NotebookPen, Palette, QrCode, Settings, Smartphone, Trash2, WalletCards, Wifi, WifiOff, X,
+  Images, Languages, NotebookPen, QrCode, Settings, Smartphone, Trash2, WalletCards, Wifi, WifiOff, X,
 } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
-import { useUiStyleStore } from "@/src/stores/useUiStyleStore";
 import type { Activity, ActivityLog, FinanceAccount, Transaction, WorkoutHistory } from "@/src/types";
 import DailyEnglish from "@/src/components/english/DailyEnglish";
 import XunjiImportPanel from "@/src/components/XunjiImportPanel";
@@ -22,7 +21,6 @@ import AISettingsPanel from "@/src/components/AISettingsPanel";
 import AIAssistantModule from "@/src/components/AIAssistantModule";
 import CloudAccountPanel from "@/src/components/CloudAccountPanel";
 import AboutLifeTracePanel from "@/src/components/AboutLifeTracePanel";
-import StyleSettingsPanel from "@/src/components/StyleSettingsPanel";
 import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { getAccountBalanceSnapshot, getTotalAccountBalance } from "@/src/utils/finance";
 import ContextMenu from "@/src/ui/menu/ContextMenu";
@@ -39,7 +37,6 @@ type ToastPayload = { message:string;type:"success"|"info"|"warning"|"error";dur
 const pad = (value: number) => String(value).padStart(2, "0");
 const dayKey = (date = new Date()) => `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 const money = (value: number) => `¥${value.toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const monthLabel = (key: string) => `${Number(key.slice(0, 4))} 年 ${Number(key.slice(5, 7))} 月`;
 const transactionAmountText = (transaction: Pick<Transaction, "type" | "amount">) => transaction.type === "expense" ? `-${money(transaction.amount)}` : transaction.type === "income" ? `+${money(transaction.amount)}` : money(transaction.amount);
 const dateTimeLocal = (value?: string) => {
   const date = value ? new Date(value) : new Date();
@@ -257,21 +254,11 @@ function Finance() {
 
 function Transactions({ edit, note }: { edit: (value?: Transaction) => void; note:(value:Transaction)=>void }) {
   const { transactions, deleteTransaction } = useLifeStore();
-  const uiStyle = useUiStyleStore(s => s.uiStyle);
   const [search,setSearch]=useState("");
   const [direction,setDirection]=useState<"all"|Transaction["type"]>("all");
   const rows=transactions
     .filter(item => (direction === "all" || item.type === direction) && `${item.counterparty ?? ""}${item.category}${item.note ?? ""}`.toLowerCase().includes(search.toLowerCase()))
     .sort((left,right) => new Date(right.occurredAt).getTime() - new Date(left.occurredAt).getTime());
-  const monthExpense = rows.filter(item => item.type === "expense").reduce((sum, item) => sum + item.amount, 0);
-  const monthIncome = rows.filter(item => item.type === "income").reduce((sum, item) => sum + item.amount, 0);
-  const groups = rows.reduce<{ key: string; rows: Transaction[] }[]>((all, item) => {
-    const key = item.occurredAt.slice(0, 7);
-    const last = all[all.length - 1];
-    if (last && last.key === key) last.rows.push(item);
-    else all.push({ key, rows: [item] });
-    return all;
-  }, []);
   const actionsFor = (item: Transaction): AppAction<Transaction>[] => [
     { id: "note", label: "添加消费笔记", icon: NotebookPen, group: "primary", execute: note },
     { id: "copy", label: "复制交易摘要", icon: Copy, group: "related", execute: async (context) => { await navigator.clipboard?.writeText(`${context.counterparty || context.category} ${transactionAmountText(context)} ${context.account}`); notify("交易摘要已复制"); } },
@@ -284,27 +271,21 @@ function Transactions({ edit, note }: { edit: (value?: Transaction) => void; not
       <select value={direction} onChange={event => setDirection(event.target.value as typeof direction)}><option value="all">全部流水</option><option value="expense">支出</option><option value="income">收入</option><option value="transfer">转账</option></select>
       <button className="hx-btn primary" onClick={() => edit()}><Plus/> 手动记账</button>
     </div>
-    {uiStyle === "editorial" && <div className="lt-summary">
-      <div><small>本月支出</small><strong>{money(monthExpense)}</strong></div>
-      <div><small>本月收入</small><strong className="income">{money(monthIncome)}</strong></div>
-      <div><small>结余</small><strong>{money(monthIncome - monthExpense)}</strong></div>
-    </div>}
     <article className="hx-panel hx-table-wrap">
       <table>
         <thead><tr><th>时间</th><th>交易</th><th>分类</th><th>账户</th><th>类型</th><th>金额</th><th aria-label="操作"/></tr></thead>
-        {groups.map(group => <tbody className="lt-month" key={group.key}>
-          <tr className="lt-month-head"><th colSpan={7}><span>{monthLabel(group.key)}</span><span>{group.rows.length} 笔</span></th></tr>
-          {group.rows.map(item => <ContextMenu as="tr" actions={actionsFor(item)} context={item} ariaLabel={`${item.counterparty || item.category}操作`} key={item.id}>
-            <td className="lt-date">{new Date(item.occurredAt).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</td>
+        <tbody>
+          {rows.map(item => <ContextMenu as="tr" actions={actionsFor(item)} context={item} ariaLabel={`${item.counterparty || item.category}操作`} key={item.id}>
+            <td>{new Date(item.occurredAt).toLocaleString("zh-CN",{month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"})}</td>
             <td><strong>{item.counterparty || item.category}</strong><small>{item.item || item.note || "手动记录"}</small></td>
             <td><span className="hx-tag">{item.category}</span></td>
             <td>{item.type === "transfer" ? `${item.account} → ${item.toAccount ?? "未匹配账户"}` : item.account}</td>
             <td>{item.type === "expense" ? "支出" : item.type === "income" ? "收入" : "转账"}</td>
-            <td className={`lt-amount ${item.type}`}>{transactionAmountText(item)}</td>
+            <td className={item.type}>{transactionAmountText(item)}</td>
             <td className="hx-table-actions"><MoreMenu actions={actionsFor(item)} context={item} label={`${item.counterparty || item.category}更多操作`}/></td>
           </ContextMenu>)}
-        </tbody>)}
-        {!rows.length && <tbody><tr><td className="hx-table-empty" colSpan={7}>没有符合当前条件的账单。</td></tr></tbody>}
+          {!rows.length && <tr><td className="hx-table-empty" colSpan={7}>没有符合当前条件的账单。</td></tr>}
+        </tbody>
       </table>
       <footer>共 {rows.length} 笔记录</footer>
     </article>
@@ -527,7 +508,7 @@ function Range({label,value,set}:{label:string;value:number;set:(value:number)=>
 
 function SettingsView() {
   const store=useLifeStore();const input=useRef<HTMLInputElement>(null);const [message,setMessage]=useState("");const download=(text:string,name:string,type="application/json")=>{const url=URL.createObjectURL(new Blob([text],{type}));const link=document.createElement("a");link.href=url;link.download=name;link.click();URL.revokeObjectURL(url)};const backup={format:"lifetrace-backup",schemaVersion:2,createdAt:new Date().toISOString(),activities:store.activities,logs:store.logs,transactions:store.transactions,reviews:store.reviews,accounts:store.accounts,workoutHistory:store.workoutHistory};
-  return <div className="hx-view"><div className="hx-settings-grid"><CloudAccountPanel/><AISettingsPanel/><TranslationSettingsPanel/><StyleSettingsPanel/><AboutLifeTracePanel/><article className="hx-panel"><PanelHead kicker="数据备份" title="数据备份"/><div className="hx-panel-body"><p>导出完整 JSON 备份，包含坚持、复盘、训练、账户、账单、笔记、标签、关联和版本历史。</p><div className="hx-settings-actions"><button className="hx-btn primary" onClick={async()=>{try{const notesBackup=await noteApi.backup();download(JSON.stringify({...backup,notesBackup},null,2),"life-trace-backup.json")}catch(error){setMessage(error instanceof Error?error.message:"导出失败")}}}>导出备份</button><button className="hx-btn secondary" onClick={()=>input.current?.click()}>恢复备份</button><input ref={input} hidden type="file" accept=".json,application/json" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text()) as Record<string,unknown>;await store.restoreBackup(data);if(data.notesBackup)await noteApi.restoreBackup(data.notesBackup as Record<string,unknown>);setMessage("完整备份已恢复到 SQLite")}catch(error){setMessage(error instanceof Error?error.message:"恢复失败")}}}/></div>{message&&<p className="hx-inline-message">{message}</p>}</div></article><article className="hx-panel"><PanelHead kicker="本地存储" title="SQLite 存储状态"/><div className="hx-panel-body hx-storage"><span>坚持项目 <b>{store.activities.length} 个</b></span><span>坚持记录 <b>{store.logs.length} 条</b></span><span>训练历史 <b>{store.workoutHistory.length} 条</b></span><span>账户 / 账单 <b>{store.accounts.length} / {store.transactions.length}</b></span><span>笔记数据库 <b className="positive">已纳入备份</b></span><span>数据库连接 <b className="positive">正常</b></span></div></article></div></div>;
+  return <div className="hx-view"><div className="hx-settings-grid"><CloudAccountPanel/><AISettingsPanel/><TranslationSettingsPanel/><AboutLifeTracePanel/><article className="hx-panel"><PanelHead kicker="数据备份" title="数据备份"/><div className="hx-panel-body"><p>导出完整 JSON 备份，包含坚持、复盘、训练、账户、账单、笔记、标签、关联和版本历史。</p><div className="hx-settings-actions"><button className="hx-btn primary" onClick={async()=>{try{const notesBackup=await noteApi.backup();download(JSON.stringify({...backup,notesBackup},null,2),"life-trace-backup.json")}catch(error){setMessage(error instanceof Error?error.message:"导出失败")}}}>导出备份</button><button className="hx-btn secondary" onClick={()=>input.current?.click()}>恢复备份</button><input ref={input} hidden type="file" accept=".json,application/json" onChange={async e=>{const file=e.target.files?.[0];if(!file)return;try{const data=JSON.parse(await file.text()) as Record<string,unknown>;await store.restoreBackup(data);if(data.notesBackup)await noteApi.restoreBackup(data.notesBackup as Record<string,unknown>);setMessage("完整备份已恢复到 SQLite")}catch(error){setMessage(error instanceof Error?error.message:"恢复失败")}}}/></div>{message&&<p className="hx-inline-message">{message}</p>}</div></article><article className="hx-panel"><PanelHead kicker="本地存储" title="SQLite 存储状态"/><div className="hx-panel-body hx-storage"><span>坚持项目 <b>{store.activities.length} 个</b></span><span>坚持记录 <b>{store.logs.length} 条</b></span><span>训练历史 <b>{store.workoutHistory.length} 条</b></span><span>账户 / 账单 <b>{store.accounts.length} / {store.transactions.length}</b></span><span>笔记数据库 <b className="positive">已纳入备份</b></span><span>数据库连接 <b className="positive">正常</b></span></div></article></div></div>;
 }
 
 function EditorModal({ modal, close }: { modal: Exclude<Modal,null>; close: () => void }) {
@@ -595,7 +576,6 @@ export default function HengXuShell() {
     ...(view==="transactions"?[{ id:"create-transaction", label:"手动记账", icon:Plus, group:"primary" as const, execute:()=>setModal({kind:"transaction"}) }]:[]),
     ...(view==="accounts"?[{ id:"create-account", label:"添加账户", icon:Plus, group:"primary" as const, execute:()=>setModal({kind:"account"}) }]:[]),
     { id:"density", label:document.documentElement.dataset.density==="compact"?"切换舒适布局":"切换紧凑布局", icon:Menu, group:"organize", execute:()=>{const next=document.documentElement.dataset.density==="compact"?"comfortable":"compact";document.documentElement.dataset.density=next;window.localStorage.setItem("lifetrace:ui-density",next);notify(next==="compact"?"已切换紧凑布局":"已切换舒适布局")}},
-    { id:"ui-style", label:"切换界面风格", icon:Palette, group:"organize", execute:()=>useUiStyleStore.getState().toggleUiStyle()},
     { id:"settings", label:"数据与设置", icon:Settings, group:"organize", hidden:view==="settings", execute:()=>setView("settings") },
   ];
   return <ContextMenu as="div" className="hx-shell-context" actions={pageActions} context={view} ariaLabel={`${title}页面操作`}><main className="hx-shell"><aside className={menu?"open":""} aria-label="主导航"><div className="hx-brand"><span>LT</span><div><strong>Life trace</strong><small>个人管理系统</small></div></div><nav>{navGroups.map(group=><div key={group.label}><label>{group.label}</label>{group.items.map(({id,label,icon:Icon})=><button className={view===id?"active":""} aria-current={view===id?"page":undefined} key={id} onClick={()=>{setView(id);setMenu(false)}}><span><Icon/>{label}</span><ChevronRight/></button>)}</div>)}</nav><div className="hx-sidebar-foot"><div><i/><strong>本地 SQLite 模式</strong><p>数据保存在本机数据库，不依赖浏览器存储。</p></div><button className={view==="settings"?"active":""} aria-current={view==="settings"?"page":undefined} onClick={()=>{setView("settings");setMenu(false)}}><span><Settings/>数据与设置</span><ChevronRight/></button><section><span>LT</span><div><strong>个人空间</strong><small>本地账户</small></div></section></div></aside>{menu&&<button className="hx-nav-scrim" aria-label="关闭导航" onClick={()=>setMenu(false)}/>}<div className="hx-main"><header className="hx-topbar"><button className="hx-menu" aria-label={menu?"关闭导航":"打开导航"} aria-expanded={menu} onClick={()=>setMenu(!menu)}><Menu/></button><div><span className="hx-kicker">{new Intl.DateTimeFormat("zh-CN",{month:"long",day:"numeric",weekday:"long"}).format(new Date())}</span><h1>{title}</h1><p>{subtitle}</p></div><div className="hx-page-actions"><MoreMenu actions={pageActions} context={view} label={`${title}页面操作`}/></div></header>{view==="dashboard"&&<Dashboard go={setView} record={value=>setModal({kind:"record",value})}/>} {view==="assistant"&&<AIAssistantModule openSettings={()=>setView("settings")}/>} {view==="habits"&&<Habits edit={value=>setModal({kind:"activity",value})} record={value=>setModal({kind:"record",value})} note={value=>void makeLinkedNote("habit_log",`${value.name}练习记录 - ${dayKey()}`,"habit",value.id,`今天的记录：\n\n问题：\n\n下次重点：`)}/>} {view==="english"&&<DailyEnglish/>} {view==="fitness"&&<Fitness note={value=>void makeLinkedNote("workout_review",`训练复盘 - ${dayKey(new Date(value.occurredAt))}`,"workout",value.id,`训练名称：${value.name}\n训练日期：${dayKey(new Date(value.occurredAt))}\n训练时长：${Math.max(1,Math.round(value.durationSeconds/60))} 分钟\n总容量：${value.volumeKg??"未记录"}\n动作数量：${value.exerciseCount}\n训练来源：${value.source}`)}/>} {view==="photos"&&<PhotoSyncModule/>} {view==="notes"&&<NotesModule/>} {view==="finance"&&<Finance/>} {view==="transactions"&&<Transactions edit={value=>setModal({kind:"transaction",value})} note={value=>void makeLinkedNote("expense_note",`消费记录 - ${value.counterparty||value.category}`,"transaction",value.id,`日期：${dayKey(new Date(value.occurredAt))}\n金额：¥${value.amount.toFixed(2)}\n分类：${value.category}\n账户：${value.account}\n商户：${value.counterparty||"未填写"}\n消费目的：`)}/>} {view==="accounts"&&<Accounts edit={value=>setModal({kind:"account",value})}/>} {view==="import"&&<ImportBills/>} {view==="calendar"&&<CalendarView/>} {view==="review"&&<ReviewView/>} {view==="settings"&&<SettingsView/>}</div>{modal&&<EditorModal modal={modal} close={()=>setModal(null)}/>} {toast&&<div className="hx-toast" role="status"><Check/>{toast}</div>}<ConfirmDialogHost/><AppUpdaterHost/></main></ContextMenu>;
