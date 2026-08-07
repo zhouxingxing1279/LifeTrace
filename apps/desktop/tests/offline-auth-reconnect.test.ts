@@ -44,9 +44,9 @@ test("invalid saved refresh credential exits offline mode instead of looping for
 test("password minimum fallback and cloud defaults are 9 characters", async () => {
   const accountEntry = await readFile("src/components/account/AccountEntry.tsx", "utf8");
   const security = await readFile("src/components/account/AccountSecurityPanel.tsx", "utf8");
-  const cloudConfig = await readFile("../../../services/cloud/src/config.rs", "utf8");
-  const localCompose = await readFile("../../../deploy/cloud/docker-compose.local.yml", "utf8");
-  const productionCompose = await readFile("../../../deploy/cloud/docker-compose.production.example.yml", "utf8");
+  const cloudConfig = await readFile("../../services/cloud/src/config.rs", "utf8");
+  const localCompose = await readFile("../../deploy/cloud/docker-compose.local.yml", "utf8");
+  const productionCompose = await readFile("../../deploy/cloud/docker-compose.production.example.yml", "utf8");
 
   assert.match(accountEntry, /passwordMinLength = auth\.capabilities\?\.passwordMinLength \?\? 9/);
   assert.match(security, /minLength = auth\.capabilities\?\.passwordMinLength \?\? 9/);
