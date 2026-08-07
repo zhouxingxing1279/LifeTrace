@@ -5,6 +5,7 @@ import HengXuShell from "@/src/components/HengXuShell";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
+import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
@@ -20,6 +21,7 @@ import "@/app/photo-sync.css";
 import "@/app/local-vault.css";
 import "@/app/settings.css";
 
+installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
 
 const root = document.getElementById("root");
