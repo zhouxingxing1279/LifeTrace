@@ -78,6 +78,7 @@ declare global {
   };
 
   type VaultAssetState = "active" | "trash";
+  type VaultMigrationState = "queued" | "encrypting" | "verifying" | "committing" | "encrypted";
 
   type VaultAsset = {
     id:string;
@@ -89,6 +90,7 @@ declare global {
     state:VaultAssetState;
     albumIds:string[];
     deletedAt?:string|null;
+    migrationState?:VaultMigrationState|null;
   };
 
   type VaultAlbum = {

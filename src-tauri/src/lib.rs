@@ -74,6 +74,16 @@ pub fn run() {
             vault::vault_set_auto_lock,
             vault::vault_set_lock_on_blur,
             vault::vault_delete_all,
+            vault::vault_status_background,
+            vault::vault_unlock_background,
+            vault::vault_list_assets_background,
+            vault::vault_hide_photos_from_sync_album_background,
+            vault::vault_read_asset_background,
+            vault::vault_read_thumbnail_background,
+            vault::vault_restore_to_sync_album_background,
+            vault::vault_delete_asset_permanently_background,
+            vault::vault_verify_integrity_background,
+            vault::vault_delete_all_background,
         ])
         .setup(|app| {
             let data_dir = app.path().app_data_dir()?;
