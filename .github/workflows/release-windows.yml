@@ -135,10 +135,27 @@ jobs:
           $tmpDir = $env:RUNNER_TEMP
           [System.IO.File]::WriteAllText("$tmpDir\latest.json", $direct)
           [System.IO.File]::WriteAllText("$tmpDir\latest.cn.json", $cn)
+          function Upload-Asset([string]$Name, [string]$Path) {
+            $body = [System.IO.File]::ReadAllBytes($Path)
+            for ($attempt = 1; $attempt -le 3; $attempt++) {
+              try {
+                Invoke-RestMethod -Method POST -Uri "$uploadUrl?name=$Name" -Headers $headers -ContentType "application/json" -Body $body -TimeoutSec 120 | Out-Null
+                return
+              } catch {
+                if ($attempt -lt 3) { Start-Sleep -Seconds 3 } else { throw }
+              }
+            }
+          }
+          Upload-Asset "latest.cn.json" "$tmpDir\latest.cn.json"
           Invoke-RestMethod -Method DELETE -Uri $latestAsset.url -Headers $headers -TimeoutSec 60 | Out-Null
-          curl.exe -s -X POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/json" -H "Accept: application/vnd.github+json" --data-binary "@$tmpDir\latest.json" "$uploadUrl?name=latest.json" | Out-Null
-          curl.exe -s -X POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/json" -H "Accept: application/vnd.github+json" --data-binary "@$tmpDir\latest.cn.json" "$uploadUrl?name=latest.cn.json" | Out-Null
-          Write-Output "Rewritten latest.json with github.com download URLs and published latest.cn.json via gh-proxy.com"
+          Start-Sleep -Seconds 2
+          Upload-Asset "latest.json" "$tmpDir\latest.json"
+          $verify = Invoke-RestMethod -Uri "https://api.github.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/$env:RELEASE_TAG" -Headers $headers -TimeoutSec 60
+          $names = @($verify.assets | ForEach-Object { $_.name })
+          if ($names -notcontains "latest.json" -or $names -notcontains "latest.cn.json") {
+            throw "Asset verification failed: $($names -join ', ')"
+          }
+          Write-Output "Published rewritten latest.json (github.com URLs) and latest.cn.json (gh-proxy.com URLs)"
 
       - name: Verify published updater metadata
         shell: pwsh
