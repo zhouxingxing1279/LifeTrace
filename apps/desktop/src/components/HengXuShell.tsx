@@ -166,7 +166,7 @@ export default function HengXuShell() {
 
   const toggleDensity = () => {
     const current = readAppPreferences();
-    const density = current.density === "compact" ? "comfortable" : "compact";
+    const density = current.density === "compact" ? "comfortable" as const : "compact" as const;
     const next = { ...current, density };
     writeAppPreferences(next);
     applyAppPreferences(next);
