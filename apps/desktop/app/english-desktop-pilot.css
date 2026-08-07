@@ -1,0 +1,446 @@
+/* Daily English desktop pilot
+ * Keep the reading experience, but make navigation/library/overview behave like
+ * one LifeTrace workspace instead of a nested marketing website.
+ */
+
+.hx-shell .en-module {
+  min-height: 0;
+  width: 100%;
+  color: var(--ui-foreground);
+}
+
+/* The global app shell also styles `nav`; win that cascade explicitly. */
+.hx-shell .en-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  max-width: none;
+  min-height: 44px;
+  margin: 0 0 var(--ui-space-4);
+  padding: 0 0 var(--ui-space-2);
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow-x: auto;
+}
+
+.hx-shell .en-nav button {
+  width: auto;
+  min-height: 32px;
+  padding: 0 var(--ui-space-3);
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-muted);
+  background: transparent;
+  box-shadow: none;
+  font-size: var(--ui-font-secondary);
+  font-weight: var(--ui-font-weight-medium);
+}
+
+.hx-shell .en-nav button:hover {
+  color: var(--ui-foreground);
+  background: var(--ui-bg-hover);
+}
+
+.hx-shell .en-nav button.active {
+  color: var(--ui-primary);
+  background: var(--ui-primary-soft);
+  box-shadow: none;
+  font-weight: var(--ui-font-weight-semibold);
+}
+
+.hx-shell .en-nav button > svg {
+  width: 15px;
+  height: 15px;
+  color: currentColor;
+}
+
+/* Article/library headers are toolbars, not hero sections. */
+.hx-shell .en-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ui-space-4);
+  min-height: 48px;
+  margin: 0 0 var(--ui-space-3);
+}
+
+.hx-shell .en-section-head > div:first-child {
+  min-width: 0;
+}
+
+.hx-shell .en-section-head .en-eyebrow {
+  display: none;
+}
+
+.hx-shell .en-section-head h2 {
+  margin: 0;
+  color: var(--ui-foreground);
+  font-family: var(--ui-font-sans);
+  font-size: 18px;
+  font-weight: var(--ui-font-weight-semibold);
+  line-height: 26px;
+  letter-spacing: -.01em;
+}
+
+.hx-shell .en-section-head h2 br {
+  display: none;
+}
+
+.hx-shell .en-section-head p {
+  margin: 1px 0 0;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-caption);
+  line-height: var(--ui-line-caption);
+}
+
+.hx-shell .en-section-head > div:last-child {
+  display: flex;
+  align-items: center;
+  gap: var(--ui-space-2);
+  flex: none;
+}
+
+.hx-shell .en-section-head input,
+.hx-shell .en-section-head select {
+  min-height: var(--ui-control-height);
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-md);
+  background: var(--ui-bg-surface);
+  color: var(--ui-foreground);
+  box-shadow: none;
+  font-size: var(--ui-font-secondary);
+}
+
+.hx-shell .en-section-head input {
+  width: 260px;
+}
+
+/* Library: one dense list surface instead of three oversized article cards. */
+.hx-shell .en-article-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg-surface);
+  overflow: hidden;
+}
+
+.hx-shell .en-article-grid article {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(230px, .85fr) minmax(260px, 1.25fr) minmax(170px, auto);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 2px var(--ui-space-5);
+  min-height: 82px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 0;
+  border-bottom: 1px solid var(--ui-border);
+  border-radius: 0;
+  background: var(--ui-bg-surface);
+  box-shadow: none;
+  transition: background-color var(--ui-transition-fast);
+}
+
+.hx-shell .en-article-grid article:last-child {
+  border-bottom: 0;
+}
+
+.hx-shell .en-article-grid article:hover {
+  transform: none;
+  background: var(--ui-bg-hover);
+  box-shadow: none;
+}
+
+.hx-shell .en-article-grid article > span {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+  color: var(--ui-primary);
+  font-size: var(--ui-font-micro);
+  font-weight: var(--ui-font-weight-semibold);
+}
+
+.hx-shell .en-article-reading-state {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: end;
+  align-self: center;
+  float: none;
+  margin: 0;
+  padding: 2px 6px;
+  border-radius: var(--ui-radius-sm);
+  color: var(--ui-muted);
+  background: var(--ui-bg-subtle);
+  font-size: var(--ui-font-micro);
+}
+
+.hx-shell .en-article-reading-state.completed {
+  color: var(--ui-success);
+  background: var(--ui-success-soft);
+}
+
+.hx-shell .en-article-grid h3 {
+  grid-column: 1;
+  grid-row: 2;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ui-foreground);
+  font-family: var(--ui-font-sans);
+  font-size: 15px;
+  font-weight: var(--ui-font-weight-semibold);
+  line-height: 20px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hx-shell .en-article-grid p {
+  grid-column: 2;
+  grid-row: 1 / 3;
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-secondary);
+  line-height: 19px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.hx-shell .en-article-grid footer {
+  grid-column: 3;
+  grid-row: 1 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ui-space-3);
+  min-width: 0;
+  margin: 0;
+}
+
+.hx-shell .en-article-grid footer small {
+  color: var(--ui-muted);
+  font-size: var(--ui-font-micro);
+  white-space: nowrap;
+}
+
+.hx-shell .en-article-grid button {
+  min-height: 30px;
+  padding: 0 var(--ui-space-3);
+  border: 1px solid var(--ui-border-strong);
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-foreground);
+  background: var(--ui-bg-surface);
+  font-size: var(--ui-font-caption);
+  font-weight: var(--ui-font-weight-semibold);
+}
+
+.hx-shell .en-article-grid button:hover:not(:disabled) {
+  border-color: var(--ui-primary);
+  color: var(--ui-primary);
+  background: var(--ui-primary-soft);
+}
+
+.hx-shell .en-library-load-more {
+  min-height: 46px;
+  font-size: var(--ui-font-caption);
+}
+
+.hx-shell .en-article-skeleton article {
+  min-height: 82px;
+}
+
+.hx-shell .en-article-skeleton h3 {
+  width: 70%;
+  height: 18px;
+  margin: 4px 0 0;
+}
+
+.hx-shell .en-article-skeleton p {
+  grid-column: 2;
+  width: 100%;
+  height: 12px;
+  margin: 3px 0;
+}
+
+.hx-shell .en-article-skeleton footer {
+  margin: 0;
+}
+
+/* Overview: keep its information but remove landing-page styling. */
+.hx-shell .en-hero {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--ui-space-5);
+  margin-bottom: var(--ui-space-3);
+  padding: var(--ui-space-5);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  color: var(--ui-foreground);
+  background: var(--ui-bg-surface);
+}
+
+.hx-shell .en-hero .en-eyebrow {
+  display: none;
+}
+
+.hx-shell .en-hero h2 {
+  max-width: none;
+  color: var(--ui-foreground);
+  font-family: var(--ui-font-sans);
+  font-size: 20px;
+  font-weight: var(--ui-font-weight-semibold);
+  line-height: 28px;
+  letter-spacing: -.01em;
+}
+
+.hx-shell .en-hero h2 br {
+  display: none;
+}
+
+.hx-shell .en-hero p {
+  margin: var(--ui-space-1) 0 0;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-secondary);
+  line-height: var(--ui-line-secondary);
+}
+
+.hx-shell .en-streak {
+  display: grid;
+  grid-template-columns: auto auto;
+  place-items: center;
+  align-content: center;
+  min-height: 0;
+  min-width: 150px;
+  padding: var(--ui-space-3) var(--ui-space-4);
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-md);
+  color: var(--ui-foreground);
+  background: var(--ui-bg-inset);
+  backdrop-filter: none;
+}
+
+.hx-shell .en-streak svg {
+  width: 18px;
+  height: 18px;
+}
+
+.hx-shell .en-streak strong {
+  margin: 0 0 0 var(--ui-space-2);
+  font-size: 22px;
+  line-height: 28px;
+}
+
+.hx-shell .en-streak span {
+  grid-column: 1 / -1;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-micro);
+}
+
+.hx-shell .en-streak small {
+  display: none;
+}
+
+.hx-shell .en-today-card,
+.hx-shell .en-week-card,
+.hx-shell .en-recent,
+.hx-shell .en-dashboard-row article {
+  border-color: var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  background: var(--ui-bg-surface);
+  box-shadow: none;
+}
+
+.hx-shell .en-today-card,
+.hx-shell .en-week-card,
+.hx-shell .en-recent {
+  padding: var(--ui-space-4);
+}
+
+.hx-shell .en-today-card h3,
+.hx-shell .en-recent h3 {
+  font-family: var(--ui-font-sans);
+  font-size: 17px;
+}
+
+.hx-shell .en-dashboard-row {
+  gap: 0;
+  margin: var(--ui-space-3) 0;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-lg);
+  overflow: hidden;
+}
+
+.hx-shell .en-dashboard-row article {
+  border: 0;
+  border-right: 1px solid var(--ui-border);
+  border-radius: 0;
+  padding: var(--ui-space-3) var(--ui-space-4);
+}
+
+.hx-shell .en-dashboard-row article:last-child {
+  border-right: 0;
+}
+
+.hx-shell .en-dashboard-row strong {
+  font-size: 20px;
+}
+
+/* Reading paper intentionally remains a distinct reading environment. */
+
+@media (max-width: 1180px) {
+  .hx-shell .en-article-grid article {
+    grid-template-columns: minmax(220px, .9fr) minmax(240px, 1.1fr) auto;
+    gap: 2px var(--ui-space-3);
+  }
+
+  .hx-shell .en-article-grid footer small {
+    display: none;
+  }
+}
+
+@media (max-width: 920px) {
+  .hx-shell .en-section-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .hx-shell .en-section-head > div:last-child {
+    width: 100%;
+  }
+
+  .hx-shell .en-section-head input {
+    width: auto;
+    flex: 1;
+  }
+
+  .hx-shell .en-article-grid article {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto;
+  }
+
+  .hx-shell .en-article-grid article > span,
+  .hx-shell .en-article-grid h3 {
+    grid-column: 1;
+  }
+
+  .hx-shell .en-article-reading-state {
+    grid-column: 1;
+  }
+
+  .hx-shell .en-article-grid p {
+    grid-column: 1;
+    grid-row: 3;
+    margin-top: 2px;
+  }
+
+  .hx-shell .en-article-grid footer {
+    grid-column: 2;
+    grid-row: 1 / 4;
+  }
+}

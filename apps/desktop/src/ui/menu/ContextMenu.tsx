@@ -1,5 +1,4 @@
-
-import type { CSSProperties, ElementType, ReactNode } from "react";
+import type { CSSProperties, ElementType, MouseEventHandler, ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { resolveActions } from "@/src/ui/actions/resolveActions";
 import type { AppAction } from "@/src/ui/actions/types";
@@ -13,6 +12,10 @@ interface ContextMenuProps<TContext> {
   className?: string;
   style?: CSSProperties;
   ariaLabel?: string;
+  onClick?: MouseEventHandler<HTMLElement>;
+  onDoubleClick?: MouseEventHandler<HTMLElement>;
+  tabIndex?: number;
+  onKeyDown?: React.KeyboardEventHandler<HTMLElement>;
 }
 
 const nativeMenuSelector = [
@@ -31,6 +34,10 @@ export default function ContextMenu<TContext>({
   className,
   style,
   ariaLabel,
+  onClick,
+  onDoubleClick,
+  tabIndex,
+  onKeyDown,
 }: ContextMenuProps<TContext>) {
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const available = useMemo(() => resolveActions(actions, context), [actions, context]);
@@ -40,6 +47,10 @@ export default function ContextMenu<TContext>({
       <Element
         className={className}
         style={style}
+        onClick={onClick}
+        onDoubleClick={onDoubleClick}
+        tabIndex={tabIndex}
+        onKeyDown={onKeyDown}
         onContextMenu={(event: React.MouseEvent<HTMLElement>) => {
           const target = event.target as HTMLElement;
           if (target.closest(nativeMenuSelector) || available.length === 0) return;
