@@ -79,33 +79,15 @@ export default function TranslationSettingsPanel() {
     }
   };
 
-  return <section className="hx-settings-section hx-translation-settings">
-    <header className="hx-settings-section-head">
-      <div><span>密钥与服务</span><h2>翻译服务 · 百度翻译</h2></div>
-      <i className={configured ? "configured" : ""}>{configured ? <Check /> : <Languages />}</i>
-    </header>
-    <form className="hx-settings-section-body hx-settings-form" onSubmit={save}>
-      <p className="hx-settings-section-description">用于每日英语的划句翻译。APPID 和密钥统一在设置中管理，密钥只保存在本机数据库，阅读页面无法读取。</p>
-      <label>APPID<input
-        value={appId}
-        onChange={(event) => setAppId(event.target.value)}
-        autoComplete="off"
-        placeholder="百度翻译开放平台 APPID"
-        disabled={loading || saving}
-      /></label>
-      <label>密钥<div className="hx-secret-input"><KeyRound /><input
-        type="password"
-        value={secret}
-        onChange={(event) => setSecret(event.target.value)}
-        autoComplete="new-password"
-        placeholder={configured ? "已保存；留空则不修改" : "百度翻译开放平台密钥"}
-        disabled={loading || saving}
-      /></div></label>
-      <footer>
-        {configured && <button type="button" className="hx-btn secondary danger" disabled={saving} onClick={() => void clear()}><Trash2 />移除配置</button>}
-        <button className="hx-btn primary" disabled={loading || saving}>{saving ? "保存中…" : "保存翻译设置"}</button>
-      </footer>
+  return <section id="settings-translation" className="hx-settings-page-section hx-translation-settings">
+    <header><h2>翻译</h2><p>配置每日英语划句翻译使用的服务。</p></header>
+    <form className="hx-settings-standard-form" onSubmit={save}>
+      <div className="hx-setting-rows">
+        <label className="hx-setting-row"><div><Languages /><span><strong>百度翻译 APPID</strong><small>来自百度翻译开放平台。</small></span></div><input value={appId} onChange={(event) => setAppId(event.target.value)} autoComplete="off" disabled={loading || saving} /></label>
+        <label className="hx-setting-row"><div><KeyRound /><span><strong>密钥</strong><small>{configured ? "已配置；留空保存不会覆盖现有密钥。" : "密钥只保存在本机数据库。"}</small></span></div><input type="password" value={secret} onChange={(event) => setSecret(event.target.value)} autoComplete="new-password" placeholder={configured ? "已保存" : "输入密钥"} disabled={loading || saving} /></label>
+      </div>
       {message && <p className="hx-inline-message" role="status">{message}</p>}
+      <footer className="hx-settings-page-actions">{configured && <button type="button" className="hx-btn secondary danger" disabled={saving} onClick={() => void clear()}><Trash2 />移除配置</button>}<button className="hx-btn primary" disabled={loading || saving}>{configured ? <Check /> : <Languages />}{saving ? "保存中…" : "保存"}</button></footer>
     </form>
   </section>;
 }
