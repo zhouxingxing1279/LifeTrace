@@ -6,6 +6,7 @@ mod database;
 mod desktop;
 mod observability;
 mod server;
+mod storage;
 mod sync;
 mod vault;
 
@@ -27,6 +28,8 @@ pub fn run() {
             observability::client_log_write,
             observability::client_log_path,
             observability::client_log_read_recent,
+            storage::storage_status,
+            storage::storage_migrate,
             desktop::photo_status,
             desktop::mobile_upload_status,
             desktop::mobile_upload_start,
@@ -86,8 +89,16 @@ pub fn run() {
             vault::vault_delete_all_background,
         ])
         .setup(|app| {
-            let data_dir = app.path().app_data_dir()?;
+            let (data_dir, default_data_dir, storage_config_path) =
+                storage::bootstrap(app.handle()).map_err(std::io::Error::other)?;
             let resource_dir = app.path().resource_dir()?;
+
+            app.manage(storage::StorageState::new(
+                data_dir.clone(),
+                default_data_dir,
+                storage_config_path,
+            ));
+
             let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
             app.manage(vault_state);
             let photo_runtime = server::photo::Runtime::new(data_dir.clone());
