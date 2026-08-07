@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
 import HengXuShell from "@/src/components/HengXuShell";
-import { AccountEntryHost } from "@/src/components/account/AccountEntry";
+import { AccountEntry, AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { clientLogger } from "@/src/services/clientObservability";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
@@ -12,7 +12,7 @@ function SignedOutShell({ restoring }: { restoring: boolean }) {
     <aside aria-label="LifeTrace">
       <div className="hx-brand"><span>LT</span><div><strong>Life trace</strong><small>个人管理系统</small></div></div>
       <div className="hx-auth-sidebar-note"><ShieldCheck/><span>账号数据相互隔离</span></div>
-      <div className="hx-sidebar-foot" />
+      <div className="hx-sidebar-foot"><AccountEntry autoOpen={!restoring}/></div>
     </aside>
     <div className="hx-main hx-signed-out-main">
       <section className="hx-signed-out-card" aria-live="polite">
@@ -51,7 +51,7 @@ export default function DesktopApp() {
   const restoring = phase === "bootstrapping" || phase === "refreshing";
 
   if (!hasIdentity) {
-    return <><SignedOutShell restoring={restoring}/><AccountEntryHost/></>;
+    return <SignedOutShell restoring={restoring}/>;
   }
 
   return <><HengXuShell/><AccountEntryHost/></>;
