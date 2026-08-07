@@ -65,8 +65,9 @@ jobs:
       - name: Enforce local-only boundary
         shell: bash
         run: |
+          mapfile -t vault_rust_sources < <(find src-tauri/src/vault -type f -name '*.rs' -print)
           if grep -En 'fetch\(|XMLHttpRequest|WebSocket|EventSource|syncApi|photoSyncApi|cloudCredentialApi' \
-            tauri-ui/vaultBridge.ts src-tauri/src/vault.rs; then
+            tauri-ui/vaultBridge.ts src-tauri/src/vault.rs "${vault_rust_sources[@]}"; then
             echo "Private album code must not access network or cloud/sync APIs."
             exit 1
           fi
@@ -80,7 +81,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --locked --manifest-path src-tauri/Cargo.toml vault::tests -- --test-threads=1 2>&1 | tee vault-test.log
+          cargo test --locked --manifest-path src-tauri/Cargo.toml 'vault::' -- --test-threads=1 2>&1 | tee vault-test.log
       - name: Rust desktop regression tests
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Clippy
@@ -109,7 +110,14 @@ jobs:
           npm run test:unit
           npm run web:build
       - name: Require clean tracked sources
-        run: git diff --exit-code -- src-tauri/src/vault.rs src-tauri/Cargo.lock
+        run: |
+          git diff --exit-code -- \
+            src-tauri/src/vault.rs \
+            src-tauri/src/vault \
+            src-tauri/src/lib.rs \
+            src-tauri/Cargo.lock \
+            tauri-ui/vaultBridge.ts \
+            src/types/electron.d.ts
       - name: Upload diagnostics and source snapshot
         if: always()
         uses: actions/upload-artifact@v4
@@ -118,6 +126,7 @@ jobs:
           path: |
             vault-test.log
             src-tauri/src/vault.rs
+            src-tauri/src/vault/
             src-tauri/src/lib.rs
             src-tauri/Cargo.toml
             src-tauri/Cargo.lock
