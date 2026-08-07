@@ -5,6 +5,7 @@ import DesktopApp from "@/src/components/DesktopApp";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
+import { installDesktopContextMenuPolicy } from "@/src/services/contextMenuPolicy";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
@@ -15,6 +16,7 @@ import "@/app/globals.css";
 import "@/app/hengxu.css";
 import "@/app/fitness-app.css";
 import "@/app/english.css";
+import "@/app/english-desktop-pilot.css";
 import "@/app/xunji-import.css";
 import "@/app/notes.css";
 import "@/app/persist-project.css";
@@ -29,6 +31,7 @@ import "@/app/record-workspace.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
+installDesktopContextMenuPolicy();
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
