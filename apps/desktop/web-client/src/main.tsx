@@ -13,6 +13,7 @@ import "../../app/xunji-import.css";
 import "../../app/notes.css";
 import "../../app/persist-project.css";
 import "../../app/settings.css";
+import "../../app/desktop-workspace.css";
 import "./styles.css";
 import "./cloud-pages.css";
 import "./browser.css";
