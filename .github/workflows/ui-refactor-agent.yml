@@ -1,0 +1,104 @@
+name: UI Refactor Agent
+
+on:
+  push:
+    branches:
+      - agent/ui-redesign
+    paths:
+      - "scripts/apply_ui_refactor.py"
+      - ".github/workflows/ui-refactor-agent.yml"
+      - "app/**"
+      - "src/**"
+      - "tauri-ui/**"
+      - "tests/**"
+      - "tsconfig.json"
+      - "docs/ui-redesign/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ui-refactor-agent-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  refactor-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ui-redesign
+          fetch-depth: 0
+
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo timeout 240s apt-get update -o Acquire::Retries=3
+          sudo timeout 240s apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+
+      - name: Apply deterministic UI refactor
+        run: python3 scripts/apply_ui_refactor.py
+
+      - name: Check generated patch formatting
+        run: git diff --check
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Typecheck, unit tests and web builds
+        run: npm test
+
+      - name: Rust desktop regression tests
+        run: npm run test:rust
+
+      - name: Tauri production build
+        run: npm run build
+
+      - name: Commit generated refactor
+        id: commit
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app src tauri-ui tests tsconfig.json docs/ui-redesign
+          git commit -m "refactor: unify user UI and context actions"
+          git push origin HEAD:agent/ui-redesign
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Validation summary
+        run: |
+          echo "UI refactor validated. Generated commit: ${{ steps.commit.outputs.changed }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Checks: npm test, npm run test:rust, npm run build" >> "$GITHUB_STEP_SUMMARY"
