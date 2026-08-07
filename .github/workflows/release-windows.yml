@@ -160,7 +160,23 @@ jobs:
             throw "标签 $tag 与应用版本 v$expectedVersion 不一致，拒绝发布。"
           }
           $latestUrl = "https://github.com/zhouxingxing1279/LifeTrace-Releases/releases/latest/download/latest.json"
-          $json = Invoke-RestMethod -Uri $latestUrl -TimeoutSec 60
+          $json = $null
+          for ($attempt = 1; $attempt -le 12; $attempt++) {
+            try {
+              $candidate = Invoke-RestMethod -Uri $latestUrl -TimeoutSec 30
+              if ($candidate.version) {
+                $json = $candidate
+                break
+              }
+            } catch {
+              # 覆盖上传后 GitHub CDN 可能短暂不同步，重试
+            }
+            Write-Output "update metadata not ready yet, retrying ($attempt/12)..."
+            Start-Sleep -Seconds 10
+          }
+          if (-not $json) {
+            throw "latest.json 在重试窗口内未就绪或缺少 version 字段。"
+          }
           if (-not $json.version) {
             throw "latest.json 缺少 version 字段。"
           }
