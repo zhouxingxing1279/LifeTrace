@@ -142,3 +142,21 @@ test("instrumentedFetch records a successful response", async () => {
   assert.ok(events.some((event) => event.event === "api.response.received"));
   assert.ok(!events.some((event) => event.event === "api.request.failed"));
 });
+
+test("instrumentedFetch omits query strings and fragments from logs", async () => {
+  clearRecentClientLogs();
+  const successfulFetch: FetchLike = async () => new Response(null, { status: 204 });
+
+  await instrumentedFetch(
+    successfulFetch,
+    "https://example.test/callback?token=secret-value#private-fragment",
+    undefined,
+    { module: "cloud", action: "callback" },
+  );
+
+  const start = getRecentClientLogs().find((event) => event.event === "api.request.start");
+  assert.ok(start);
+  const data = start.data as Record<string, unknown>;
+  assert.equal(data.url, "https://example.test/callback");
+  assert.doesNotMatch(JSON.stringify(start), /secret-value|private-fragment/);
+});
