@@ -102,6 +102,44 @@ jobs:
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
 
+      - name: Rewrite updater URLs and generate China mirror manifest
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $headers = @{ Authorization = "Bearer $env:GITHUB_TOKEN" }
+          $release = Invoke-RestMethod -Uri "https://api.github.com/repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/$env:RELEASE_TAG" -Headers $headers -TimeoutSec 60
+          $assetById = @{}
+          foreach ($asset in $release.assets) {
+            $assetById[[string]$asset.id] = $asset.name
+          }
+          $latestAsset = $release.assets | Where-Object { $_.name -eq "latest.json" } | Select-Object -First 1
+          if (-not $latestAsset) {
+            throw "latest.json asset not found in release $env:RELEASE_TAG"
+          }
+          $json = Invoke-RestMethod -Uri $latestAsset.url -Headers $headers -TimeoutSec 60
+          foreach ($platform in $json.platforms.PSObject.Properties) {
+            $url = [string]$platform.Value.url
+            if ($url -match "releases/assets/(\d+)$") {
+              $assetName = $assetById[$Matches[1]]
+              if ($assetName) {
+                $platform.Value.url = "https://github.com/zhouxingxing1279/LifeTrace-Releases/releases/download/$env:RELEASE_TAG/$assetName"
+              }
+            }
+          }
+          $direct = $json | ConvertTo-Json -Depth 10 -Compress
+          $cn = $direct -replace "https://github.com/zhouxingxing1279/LifeTrace-Releases", "https://gh-proxy.com/https://github.com/zhouxingxing1279/LifeTrace-Releases"
+          $uploadUrl = $release.upload_url -replace '\{[^}]*\}', ''
+          $tmpDir = $env:RUNNER_TEMP
+          [System.IO.File]::WriteAllText("$tmpDir\latest.json", $direct)
+          [System.IO.File]::WriteAllText("$tmpDir\latest.cn.json", $cn)
+          Invoke-RestMethod -Method DELETE -Uri $latestAsset.url -Headers $headers -TimeoutSec 60 | Out-Null
+          curl.exe -s -X POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/json" -H "Accept: application/vnd.github+json" --data-binary "@$tmpDir\latest.json" "$uploadUrl?name=latest.json" | Out-Null
+          curl.exe -s -X POST -H "Authorization: Bearer $env:GITHUB_TOKEN" -H "Content-Type: application/json" -H "Accept: application/vnd.github+json" --data-binary "@$tmpDir\latest.cn.json" "$uploadUrl?name=latest.cn.json" | Out-Null
+          Write-Output "Rewritten latest.json with github.com download URLs and published latest.cn.json via gh-proxy.com"
+
       - name: Verify published updater metadata
         shell: pwsh
         env:
