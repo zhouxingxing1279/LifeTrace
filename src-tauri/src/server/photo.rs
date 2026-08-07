@@ -104,7 +104,9 @@ impl Runtime {
             .map_err(|_| "配对状态锁已损坏".to_owned())?
             .insert(
                 code.clone(),
-                Pairing { expires_at: expires },
+                Pairing {
+                    expires_at: expires,
+                },
             );
         let pairing = json!({
             "success": true, "pairCode": code, "expiresAt": expires.to_rfc3339(),

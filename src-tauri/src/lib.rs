@@ -4,6 +4,7 @@ mod cloud_auth;
 pub mod contracts;
 mod database;
 mod desktop;
+mod observability;
 mod server;
 mod sync;
 mod vault;
@@ -23,6 +24,9 @@ pub fn run() {
             cloud_auth::cloud_credential_set,
             cloud_auth::cloud_credential_get,
             cloud_auth::cloud_credential_clear,
+            observability::client_log_write,
+            observability::client_log_path,
+            observability::client_log_read_recent,
             desktop::photo_status,
             desktop::mobile_upload_status,
             desktop::mobile_upload_start,
