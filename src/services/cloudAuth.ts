@@ -1,4 +1,5 @@
 import type { SessionBindingResult } from "@/src/services/cloudSync";
+import { clientLogger } from "@/src/services/clientObservability";
 
 export type CloudAuthUser = {
   id: string;
@@ -72,10 +73,37 @@ function normalizeOrigin(value: string): string {
   return parsed.origin;
 }
 
-async function parseResponse<T>(response: Response): Promise<T> {
-  if (response.ok) return response.json() as Promise<T>;
-  const payload = await response.json().catch(() => ({})) as { message?: string; code?: string };
-  throw new Error(payload.message || payload.code || `云服务返回 HTTP ${response.status}`);
+async function parseResponse<T>(response: Response, action: string): Promise<T> {
+  if (response.ok) {
+    try {
+      return await response.json() as T;
+    } catch (cause) {
+      const error = new Error("云服务返回了无法解析的数据", { cause });
+      clientLogger.error("cloud.response.parse_failed", {
+        action,
+        status: response.status,
+        stage: "response.parse",
+      }, error);
+      throw error;
+    }
+  }
+
+  const payload = await response.json().catch((cause) => {
+    clientLogger.warn("cloud.response.error_body_parse_failed", {
+      action,
+      status: response.status,
+      stage: "response.parse",
+    }, cause);
+    return {};
+  }) as { message?: string; code?: string };
+  const error = new Error(payload.message || payload.code || `云服务返回 HTTP ${response.status}`);
+  clientLogger.error("cloud.response.http_failed", {
+    action,
+    status: response.status,
+    stage: "response.http",
+    requestSent: true,
+  }, error);
+  throw error;
 }
 
 export class CloudAuthClient {
@@ -86,6 +114,7 @@ export class CloudAuthClient {
 
   configure(origin: string) {
     this.origin = normalizeOrigin(origin);
+    clientLogger.info("cloud.auth.configured", { origin: this.origin });
   }
 
   state(): CloudAuthSnapshot {
@@ -98,6 +127,7 @@ export class CloudAuthClient {
 
   async login(email: string, password: string): Promise<CloudAuthSnapshot> {
     this.ensureOrigin();
+    clientLogger.info("cloud.auth.login_started", { origin: this.origin });
     const response = await fetch(`${this.origin}/api/v1/auth/login`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -113,7 +143,12 @@ export class CloudAuthClient {
         publicDevice: false,
       }),
     });
-    return this.acceptTokens(await parseResponse<CloudTokenResponse>(response));
+    const snapshot = await this.acceptTokens(await parseResponse<CloudTokenResponse>(response, "login"));
+    clientLogger.info("cloud.auth.login_succeeded", {
+      userId: snapshot.user?.id,
+      sessionId: snapshot.session?.id,
+    });
+    return snapshot;
   }
 
   private async acceptTokens(tokens: CloudTokenResponse): Promise<CloudAuthSnapshot> {
@@ -144,10 +179,17 @@ export class CloudAuthClient {
         body: JSON.stringify({ refreshToken, appId: APP_ID, deviceId: deviceId() }),
       });
       try {
-        const tokens = await parseResponse<CloudTokenResponse>(response);
+        const tokens = await parseResponse<CloudTokenResponse>(response, "refresh");
         await this.acceptTokens(tokens);
+        clientLogger.info("cloud.auth.refresh_succeeded", {
+          userId: tokens.user.id,
+          sessionId: tokens.session.id,
+        });
         return tokens;
       } catch (error) {
+        clientLogger.error("cloud.auth.refresh_failed", {
+          status: response.status,
+        }, error);
         if (response.status === 401 || response.status === 403) await this.clearLocal();
         throw error;
       }
@@ -158,7 +200,8 @@ export class CloudAuthClient {
   async restore(): Promise<CloudAuthSnapshot> {
     try {
       await this.refresh();
-    } catch {
+    } catch (error) {
+      clientLogger.warn("cloud.auth.restore_failed", undefined, error);
       await this.clearLocal();
     }
     return this.state();
@@ -173,6 +216,10 @@ export class CloudAuthClient {
     });
     let response = await execute();
     if (response.status === 401) {
+      clientLogger.warn("cloud.auth.request_unauthorized", {
+        path: input,
+        status: response.status,
+      });
       await this.refresh();
       response = await execute();
     }
@@ -182,11 +229,21 @@ export class CloudAuthClient {
   async logout(all = false): Promise<void> {
     try {
       if (this.accessToken && this.origin) {
-        await fetch(`${this.origin}/api/v1/auth/${all ? "logout-all" : "logout"}`, {
+        const response = await fetch(`${this.origin}/api/v1/auth/${all ? "logout-all" : "logout"}`, {
           method: "POST",
           headers: { authorization: `Bearer ${this.accessToken}` },
         });
+        if (!response.ok) {
+          const error = new Error(`退出登录请求失败 (${response.status})`);
+          clientLogger.warn("cloud.auth.logout_http_failed", {
+            all,
+            status: response.status,
+          }, error);
+        }
       }
+    } catch (error) {
+      clientLogger.error("cloud.auth.logout_failed", { all }, error);
+      throw error;
     } finally {
       await this.clearLocal();
     }
@@ -196,7 +253,11 @@ export class CloudAuthClient {
     this.accessToken = undefined;
     this.snapshot = { scopes: [], authenticated: false };
     await credentialApi().clear();
-    if (window.syncApi) await window.syncApi.clearSession().catch(() => undefined);
+    if (window.syncApi) {
+      await window.syncApi.clearSession().catch((error) => {
+        clientLogger.warn("cloud.auth.sync_session_clear_failed", undefined, error);
+      });
+    }
   }
 }
 
