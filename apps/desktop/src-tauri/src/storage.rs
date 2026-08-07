@@ -5,7 +5,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use rusqlite::{backup::Backup, Connection};
+use rusqlite::{backup::Backup, params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
@@ -118,7 +118,8 @@ fn locator_path(app: &AppHandle, default_data_dir: &Path) -> Result<PathBuf, Str
         if directory.starts_with(default_data_dir) || default_data_dir.starts_with(&directory) {
             continue;
         }
-        fs::create_dir_all(&directory).map_err(|value| error("创建独立存储配置目录失败", value))?;
+        fs::create_dir_all(&directory)
+            .map_err(|value| error("创建独立存储配置目录失败", value))?;
         return Ok(directory.join(CONFIG_FILE));
     }
 
@@ -134,11 +135,13 @@ fn load_config(path: &Path) -> Result<StorageConfig, String> {
 }
 
 fn save_config(path: &Path, config: &StorageConfig) -> Result<(), String> {
-    let parent = path.parent().ok_or_else(|| "存储配置路径无效".to_owned())?;
+    let parent = path
+        .parent()
+        .ok_or_else(|| "存储配置路径无效".to_owned())?;
     fs::create_dir_all(parent).map_err(|value| error("创建存储配置目录失败", value))?;
     let temporary = path.with_extension("json.tmp");
-    let bytes =
-        serde_json::to_vec_pretty(config).map_err(|value| error("序列化存储配置失败", value))?;
+    let bytes = serde_json::to_vec_pretty(config)
+        .map_err(|value| error("序列化存储配置失败", value))?;
     fs::write(&temporary, bytes).map_err(|value| error("写入存储配置失败", value))?;
     if path.exists() {
         fs::remove_file(path).map_err(|value| error("替换存储配置失败", value))?;
@@ -169,8 +172,7 @@ fn should_skip(relative: &Path) -> bool {
 
 fn collect_files(root: &Path) -> Result<Vec<FileEntry>, String> {
     fn walk(root: &Path, current: &Path, output: &mut Vec<FileEntry>) -> Result<(), String> {
-        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))?
-        {
+        for entry in fs::read_dir(current).map_err(|value| error("扫描存储目录失败", value))? {
             let entry = entry.map_err(|value| error("读取存储目录项失败", value))?;
             let path = entry.path();
             let file_type = entry
@@ -254,13 +256,64 @@ fn remove_database_target(target: &Path) -> Result<(), String> {
     Ok(())
 }
 
+fn table_exists(connection: &Connection, table: &str) -> Result<bool, String> {
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+            [table],
+            |row| row.get(0),
+        )
+        .map_err(|value| error("检查数据库表失败", value))?;
+    Ok(count > 0)
+}
+
+fn rewrite_local_file_paths(connection: &Connection, target_root: &Path) -> Result<(), String> {
+    if !table_exists(connection, "note_attachments")? {
+        return Ok(());
+    }
+
+    let attachments = {
+        let mut statement = connection
+            .prepare("SELECT id, note_id, file_name FROM note_attachments")
+            .map_err(|value| error("读取笔记附件路径失败", value))?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|value| error("读取笔记附件路径失败", value))?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|value| error("读取笔记附件路径失败", value))?
+    };
+
+    for (id, note_id, file_name) in attachments {
+        let storage_path = target_root
+            .join("attachments")
+            .join(note_id)
+            .join(file_name)
+            .display()
+            .to_string();
+        connection
+            .execute(
+                "UPDATE note_attachments SET storage_path=?1 WHERE id=?2",
+                params![storage_path, id],
+            )
+            .map_err(|value| error("更新笔记附件存储路径失败", value))?;
+    }
+    Ok(())
+}
+
 fn backup_database(source: &Path, target: &Path) -> Result<(), String> {
     if !source.is_file() {
         return Ok(());
     }
-    if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|value| error("创建数据库目标目录失败", value))?;
-    }
+    let target_root = target
+        .parent()
+        .ok_or_else(|| "新数据库目录无效".to_owned())?;
+    fs::create_dir_all(target_root).map_err(|value| error("创建数据库目标目录失败", value))?;
     remove_database_target(target)?;
 
     let source_connection =
@@ -275,6 +328,8 @@ fn backup_database(source: &Path, target: &Path) -> Result<(), String> {
             .run_to_completion(128, Duration::from_millis(10), progress)
             .map_err(|value| error("复制数据库失败", value))?;
     }
+
+    rewrite_local_file_paths(&target_connection, target_root)?;
     let integrity: String = target_connection
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .map_err(|value| error("校验新数据库失败", value))?;
@@ -310,7 +365,7 @@ fn bulk_copy(
         .unwrap_or(0);
     let bytes_total = files.iter().map(|entry| entry.size).sum::<u64>() + database_size;
     if let Ok(mut value) = status.lock() {
-        value.files_total = files.len() as u64 + if database_size > 0 { 1 } else { 0 };
+        value.files_total = files.len() as u64 + u64::from(database_size > 0);
         value.bytes_total = bytes_total;
     }
 
@@ -367,8 +422,7 @@ fn remove_stale_entries(source: &Path, target: &Path) -> Result<(), String> {
     if !target.is_dir() {
         return Ok(());
     }
-    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))?
-    {
+    for entry in fs::read_dir(target).map_err(|value| error("校准新存储目录失败", value))? {
         let entry = entry.map_err(|value| error("读取新存储目录失败", value))?;
         let name = entry.file_name();
         let name_text = name.to_string_lossy();
@@ -435,6 +489,55 @@ fn finalize_pending(pending: &PendingMigration, locator: &Path) -> Result<(), St
     write_marker(&pending.target)
 }
 
+fn commit_migration(config: &mut StorageConfig, locator: &Path, pending: &PendingMigration) -> Result<(), String> {
+    config.active_data_dir = Some(pending.target.clone());
+    config.pending_migration = None;
+    config.cleanup_pending = Some(pending.source.clone());
+    save_config(locator, config)?;
+
+    match fs::remove_dir_all(&pending.source) {
+        Ok(()) => {
+            config.cleanup_pending = None;
+            save_config(locator, config)?;
+        }
+        Err(value) => eprintln!(
+            "LifeTrace storage migration completed but old directory cleanup failed: {value}"
+        ),
+    }
+    Ok(())
+}
+
+fn cancel_failed_migration(
+    config: &mut StorageConfig,
+    locator: &Path,
+    pending: &PendingMigration,
+    failure: &str,
+) -> Result<(), String> {
+    eprintln!(
+        "LifeTrace storage migration finalization failed; continuing with old directory {}: {failure}",
+        pending.source.display()
+    );
+    config.active_data_dir = Some(pending.source.clone());
+    config.pending_migration = None;
+    config.cleanup_pending = None;
+    save_config(locator, config)
+}
+
+fn retry_old_directory_cleanup(config: &mut StorageConfig, locator: &Path) -> Result<(), String> {
+    let Some(old_path) = config.cleanup_pending.clone() else {
+        return Ok(());
+    };
+    if config.active_data_dir.as_ref() == Some(&old_path) {
+        config.cleanup_pending = None;
+        return save_config(locator, config);
+    }
+    if !old_path.exists() || fs::remove_dir_all(&old_path).is_ok() {
+        config.cleanup_pending = None;
+        save_config(locator, config)?;
+    }
+    Ok(())
+}
+
 pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     let default_data_dir = app
         .path()
@@ -444,29 +547,13 @@ pub fn bootstrap(app: &AppHandle) -> Result<(PathBuf, PathBuf, PathBuf), String>
     let mut config = load_config(&locator)?;
 
     if let Some(pending) = config.pending_migration.clone() {
-        finalize_pending(&pending, &locator)?;
-        config.active_data_dir = Some(pending.target.clone());
-        config.pending_migration = None;
-        config.cleanup_pending = Some(pending.source.clone());
-        save_config(&locator, &config)?;
-
-        match fs::remove_dir_all(&pending.source) {
-            Ok(()) => {
-                config.cleanup_pending = None;
-                save_config(&locator, &config)?;
-            }
-            Err(value) => eprintln!(
-                "LifeTrace storage migration completed but old directory cleanup failed: {value}"
-            ),
+        match finalize_pending(&pending, &locator) {
+            Ok(()) => commit_migration(&mut config, &locator, &pending)?,
+            Err(failure) => cancel_failed_migration(&mut config, &locator, &pending, &failure)?,
         }
     }
 
-    if let Some(old_path) = config.cleanup_pending.clone() {
-        if old_path.exists() && fs::remove_dir_all(&old_path).is_ok() {
-            config.cleanup_pending = None;
-            save_config(&locator, &config)?;
-        }
-    }
+    retry_old_directory_cleanup(&mut config, &locator)?;
 
     let current_data_dir = config
         .active_data_dir
@@ -580,16 +667,23 @@ mod tests {
     }
 
     #[test]
-    fn bulk_copy_preserves_files_and_sqlite() {
+    fn bulk_copy_preserves_files_sqlite_and_attachment_paths() {
         let source = temp("source");
         let target = temp("target");
         let locator = temp("locator").join(CONFIG_FILE);
         fs::create_dir_all(source.join("photos")).unwrap();
+        fs::create_dir_all(source.join("attachments/n1")).unwrap();
         fs::create_dir_all(locator.parent().unwrap()).unwrap();
         fs::write(source.join("photos/a.jpg"), b"photo").unwrap();
+        fs::write(source.join("attachments/n1/a.txt"), b"note").unwrap();
         let connection = Connection::open(source.join(DATABASE_FILE)).unwrap();
         connection
-            .execute_batch("CREATE TABLE sample(value TEXT); INSERT INTO sample VALUES('ok');")
+            .execute_batch(
+                "CREATE TABLE sample(value TEXT);
+                 INSERT INTO sample VALUES('ok');
+                 CREATE TABLE note_attachments(id TEXT PRIMARY KEY,note_id TEXT,file_name TEXT,storage_path TEXT);
+                 INSERT INTO note_attachments VALUES('a','n1','a.txt','old-path');",
+            )
             .unwrap();
         drop(connection);
 
@@ -603,6 +697,10 @@ mod tests {
             .query_row("SELECT value FROM sample", [], |row| row.get(0))
             .unwrap();
         assert_eq!(value, "ok");
+        let path: String = reopened
+            .query_row("SELECT storage_path FROM note_attachments WHERE id='a'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(path, target.join("attachments/n1/a.txt").display().to_string());
 
         fs::remove_dir_all(source).ok();
         fs::remove_dir_all(target).ok();
@@ -638,6 +736,32 @@ mod tests {
 
         fs::remove_dir_all(source).ok();
         fs::remove_dir_all(target).ok();
+        fs::remove_dir_all(locator.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn failed_finalization_keeps_source_as_active_storage() {
+        let source = temp("fallback-source");
+        let target = temp("fallback-target");
+        let locator = temp("fallback-locator").join(CONFIG_FILE);
+        fs::create_dir_all(&source).unwrap();
+        fs::create_dir_all(locator.parent().unwrap()).unwrap();
+        let pending = PendingMigration {
+            source: source.clone(),
+            target,
+        };
+        let mut config = StorageConfig {
+            active_data_dir: Some(source.clone()),
+            pending_migration: Some(pending.clone()),
+            cleanup_pending: None,
+        };
+
+        cancel_failed_migration(&mut config, &locator, &pending, "simulated failure").unwrap();
+        assert_eq!(config.active_data_dir, Some(source.clone()));
+        assert!(config.pending_migration.is_none());
+        assert!(source.exists());
+
+        fs::remove_dir_all(source).ok();
         fs::remove_dir_all(locator.parent().unwrap()).ok();
     }
 }
