@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { cloudAuthClient, type CloudAuthSnapshot } from "@/src/services/cloudAuth";
+import { cloudAuthClient, savedCloudOrigin, type CloudAuthSnapshot } from "@/src/services/cloudAuth";
 
 type CloudAuthState = CloudAuthSnapshot & {
   origin: string;
@@ -15,7 +15,7 @@ type CloudAuthState = CloudAuthSnapshot & {
 };
 
 export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
-  origin: "",
+  origin: savedCloudOrigin(),
   scopes: [],
   authenticated: false,
   loading: false,
@@ -36,10 +36,15 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
     }
   },
   async restore() {
-    if (!get().origin) return;
-    set({ loading: true, error: undefined });
-    cloudAuthClient.configure(get().origin);
-    set({ ...(await cloudAuthClient.restore()), loading: false });
+    const origin = get().origin || savedCloudOrigin();
+    if (!origin) return;
+    set({ origin, loading: true, error: undefined });
+    try {
+      cloudAuthClient.configure(origin);
+      set({ ...(await cloudAuthClient.restore()), origin, loading: false });
+    } catch (error) {
+      set({ loading: false, error: error instanceof Error ? error.message : "云账号会话恢复失败" });
+    }
   },
   async bindCurrentProfile() {
     const userId = get().user?.id;

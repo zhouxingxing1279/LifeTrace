@@ -6,6 +6,7 @@ import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectio
 import { installAppPreferences } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
+import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 
@@ -48,6 +49,16 @@ async function start() {
         </ClientErrorBoundary>
       </StrictMode>,
     );
+    clientLogger.info("cloud.auth.auto_restore_started");
+    void useCloudAuthStore.getState().restore().then(() => {
+      const state = useCloudAuthStore.getState();
+      clientLogger.info("cloud.auth.auto_restore_finished", {
+        authenticated: state.authenticated,
+        bindingRequired: state.binding?.bindingRequired ?? false,
+      });
+    }).catch((error) => {
+      clientLogger.warn("cloud.auth.auto_restore_failed", undefined, error);
+    });
   } catch (error) {
     clientLogger.fatal("desktop.start.failed", undefined, error);
     const message = error instanceof Error ? error.message : "本地服务启动失败";

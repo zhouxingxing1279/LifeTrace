@@ -45,6 +45,7 @@ type CredentialApi = {
 
 const APP_ID = "lifetrace-desktop";
 const DEVICE_KEY = "lifetrace-cloud-device-id";
+const CLOUD_ORIGIN_KEY = "lifetrace-cloud-origin";
 
 function credentialApi(): CredentialApi {
   const api = window.cloudCredentialApi;
@@ -56,6 +57,30 @@ function credentialApi(): CredentialApi {
     };
   }
   return api;
+}
+
+function browserStorage(): Storage | undefined {
+  try {
+    return typeof localStorage === "undefined" ? undefined : localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+export function savedCloudOrigin(): string {
+  try {
+    return browserStorage()?.getItem(CLOUD_ORIGIN_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function persistCloudOrigin(origin: string) {
+  try {
+    browserStorage()?.setItem(CLOUD_ORIGIN_KEY, origin);
+  } catch (error) {
+    clientLogger.warn("cloud.auth.origin_persist_failed", { origin }, error);
+  }
 }
 
 function deviceId(): string {
@@ -114,6 +139,7 @@ export class CloudAuthClient {
 
   configure(origin: string) {
     this.origin = normalizeOrigin(origin);
+    persistCloudOrigin(this.origin);
     clientLogger.info("cloud.auth.configured", { origin: this.origin });
   }
 
