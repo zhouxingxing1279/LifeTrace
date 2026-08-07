@@ -22,6 +22,7 @@ import "@/app/persist-project.css";
 import "@/app/photo-sync.css";
 import "@/app/local-vault.css";
 import "@/app/settings.css";
+import "@/app/account-settings-redesign.css";
 import "@/app/ui-foundation.css";
 import "@/app/ui-menus.css";
 
