@@ -66,8 +66,6 @@ function AccountDialog({ initialMode, close }: { initialMode: AuthDialogMode; cl
     setPassword("");
     setConfirmPassword("");
     close();
-    // 登录可能切换到另一个用户专属 SQLite Profile。刷新 WebView，确保所有模块
-    // （包括有内部缓存的笔记、英语等）重新从当前 Profile 读取，而不是残留上一个用户的数据。
     window.setTimeout(() => window.location.reload(), 50);
   };
 
@@ -212,7 +210,14 @@ export function AccountEntryHost() {
   const [target, setTarget] = useState<Element | null>(null);
 
   useEffect(() => {
-    void useCloudAuthStore.getState().initialize();
+    const auth = useCloudAuthStore.getState();
+    const hadCachedUser = Boolean(auth.user);
+    void auth.initialize().then(() => {
+      const current = useCloudAuthStore.getState();
+      if (hadCachedUser && current.phase === "anonymous") {
+        window.location.reload();
+      }
+    });
     const locate = () => {
       const next = document.querySelector(".hx-sidebar-foot");
       if (next) setTarget(next);
