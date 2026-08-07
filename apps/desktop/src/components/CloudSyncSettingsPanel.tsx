@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cloud, RefreshCw, TriangleAlert } from "lucide-react";
+import { Cloud, RefreshCw } from "lucide-react";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 import type { SyncConflictView, SyncStatusView } from "@/src/services/cloudSync";
 
@@ -52,25 +52,21 @@ export default function CloudSyncSettingsPanel() {
   };
 
   if (!auth.authenticated) {
-    return <section className="hx-settings-page-section">
-      <header><h2>云同步</h2><p>登录 LifeTrace 后，可以在你的设备之间同步结构化个人数据。</p></header>
+    return <section id="settings-sync" className="hx-settings-page-section">
+      <header><h2>云同步</h2><p>登录后，当前账号的数据会同步到该账号自己的云端空间。</p></header>
       <div className="hx-setting-rows">
         <div className="hx-setting-row"><div><strong>LifeTrace 账号</strong><small>{auth.phase === "offline" ? "当前无法连接云端，已保留本机登录凭据" : "当前未登录"}</small></div><button className="hx-btn primary" type="button" onClick={() => window.dispatchEvent(new Event("lifetrace:open-auth"))}>登录 / 注册</button></div>
       </div>
     </section>;
   }
 
-  return <section className="hx-settings-page-section">
-    <header><h2>云同步</h2><p>同步在后台运行，本地 SQLite 始终是桌面端可用的数据源。</p></header>
-
-    {auth.binding?.bindingRequired && <div className="hx-settings-notice warning">
-      <TriangleAlert /><div><strong>需要选择本地数据的归属</strong><p>完成这一步后才会开始上传或下载数据。</p></div><button className="hx-btn primary" type="button" onClick={() => window.dispatchEvent(new Event("lifetrace:open-auth"))}>继续</button>
-    </div>}
-
+  return <section id="settings-sync" className="hx-settings-page-section">
+    <header><h2>云同步</h2><p>每个账号拥有独立数据空间；切换账号时会自动切换到对应的本地 Profile。</p></header>
     <div className="hx-setting-rows">
       <div className="hx-setting-row"><div><strong>同步状态</strong><small>{status?.lastErrorMessage || "LifeTrace 会自动在后台保持同步"}</small></div><span className={`hx-setting-status ${status?.phase === "error" || status?.phase === "conflict" ? "warning" : ""}`}><Cloud />{status ? phaseLabel[status.phase] || status.phase : "读取中"}</span></div>
+      <div className="hx-setting-row"><div><strong>当前账号</strong><small>当前数据空间只属于该账号</small></div><span>{auth.user?.email}</span></div>
       <div className="hx-setting-row"><div><strong>最后同步</strong><small>{status?.pendingCount ? `还有 ${status.pendingCount} 项等待上传` : "没有待上传的数据"}</small></div><span>{status?.lastSuccessAt ? new Date(status.lastSuccessAt).toLocaleString("zh-CN") : "尚未完成"}</span></div>
-      <div className="hx-setting-row"><div><strong>手动同步</strong><small>通常无需操作；排查同步问题时可以手动执行。</small></div><button className="hx-btn secondary" type="button" disabled={syncing || auth.loading || Boolean(auth.binding?.bindingRequired)} onClick={() => void runSync(false)}><RefreshCw className={syncing ? "spin" : ""} />{syncing ? "同步中…" : "立即同步"}</button></div>
+      <div className="hx-setting-row"><div><strong>手动同步</strong><small>通常无需操作；排查同步问题时可以手动执行。</small></div><button className="hx-btn secondary" type="button" disabled={syncing || auth.loading} onClick={() => void runSync(false)}><RefreshCw className={syncing ? "spin" : ""} />{syncing ? "同步中…" : "立即同步"}</button></div>
     </div>
 
     {conflicts.length > 0 && <div className="hx-settings-conflicts">
@@ -78,7 +74,7 @@ export default function CloudSyncSettingsPanel() {
       {conflicts.map((item) => <div key={item.conflictId}><span><strong>{item.entityType}</strong><small>{item.entityId}</small></span><div><button className="hx-btn secondary" onClick={async () => { await window.syncApi?.resolveConflict(item.conflictId, "accept_remote"); await refresh(); }}>接受云端</button><button className="hx-btn secondary" onClick={async () => { await window.syncApi?.resolveConflict(item.conflictId, "keep_local"); await refresh(); }}>保留本地</button></div></div>)}
     </div>}
 
-    <details className="hx-settings-advanced"><summary>高级同步操作</summary><p>“从云端重新初始化”会重新获取云端快照，仅建议在排查同步异常时使用。</p><button className="hx-btn secondary" type="button" disabled={syncing || auth.loading || Boolean(auth.binding?.bindingRequired)} onClick={() => void runSync(true)}>从云端重新初始化</button></details>
+    <details className="hx-settings-advanced"><summary>高级同步操作</summary><p>“从云端重新初始化”会重新获取当前账号的云端快照，仅建议在排查同步异常时使用。</p><button className="hx-btn secondary" type="button" disabled={syncing || auth.loading} onClick={() => void runSync(true)}>从云端重新初始化</button></details>
     {auth.error && <p className="hx-inline-message" role="alert">{auth.error}</p>}
   </section>;
 }
