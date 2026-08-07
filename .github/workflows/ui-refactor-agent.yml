@@ -32,6 +32,8 @@ jobs:
   refactor-and-validate:
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    outputs:
+      validated_sha: ${{ steps.commit.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -147,28 +149,81 @@ jobs:
         if: steps.rust-tests.outputs.status == '0'
         run: rm -f docs/ui-redesign/RUST_TEST_FAILURE.md
 
-      - name: Tauri production build
-        if: steps.rust-tests.outputs.status == '0'
-        run: npm run build
-
       - name: Commit generated refactor
         id: commit
         if: steps.rust-tests.outputs.status == '0'
         shell: bash
         run: |
-          if git diff --quiet; then
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app src tauri-ui tests tsconfig.json docs/ui-redesign
-          git commit -m "refactor: unify user UI and context actions"
-          git push origin HEAD:agent/ui-redesign
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          if ! git diff --quiet; then
+            git add app src tauri-ui tests tsconfig.json docs/ui-redesign
+            git commit -m "refactor: unify user UI and context actions"
+            git push origin HEAD:agent/ui-redesign
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Validation summary
         if: steps.rust-tests.outputs.status == '0'
         run: |
-          echo "UI refactor validated. Generated commit: ${{ steps.commit.outputs.changed }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Checks: npm test, npm run test:rust, npm run build" >> "$GITHUB_STEP_SUMMARY"
+          echo "Frontend and Rust validation passed." >> "$GITHUB_STEP_SUMMARY"
+          echo "Validated commit: ${{ steps.commit.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+
+  tauri-windows-build:
+    needs: refactor-and-validate
+    runs-on: windows-latest
+    timeout-minutes: 120
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_BUILD_JOBS: "2"
+      RUSTFLAGS: "-C debuginfo=0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.refactor-and-validate.outputs.validated_sha }}
+          fetch-depth: 0
+
+      - name: Create required bundled dictionary resource
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-sync-client
+            src-tauri
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check version consistency
+        run: node scripts/check-version-consistency.mjs
+
+      - name: Build Windows Tauri executable
+        run: npm run build -- --no-bundle
+
+      - name: Verify executable output
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/release/lifetrace.exe"
+          if (-not (Test-Path $exe)) {
+            throw "Tauri executable was not generated: $exe"
+          }
+          $item = Get-Item $exe
+          Write-Output "Validated $($item.FullName) ($($item.Length) bytes)"
