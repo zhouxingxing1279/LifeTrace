@@ -1,6 +1,7 @@
 mod assistant;
 mod dictionary;
 mod english;
+mod execution;
 mod imports;
 pub(crate) mod migration;
 mod notes;
@@ -144,6 +145,30 @@ pub async fn serve(
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/state", get(state::get).post(state::mutate))
+        .route(
+            "/api/execution/projects",
+            get(execution::list_projects).post(execution::create_project),
+        )
+        .route(
+            "/api/execution/projects/{id}",
+            get(execution::get_project)
+                .put(execution::update_project)
+                .delete(execution::delete_project),
+        )
+        .route(
+            "/api/execution/tasks",
+            get(execution::list_tasks).post(execution::create_task),
+        )
+        .route(
+            "/api/execution/tasks/{id}",
+            get(execution::get_task)
+                .put(execution::update_task)
+                .delete(execution::delete_task),
+        )
+        .route(
+            "/api/execution/tasks/{id}/status",
+            axum::routing::put(execution::change_task_status),
+        )
         .route("/api/assistant/catalog", get(assistant::catalog))
         .route("/api/assistant/chat", axum::routing::post(assistant::chat))
         .route(
