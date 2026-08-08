@@ -2,6 +2,7 @@ mod assistant;
 mod dictionary;
 mod english;
 mod execution;
+mod execution_structure;
 mod imports;
 pub(crate) mod migration;
 mod notes;
@@ -168,6 +169,41 @@ pub async fn serve(
         .route(
             "/api/execution/tasks/{id}/status",
             axum::routing::put(execution::change_task_status),
+        )
+        .route(
+            "/api/execution/tasks/{id}/subtasks",
+            get(execution_structure::list_subtasks).post(execution_structure::add_subtask),
+        )
+        .route(
+            "/api/execution/tasks/{id}/dependencies",
+            get(execution_structure::list_dependencies).post(execution_structure::add_dependency),
+        )
+        .route(
+            "/api/execution/tasks/{id}/dependencies/{prerequisite_id}",
+            axum::routing::delete(execution_structure::remove_dependency),
+        )
+        .route(
+            "/api/execution/tasks/{id}/blockers",
+            get(execution_structure::list_blockers),
+        )
+        .route(
+            "/api/execution/tasks/{id}/recurrence",
+            get(execution_structure::get_recurrence)
+                .put(execution_structure::set_recurrence)
+                .delete(execution_structure::clear_recurrence),
+        )
+        .route(
+            "/api/execution/tasks/{id}/occurrences",
+            get(execution_structure::list_occurrences)
+                .post(execution_structure::materialize_occurrence),
+        )
+        .route(
+            "/api/execution/tasks/{id}/occurrences/{occurrence_id}",
+            axum::routing::put(execution_structure::update_occurrence),
+        )
+        .route(
+            "/api/execution/tasks/{id}/occurrences/{occurrence_id}/status",
+            axum::routing::put(execution_structure::change_occurrence_status),
         )
         .route("/api/assistant/catalog", get(assistant::catalog))
         .route("/api/assistant/chat", axum::routing::post(assistant::chat))
