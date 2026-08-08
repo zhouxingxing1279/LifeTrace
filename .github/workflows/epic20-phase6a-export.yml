@@ -1,0 +1,102 @@
+name: EPIC20 Phase6A Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase6a-reminders
+
+permissions:
+  contents: write
+
+jobs:
+  export-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase6a-reminders
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Register Reminder modules and routes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          mod = Path("apps/desktop/src-tauri/src/database/repositories/mod.rs")
+          text = mod.read_text(encoding="utf-8")
+          text = text.replace("pub mod execution_calendar;\n", "pub mod execution_calendar;\npub mod execution_reminder;\n")
+          mod.write_text(text, encoding="utf-8")
+
+          lib = Path("apps/desktop/src-tauri/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          text = text.replace("mod execution_calendar;\n", "mod execution_calendar;\nmod execution_reminder;\n")
+          lib.write_text(text, encoding="utf-8")
+
+          server = Path("apps/desktop/src-tauri/src/server.rs")
+          text = server.read_text(encoding="utf-8")
+          text = text.replace("mod execution_calendar;\n", "mod execution_calendar;\nmod execution_reminder;\n")
+          anchor = '''        .route(
+            "/api/execution/calendar-conflicts",
+            axum::routing::post(execution_calendar::find_conflicts),
+        )
+'''
+          routes = anchor + '''        .route(
+            "/api/execution/reminders",
+            get(execution_reminder::list_subject).post(execution_reminder::create),
+        )
+        .route(
+            "/api/execution/reminders/due",
+            get(execution_reminder::list_due),
+        )
+        .route(
+            "/api/execution/reminders/{id}",
+            get(execution_reminder::get)
+                .put(execution_reminder::update)
+                .delete(execution_reminder::delete),
+        )
+        .route(
+            "/api/execution/reminders/{id}/fire",
+            axum::routing::post(execution_reminder::fire),
+        )
+        .route(
+            "/api/execution/reminders/{id}/snooze",
+            axum::routing::post(execution_reminder::snooze),
+        )
+        .route(
+            "/api/execution/reminders/{id}/dismiss",
+            axum::routing::post(execution_reminder::dismiss),
+        )
+        .route(
+            "/api/execution/reminders/{id}/cancel",
+            axum::routing::post(execution_reminder::cancel),
+        )
+'''
+          if anchor not in text:
+              raise SystemExit("calendar-conflicts route anchor not found")
+          text = text.replace(anchor, routes, 1)
+          server.write_text(text, encoding="utf-8")
+      - name: Format Phase 6A sources
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Export formatted sources from clean main
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src-tauri/src/database/repositories/execution_reminder.rs \
+            apps/desktop/src-tauri/src/database/repositories/mod.rs \
+            apps/desktop/src-tauri/src/execution_reminder.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/server.rs \
+            apps/desktop/src-tauri/src/server/execution_reminder.rs \
+            > /tmp/phase6a.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase6a-reminders-clean origin/main
+          git apply --index /tmp/phase6a.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add shared reminder service"
+          git push --force origin HEAD:agent/epic20-phase6a-reminders-clean
