@@ -4,6 +4,7 @@
 
 pub mod english;
 pub mod execution;
+pub mod execution_structure;
 pub mod finance;
 pub mod habits;
 pub mod notes;
