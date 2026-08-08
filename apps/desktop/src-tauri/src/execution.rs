@@ -120,7 +120,11 @@ fn clean_required(value: &str, label: &str, max: usize) -> ExecutionResult<Strin
     Ok(value.to_owned())
 }
 
-fn clean_optional(value: Option<String>, max: usize, label: &str) -> ExecutionResult<Option<String>> {
+fn clean_optional(
+    value: Option<String>,
+    max: usize,
+    label: &str,
+) -> ExecutionResult<Option<String>> {
     let Some(value) = value else {
         return Ok(None);
     };
@@ -145,7 +149,10 @@ fn validate_project_status(status: &str) -> ExecutionResult<()> {
 }
 
 fn validate_task_status(status: &str) -> ExecutionResult<()> {
-    if matches!(status, "todo" | "in_progress" | "waiting" | "done" | "cancelled") {
+    if matches!(
+        status,
+        "todo" | "in_progress" | "waiting" | "done" | "cancelled"
+    ) {
         Ok(())
     } else {
         Err(ExecutionError::validation("无效的任务状态"))
@@ -160,7 +167,10 @@ fn validate_priority(priority: &str) -> ExecutionResult<()> {
     }
 }
 
-fn parse_optional_timestamp(value: &Option<String>, label: &str) -> ExecutionResult<Option<DateTime<Utc>>> {
+fn parse_optional_timestamp(
+    value: &Option<String>,
+    label: &str,
+) -> ExecutionResult<Option<DateTime<Utc>>> {
     value
         .as_ref()
         .map(|value| {
@@ -281,7 +291,10 @@ pub fn get_project(connection: &Connection, id: &str) -> ExecutionResult<Project
         .ok_or_else(|| ExecutionError::not_found("项目不存在"))
 }
 
-pub fn create_project(connection: &Connection, input: ProjectInput) -> ExecutionResult<ProjectRecord> {
+pub fn create_project(
+    connection: &Connection,
+    input: ProjectInput,
+) -> ExecutionResult<ProjectRecord> {
     let user_id = active_user(connection)?;
     let input = normalize_project_input(user_id, None, input, "active")?;
     repository::save_project(connection, &input).map_err(ExecutionError::storage)
@@ -517,7 +530,11 @@ mod tests {
     fn project_and_task_crud_obeys_domain_rules() {
         let connection = database();
         let project = create_project(&connection, project_input("EPIC20")).unwrap();
-        let task = create_task(&connection, task_input("Implement task", Some(project.id.clone()))).unwrap();
+        let task = create_task(
+            &connection,
+            task_input("Implement task", Some(project.id.clone())),
+        )
+        .unwrap();
         assert_eq!(task.status, "todo");
         assert!(delete_project(&connection, &project.id).is_err());
         delete_task(&connection, &task.id).unwrap();

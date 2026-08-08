@@ -129,14 +129,17 @@ fn task_from_row(row: &Row<'_>) -> rusqlite::Result<TaskRecord> {
     })
 }
 
-const PROJECT_COLUMNS: &str = "id,user_id,name,description,status,color,icon,sort_order,version,created_at,updated_at";
+const PROJECT_COLUMNS: &str =
+    "id,user_id,name,description,status,color,icon,sort_order,version,created_at,updated_at";
 const TASK_COLUMNS: &str = "id,user_id,project_id,parent_task_id,title,description,status,priority,estimated_minutes,actual_minutes,due_at,scheduled_start_at,scheduled_end_at,timezone,context,completed_at,cancelled_at,version,created_at,updated_at";
 
 pub fn list_projects(connection: &Connection, user_id: &str) -> Result<Vec<ProjectRecord>, String> {
     let sql = format!(
         "SELECT {PROJECT_COLUMNS} FROM execution_projects WHERE user_id=?1 AND deleted_at IS NULL ORDER BY sort_order ASC, updated_at DESC"
     );
-    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map([user_id], project_from_row)
         .map_err(|error| error.to_string())?;
@@ -158,7 +161,10 @@ pub fn get_project(
         .map_err(|error| error.to_string())
 }
 
-pub fn save_project(connection: &Connection, input: &ProjectWrite) -> Result<ProjectRecord, String> {
+pub fn save_project(
+    connection: &Connection,
+    input: &ProjectWrite,
+) -> Result<ProjectRecord, String> {
     let id = input
         .id
         .clone()
@@ -203,8 +209,7 @@ pub fn save_project(connection: &Connection, input: &ProjectWrite) -> Result<Pro
             )
             .map_err(|error| error.to_string())?;
     }
-    get_project(connection, &input.user_id, &id)?
-        .ok_or_else(|| "项目保存后读取失败".to_owned())
+    get_project(connection, &input.user_id, &id)?.ok_or_else(|| "项目保存后读取失败".to_owned())
 }
 
 pub fn soft_delete_project(
@@ -239,7 +244,9 @@ pub fn list_tasks(
            due_at ASC,
            updated_at DESC"
     );
-    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(
             params![
@@ -332,15 +339,10 @@ pub fn save_task(connection: &Connection, input: &TaskWrite) -> Result<TaskRecor
             )
             .map_err(|error| error.to_string())?;
     }
-    get_task(connection, &input.user_id, &id)?
-        .ok_or_else(|| "任务保存后读取失败".to_owned())
+    get_task(connection, &input.user_id, &id)?.ok_or_else(|| "任务保存后读取失败".to_owned())
 }
 
-pub fn soft_delete_task(
-    connection: &Connection,
-    user_id: &str,
-    id: &str,
-) -> Result<bool, String> {
+pub fn soft_delete_task(connection: &Connection, user_id: &str, id: &str) -> Result<bool, String> {
     let stamp = now();
     connection
         .execute(
@@ -351,11 +353,7 @@ pub fn soft_delete_task(
         .map_err(|error| error.to_string())
 }
 
-pub fn task_has_children(
-    connection: &Connection,
-    user_id: &str,
-    id: &str,
-) -> Result<bool, String> {
+pub fn task_has_children(connection: &Connection, user_id: &str, id: &str) -> Result<bool, String> {
     connection
         .query_row(
             "SELECT EXISTS(SELECT 1 FROM execution_tasks WHERE user_id=?1 AND parent_task_id=?2 AND deleted_at IS NULL)",
@@ -436,9 +434,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(list_projects(&connection, &user_id).unwrap().len(), 1);
-        assert_eq!(list_tasks(&connection, &user_id, &TaskListFilter::default()).unwrap().len(), 1);
-        assert_eq!(get_task(&connection, &user_id, &task.id).unwrap().unwrap().project_id, Some(project.id));
-        assert!(get_task(&connection, "another-profile", &task.id).unwrap().is_none());
+        assert_eq!(
+            list_tasks(&connection, &user_id, &TaskListFilter::default())
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(
+            get_task(&connection, &user_id, &task.id)
+                .unwrap()
+                .unwrap()
+                .project_id,
+            Some(project.id)
+        );
+        assert!(get_task(&connection, "another-profile", &task.id)
+            .unwrap()
+            .is_none());
     }
 
     #[test]
@@ -459,7 +470,9 @@ mod tests {
         )
         .unwrap();
         assert!(soft_delete_project(&connection, &user_id, &project.id).unwrap());
-        assert!(get_project(&connection, &user_id, &project.id).unwrap().is_none());
+        assert!(get_project(&connection, &user_id, &project.id)
+            .unwrap()
+            .is_none());
         let count: i64 = connection
             .query_row(
                 "SELECT COUNT(*) FROM execution_projects WHERE id=?1 AND deleted_at IS NOT NULL",

@@ -118,10 +118,7 @@ pub async fn delete_project(State(state): State<AppState>, Path(id): Path<String
     }
 }
 
-pub async fn list_tasks(
-    State(state): State<AppState>,
-    Query(query): Query<TaskQuery>,
-) -> Response {
+pub async fn list_tasks(State(state): State<AppState>, Query(query): Query<TaskQuery>) -> Response {
     let connection = match state.database.lock() {
         Ok(value) => value,
         Err(_) => return lock_error(),
