@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           git fetch origin main
-          git diff origin/main -- \
+          git diff --binary origin/main -- \
             apps/desktop/src-tauri/src/database/repositories/execution_structure.rs \
             apps/desktop/src-tauri/src/database/repositories/mod.rs \
             apps/desktop/src-tauri/src/execution_structure.rs \
@@ -34,10 +34,11 @@ jobs:
             apps/desktop/src-tauri/src/server.rs \
             apps/desktop/src-tauri/src/server/execution_structure.rs \
             > /tmp/phase3.patch
+          git reset --hard HEAD
+          git clean -fd
           git checkout -B agent/epic20-phase3-task-structure-clean origin/main
-          git apply /tmp/phase3.patch
+          git apply --index /tmp/phase3.patch
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apps/desktop/src-tauri/src
           git commit -m "feat(epic20): add subtasks dependencies and recurrence"
           git push --force origin HEAD:agent/epic20-phase3-task-structure-clean
