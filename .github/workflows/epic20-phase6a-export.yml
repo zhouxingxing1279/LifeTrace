@@ -21,8 +21,9 @@ jobs:
           toolchain: 1.88.0
           components: rustfmt
       - name: Register Reminder modules and routes
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           mod = Path("apps/desktop/src-tauri/src/database/repositories/mod.rs")
@@ -78,6 +79,7 @@ jobs:
               raise SystemExit("calendar-conflicts route anchor not found")
           text = text.replace(anchor, routes, 1)
           server.write_text(text, encoding="utf-8")
+          PY
       - name: Format Phase 6A sources
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Export formatted sources from clean main
