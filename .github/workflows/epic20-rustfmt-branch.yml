@@ -1,4 +1,4 @@
-name: EPIC20 Rustfmt Branch
+name: EPIC20 Clean Branch Export
 
 on:
   push:
@@ -9,27 +9,28 @@ permissions:
   contents: write
 
 jobs:
-  rustfmt-branch:
+  export-clean-branch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/epic20-phase2-project-task-core
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          toolchain: 1.88.0
-          components: rustfmt
-      - name: Apply rustfmt
-        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
-      - name: Commit formatting when needed
+          fetch-depth: 0
+      - name: Export formatted Phase 2 sources from a clean main base
         shell: bash
         run: |
-          if git diff --quiet; then
-            echo "No formatting changes required."
-            exit 0
-          fi
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          git fetch origin main
+          git checkout -B agent/epic20-phase2-project-task-clean origin/main
+          git checkout "$SOURCE_SHA" -- \
+            apps/desktop/src-tauri/src/database/repositories/execution.rs \
+            apps/desktop/src-tauri/src/database/repositories/mod.rs \
+            apps/desktop/src-tauri/src/execution.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/server.rs \
+            apps/desktop/src-tauri/src/server/execution.rs
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add apps/desktop/src-tauri/src
-          git commit -m "style(epic20): apply rustfmt"
-          git push origin HEAD:agent/epic20-phase2-project-task-core
+          git commit -m "feat(epic20): add project and one-off task domain core"
+          git push --force origin HEAD:agent/epic20-phase2-project-task-clean
