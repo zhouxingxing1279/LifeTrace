@@ -4,6 +4,7 @@ mod cloud_auth;
 pub mod contracts;
 mod database;
 mod desktop;
+mod execution;
 mod observability;
 mod server;
 mod storage;
