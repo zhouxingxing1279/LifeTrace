@@ -2,6 +2,7 @@ mod assistant;
 mod dictionary;
 mod english;
 mod execution;
+mod execution_calendar;
 mod execution_structure;
 mod execution_waiting;
 mod imports;
@@ -172,6 +173,10 @@ pub async fn serve(
             axum::routing::put(execution::change_task_status),
         )
         .route(
+            "/api/execution/tasks/{id}/schedule",
+            axum::routing::post(execution_calendar::schedule_task),
+        )
+        .route(
             "/api/execution/tasks/{id}/subtasks",
             get(execution_structure::list_subtasks).post(execution_structure::add_subtask),
         )
@@ -209,6 +214,47 @@ pub async fn serve(
         .route(
             "/api/execution/tasks/{id}/waiting-item",
             axum::routing::post(execution_waiting::create_waiting_from_task),
+        )
+        .route(
+            "/api/execution/calendar-events",
+            get(execution_calendar::list_events).post(execution_calendar::create_event),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}",
+            get(execution_calendar::get_event)
+                .put(execution_calendar::update_event)
+                .delete(execution_calendar::delete_event),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/move",
+            axum::routing::put(execution_calendar::move_event),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/cancel",
+            axum::routing::post(execution_calendar::cancel_event),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/recurrence",
+            get(execution_calendar::get_recurrence)
+                .put(execution_calendar::set_recurrence)
+                .delete(execution_calendar::clear_recurrence),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/occurrences",
+            get(execution_calendar::list_occurrences)
+                .post(execution_calendar::materialize_occurrence),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/occurrences/{occurrence_id}",
+            axum::routing::put(execution_calendar::update_occurrence),
+        )
+        .route(
+            "/api/execution/calendar-events/{id}/occurrences/{occurrence_id}/status",
+            axum::routing::put(execution_calendar::change_occurrence_status),
+        )
+        .route(
+            "/api/execution/calendar-conflicts",
+            axum::routing::post(execution_calendar::find_conflicts),
         )
         .route(
             "/api/execution/waiting-items",

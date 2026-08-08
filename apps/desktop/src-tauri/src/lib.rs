@@ -5,6 +5,7 @@ pub mod contracts;
 mod database;
 mod desktop;
 mod execution;
+mod execution_calendar;
 mod execution_structure;
 mod execution_waiting;
 mod observability;
