@@ -3,6 +3,7 @@ mod dictionary;
 mod english;
 mod execution;
 mod execution_calendar;
+mod execution_reminder;
 mod execution_structure;
 mod execution_waiting;
 mod imports;
@@ -255,6 +256,36 @@ pub async fn serve(
         .route(
             "/api/execution/calendar-conflicts",
             axum::routing::post(execution_calendar::find_conflicts),
+        )
+        .route(
+            "/api/execution/reminders",
+            get(execution_reminder::list_subject).post(execution_reminder::create),
+        )
+        .route(
+            "/api/execution/reminders/due",
+            get(execution_reminder::list_due),
+        )
+        .route(
+            "/api/execution/reminders/{id}",
+            get(execution_reminder::get)
+                .put(execution_reminder::update)
+                .delete(execution_reminder::delete),
+        )
+        .route(
+            "/api/execution/reminders/{id}/fire",
+            axum::routing::post(execution_reminder::fire),
+        )
+        .route(
+            "/api/execution/reminders/{id}/snooze",
+            axum::routing::post(execution_reminder::snooze),
+        )
+        .route(
+            "/api/execution/reminders/{id}/dismiss",
+            axum::routing::post(execution_reminder::dismiss),
+        )
+        .route(
+            "/api/execution/reminders/{id}/cancel",
+            axum::routing::post(execution_reminder::cancel),
         )
         .route(
             "/api/execution/waiting-items",
