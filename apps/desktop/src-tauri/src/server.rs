@@ -3,6 +3,7 @@ mod dictionary;
 mod english;
 mod execution;
 mod execution_structure;
+mod execution_waiting;
 mod imports;
 pub(crate) mod migration;
 mod notes;
@@ -204,6 +205,32 @@ pub async fn serve(
         .route(
             "/api/execution/tasks/{id}/occurrences/{occurrence_id}/status",
             axum::routing::put(execution_structure::change_occurrence_status),
+        )
+        .route(
+            "/api/execution/tasks/{id}/waiting-item",
+            axum::routing::post(execution_waiting::create_waiting_from_task),
+        )
+        .route(
+            "/api/execution/waiting-items",
+            get(execution_waiting::list_waiting_items).post(execution_waiting::create_waiting_item),
+        )
+        .route(
+            "/api/execution/waiting-items/{id}",
+            get(execution_waiting::get_waiting_item)
+                .put(execution_waiting::update_waiting_item)
+                .delete(execution_waiting::delete_waiting_item),
+        )
+        .route(
+            "/api/execution/waiting-items/{id}/resolve",
+            axum::routing::post(execution_waiting::resolve_waiting_item),
+        )
+        .route(
+            "/api/execution/waiting-items/{id}/cancel",
+            axum::routing::post(execution_waiting::cancel_waiting_item),
+        )
+        .route(
+            "/api/execution/waiting-items/{id}/convert-to-task",
+            axum::routing::post(execution_waiting::convert_waiting_to_task),
         )
         .route("/api/assistant/catalog", get(assistant::catalog))
         .route("/api/assistant/chat", axum::routing::post(assistant::chat))
