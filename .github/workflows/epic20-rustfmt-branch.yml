@@ -1,0 +1,35 @@
+name: EPIC20 Rustfmt Branch
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase2-project-task-core
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase2-project-task-core
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Apply rustfmt
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit formatting when needed
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes required."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src
+          git commit -m "style(epic20): apply rustfmt"
+          git push origin HEAD:agent/epic20-phase2-project-task-core
