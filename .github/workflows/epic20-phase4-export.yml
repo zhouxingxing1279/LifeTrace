@@ -1,0 +1,44 @@
+name: EPIC20 Phase4 Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase4-waiting-items
+
+permissions:
+  contents: write
+
+jobs:
+  export-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase4-waiting-items
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Format Phase 4 sources
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Export formatted sources from clean main
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src-tauri/src/database/repositories/execution_waiting.rs \
+            apps/desktop/src-tauri/src/database/repositories/mod.rs \
+            apps/desktop/src-tauri/src/execution_waiting.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/server.rs \
+            apps/desktop/src-tauri/src/server/execution_waiting.rs \
+            > /tmp/phase4.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase4-waiting-items-clean origin/main
+          git apply --index /tmp/phase4.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add waiting item execution flow"
+          git push --force origin HEAD:agent/epic20-phase4-waiting-items-clean
