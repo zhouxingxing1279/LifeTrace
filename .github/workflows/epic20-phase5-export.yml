@@ -1,0 +1,53 @@
+name: EPIC20 Phase5 Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase5-calendar
+
+permissions:
+  contents: write
+
+jobs:
+  export-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase5-calendar
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Normalize SQLite boolean bindings
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/src/database/repositories/execution_calendar.rs")
+          text = path.read_text(encoding="utf-8")
+          text = text.replace("i64::from(include_cancelled)", "if include_cancelled { 1_i64 } else { 0_i64 }")
+          text = text.replace("i64::from(input.is_all_day)", "if input.is_all_day { 1_i64 } else { 0_i64 }")
+          path.write_text(text, encoding="utf-8")
+      - name: Format Phase 5 sources
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Export formatted sources from clean main
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src-tauri/src/database/repositories/execution_calendar.rs \
+            apps/desktop/src-tauri/src/database/repositories/mod.rs \
+            apps/desktop/src-tauri/src/execution_calendar.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/server.rs \
+            apps/desktop/src-tauri/src/server/execution_calendar.rs \
+            > /tmp/phase5.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase5-calendar-clean origin/main
+          git apply --index /tmp/phase5.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add internal calendar execution flow"
+          git push --force origin HEAD:agent/epic20-phase5-calendar-clean
