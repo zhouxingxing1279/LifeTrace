@@ -1,4 +1,4 @@
-# LifeTrace 本地加密相册执行方案
+# EPIC-30：本地加密相册执行方案
 
 > 状态：待实施  
 > 目标分支：`main`  
@@ -720,7 +720,7 @@ if (asset.storageScope === 'local_private') {
 交付物：
 
 ```text
-docs/local-encrypted-album/01-gallery-architecture-audit.md
+docs/epic-30/01-gallery-architecture-audit.md
 ```
 
 ### 阶段二：安全与本地隔离设计
@@ -737,10 +737,10 @@ docs/local-encrypted-album/01-gallery-architecture-audit.md
 交付物：
 
 ```text
-docs/local-encrypted-album/02-security-design.md
-docs/local-encrypted-album/03-storage-format.md
-docs/local-encrypted-album/04-threat-model.md
-docs/local-encrypted-album/05-api-design.md
+docs/epic-30/02-security-design.md
+docs/epic-30/03-storage-format.md
+docs/epic-30/04-threat-model.md
+docs/epic-30/05-api-design.md
 ```
 
 ### 阶段三：加密基础模块
