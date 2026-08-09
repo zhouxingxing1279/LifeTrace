@@ -1,4 +1,4 @@
-# LifeTrace 完整产品与开发路线图 v3
+# LifeTrace 完整产品与开发路线图
 
 > 更新日期：2026-08-09  
 > 用途：将 LifeTrace 的基础架构、多端应用、业务模块、任务与邮件、轻量 AI 管家及日常使用闭环拆分为可独立设计、开发和验收的 GitHub Epic。  
@@ -1458,7 +1458,7 @@ LifeTrace 不重复开发训练记录、训练计划、动作管理和组数录�
 完整实施细节见：
 
 ```text
-docs/epic-19/LifeTrace_EPIC19_Client_Observability_Implementation_Plan.md
+docs/epic-19/implementation-plan.md
 ```
 
 ## 子任务
