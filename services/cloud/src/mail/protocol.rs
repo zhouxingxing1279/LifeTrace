@@ -67,7 +67,9 @@ fn connection_mode(value: &str, port: i32) -> ConnectionMode {
     }
 }
 
-fn imap_client(account: &MailAccountSecret) -> Result<imap::Client<imap::Connection>, MailProtocolError> {
+fn imap_client(
+    account: &MailAccountSecret,
+) -> Result<imap::Client<imap::Connection>, MailProtocolError> {
     imap::ClientBuilder::new(&account.imap_host, account.imap_port as u16)
         .mode(connection_mode(&account.imap_security, account.imap_port))
         .tls_kind(TlsKind::Rust)
@@ -75,13 +77,18 @@ fn imap_client(account: &MailAccountSecret) -> Result<imap::Client<imap::Connect
         .map_err(|_| MailProtocolError::Connect)
 }
 
-pub async fn probe_imap(account: MailAccountSecret, secret: String) -> Result<ImapProbe, MailProtocolError> {
+pub async fn probe_imap(
+    account: MailAccountSecret,
+    secret: String,
+) -> Result<ImapProbe, MailProtocolError> {
     tokio::task::spawn_blocking(move || {
         let client = imap_client(&account)?;
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
-        let capabilities = session.capabilities().map_err(|_| MailProtocolError::Capability)?;
+        let capabilities = session
+            .capabilities()
+            .map_err(|_| MailProtocolError::Capability)?;
         let idle_supported = capabilities.has_str("IDLE");
         let move_supported = capabilities.has_str("MOVE");
         let folders = session
@@ -91,7 +98,11 @@ pub async fn probe_imap(account: MailAccountSecret, secret: String) -> Result<Im
             .map(|name| name.name().to_owned())
             .collect();
         let _ = session.logout();
-        Ok(ImapProbe { idle_supported, move_supported, folders })
+        Ok(ImapProbe {
+            idle_supported,
+            move_supported,
+            folders,
+        })
     })
     .await
     .map_err(|_| MailProtocolError::Task)?
@@ -110,8 +121,12 @@ pub async fn fetch_folder(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
-        let mailbox = session.select(&folder).map_err(|_| MailProtocolError::Folder)?;
-        let uidvalidity = mailbox.uid_validity.ok_or(MailProtocolError::Capability)?;
+        let mailbox = session
+            .select(&folder)
+            .map_err(|_| MailProtocolError::Folder)?;
+        let uidvalidity = mailbox
+            .uid_validity
+            .ok_or(MailProtocolError::Capability)?;
 
         let uid_query = if previous_uidvalidity == Some(i64::from(uidvalidity)) && last_seen_uid > 0 {
             format!("{}:*", last_seen_uid.saturating_add(1))
@@ -131,7 +146,10 @@ pub async fn fetch_folder(
                     messages: Vec::new(),
                 });
             }
-            uids.into_iter().map(|uid| uid.to_string()).collect::<Vec<_>>().join(",")
+            uids.into_iter()
+                .map(|uid| uid.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
         } else {
             "1:*".to_owned()
         };
@@ -179,8 +197,14 @@ pub async fn set_seen(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
-        session.select(&folder).map_err(|_| MailProtocolError::Folder)?;
-        let operation = if seen { "+FLAGS.SILENT (\\Seen)" } else { "-FLAGS.SILENT (\\Seen)" };
+        session
+            .select(&folder)
+            .map_err(|_| MailProtocolError::Folder)?;
+        let operation = if seen {
+            "+FLAGS.SILENT (\\Seen)"
+        } else {
+            "-FLAGS.SILENT (\\Seen)"
+        };
         session
             .uid_store(uid.to_string(), operation)
             .map_err(|_| MailProtocolError::State)?;
@@ -203,8 +227,12 @@ pub async fn archive_message(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
-        session.select(&folder).map_err(|_| MailProtocolError::Folder)?;
-        let capabilities = session.capabilities().map_err(|_| MailProtocolError::Capability)?;
+        session
+            .select(&folder)
+            .map_err(|_| MailProtocolError::Folder)?;
+        let capabilities = session
+            .capabilities()
+            .map_err(|_| MailProtocolError::Capability)?;
         if capabilities.has_str("MOVE") {
             session
                 .uid_mv(uid.to_string(), archive_folder)
@@ -216,7 +244,9 @@ pub async fn archive_message(
             session
                 .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
                 .map_err(|_| MailProtocolError::State)?;
-            session.expunge().map_err(|_| MailProtocolError::State)?;
+            session
+                .expunge()
+                .map_err(|_| MailProtocolError::State)?;
         }
         let _ = session.logout();
         Ok(())
@@ -235,17 +265,23 @@ pub async fn wait_for_inbox_change(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
-        let capabilities = session.capabilities().map_err(|_| MailProtocolError::Capability)?;
+        let capabilities = session
+            .capabilities()
+            .map_err(|_| MailProtocolError::Capability)?;
         if !capabilities.has_str("IDLE") {
             return Err(MailProtocolError::Capability);
         }
-        session.select("INBOX").map_err(|_| MailProtocolError::Folder)?;
+        session
+            .select("INBOX")
+            .map_err(|_| MailProtocolError::Folder)?;
         let outcome = session
             .idle()
-            .map_err(|_| MailProtocolError::Capability)?
             .wait_with_timeout(timeout)
             .map_err(|_| MailProtocolError::Connect)?;
-        let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
+        let changed = matches!(
+            outcome,
+            imap::extensions::idle::WaitOutcome::MailboxChanged
+        );
         let _ = session.logout();
         Ok(changed)
     })
@@ -271,7 +307,10 @@ fn smtp_transport(
         .build())
 }
 
-pub async fn probe_smtp(account: &MailAccountSecret, secret: &str) -> Result<(), MailProtocolError> {
+pub async fn probe_smtp(
+    account: &MailAccountSecret,
+    secret: &str,
+) -> Result<(), MailProtocolError> {
     let transport = smtp_transport(account, secret)?;
     match tokio::time::timeout(Duration::from_secs(35), transport.test_connection()).await {
         Ok(Ok(true)) => Ok(()),
@@ -282,7 +321,9 @@ pub async fn probe_smtp(account: &MailAccountSecret, secret: &str) -> Result<(),
 }
 
 fn mailbox(value: &str) -> Result<Mailbox, MailProtocolError> {
-    value.parse().map_err(|_| MailProtocolError::InvalidAddress)
+    value
+        .parse()
+        .map_err(|_| MailProtocolError::InvalidAddress)
 }
 
 pub async fn send_mail(
@@ -293,7 +334,10 @@ pub async fn send_mail(
     in_reply_to: Option<&str>,
 ) -> Result<(), MailProtocolError> {
     let from = mailbox(&account.email_address)?;
-    let first_to = input.to.first().ok_or(MailProtocolError::InvalidAddress)?;
+    let first_to = input
+        .to
+        .first()
+        .ok_or(MailProtocolError::InvalidAddress)?;
     let mut builder = Message::builder()
         .from(from)
         .to(mailbox(first_to)?)
