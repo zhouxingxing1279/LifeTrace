@@ -3,6 +3,7 @@ mod dictionary;
 mod english;
 mod execution;
 mod execution_calendar;
+mod execution_memo;
 mod execution_reminder;
 mod execution_structure;
 mod execution_waiting;
@@ -286,6 +287,40 @@ pub async fn serve(
         .route(
             "/api/execution/reminders/{id}/cancel",
             axum::routing::post(execution_reminder::cancel),
+        )
+        .route(
+            "/api/execution/memos",
+            get(execution_memo::list).post(execution_memo::create),
+        )
+        .route(
+            "/api/execution/memos/{id}",
+            get(execution_memo::get)
+                .put(execution_memo::update)
+                .delete(execution_memo::delete),
+        )
+        .route(
+            "/api/execution/memos/{id}/pin",
+            axum::routing::put(execution_memo::pin),
+        )
+        .route(
+            "/api/execution/memos/{id}/archive",
+            axum::routing::post(execution_memo::archive),
+        )
+        .route(
+            "/api/execution/memos/{id}/restore",
+            axum::routing::post(execution_memo::restore),
+        )
+        .route(
+            "/api/execution/memos/{id}/convert-to-task",
+            axum::routing::post(execution_memo::convert_to_task),
+        )
+        .route(
+            "/api/execution/memos/{id}/convert-to-calendar",
+            axum::routing::post(execution_memo::convert_to_calendar),
+        )
+        .route(
+            "/api/execution/memos/{id}/convert-to-waiting",
+            axum::routing::post(execution_memo::convert_to_waiting),
         )
         .route(
             "/api/execution/waiting-items",
