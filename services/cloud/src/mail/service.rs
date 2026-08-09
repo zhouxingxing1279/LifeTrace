@@ -321,7 +321,7 @@ impl MailService {
         let result = sqlx::query(
             r#"
             UPDATE mail_accounts
-            SET status='disabled',credential_ciphertext='\\x'::bytea,credential_nonce='\\x'::bytea,
+            SET status='disabled',credential_ciphertext=decode('', 'hex'),credential_nonce=decode('', 'hex'),
                 deleted_at=now(),updated_at=now()
             WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL
             "#,
@@ -565,14 +565,16 @@ impl MailService {
             FROM mail_threads
             WHERE user_id=$1
               AND ($2::uuid IS NULL OR account_id=$2)
-              AND ($3::text IS NULL OR normalized_subject ILIKE '%' || $3 || '%' OR coalesce(snippet,'') ILIKE '%' || $3 || '%')
-              AND ($4::boolean IS NULL OR ($4=TRUE AND unread_count>0) OR $4=FALSE)
+              AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM mail_messages m WHERE m.thread_id=mail_threads.id AND m.folder_id=$3))
+              AND ($4::text IS NULL OR normalized_subject ILIKE '%' || $4 || '%' OR coalesce(snippet,'') ILIKE '%' || $4 || '%')
+              AND ($5::boolean IS NULL OR ($5=TRUE AND unread_count>0) OR $5=FALSE)
             ORDER BY latest_message_at DESC NULLS LAST
-            LIMIT $5 OFFSET $6
+            LIMIT $6 OFFSET $7
             "#,
         )
         .bind(user_id)
         .bind(query.account_id)
+        .bind(query.folder_id)
         .bind(q)
         .bind(query.unread_only)
         .bind(query.limit.unwrap_or(100).clamp(1, 200))
