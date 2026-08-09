@@ -32,6 +32,7 @@ export type PlatformView =
   | "import"
   | "calendar"
   | "review"
+  | "analytics"
   | "notes"
   | "settings"
   | "gallery";
@@ -74,6 +75,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { id: "calendar", label: "日历", icon: CalendarDays },
       { id: "review", label: "复盘", icon: BookOpen },
+      { id: "analytics", label: "分析", icon: BarChart3 },
     ],
   },
   {
@@ -97,6 +99,7 @@ export const pageTitles: Record<PlatformView, string> = {
   import: "导入账单",
   calendar: "生活日历",
   review: "每日复盘",
+  analytics: "分析与洞察",
   notes: "笔记",
   settings: "设置",
   gallery: "设计系统",
