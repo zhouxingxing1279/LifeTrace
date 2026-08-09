@@ -56,11 +56,10 @@ QQ / 163 / 126 / yeah.net / 通用 IMAP 邮箱
 ```text
 QQ 邮箱
 163 邮箱
-126 邮箱\yeah.net 邮箱
+126 邮箱
+yeah.net 邮箱
 通用 IMAP / SMTP
 ```
-
-> 注意：实现时将 `\yeah.net` 视为文档排版中的普通 `yeah.net` 邮箱域名，不在代码中保留反斜杠。
 
 首期采用标准 IMAP/SMTP 能力完成接入，不为单个邮箱供应商复制一套业务逻辑。QQ、163、126、yeah.net 仅提供 Provider Preset；底层全部走统一适配器。
 
