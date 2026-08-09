@@ -50,6 +50,8 @@ jobs:
           git diff origin/main -- "${FORMAL[@]}" > /tmp/phase8c.patch
           test -s /tmp/phase8c.patch
           git checkout -B agent/epic20-phase8c-calendar-views-clean origin/main
+          git reset --hard origin/main
+          git clean -fd
           git apply /tmp/phase8c.patch
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
