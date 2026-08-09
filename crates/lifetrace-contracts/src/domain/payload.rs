@@ -56,6 +56,11 @@ pub enum EntityPayload {
     FileMetadata(FileMetadata),
     EntityLink(EntityLink),
     UserPreference(UserPreference),
+    RegisteredJson {
+        entity_type: &'static str,
+        entity_id: EntityId,
+        payload: JsonValue,
+    },
 }
 
 impl EntityPayload {
@@ -92,6 +97,7 @@ impl EntityPayload {
             EntityPayload::FileMetadata(_) => EntityType::FILE_METADATA,
             EntityPayload::EntityLink(_) => EntityType::ENTITY_LINK,
             EntityPayload::UserPreference(_) => EntityType::USER_PREFERENCE,
+            EntityPayload::RegisteredJson { entity_type, .. } => *entity_type,
         })
     }
 
@@ -128,6 +134,7 @@ impl EntityPayload {
             EntityPayload::FileMetadata(value) => &value.meta.id,
             EntityPayload::EntityLink(value) => &value.meta.id,
             EntityPayload::UserPreference(value) => &value.meta.id,
+            EntityPayload::RegisteredJson { entity_id, .. } => entity_id,
         }
     }
 
@@ -174,6 +181,7 @@ impl EntityPayload {
             EntityPayload::FileMetadata(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::EntityLink(value) => serde_json::to_value(value).unwrap().into(),
             EntityPayload::UserPreference(value) => serde_json::to_value(value).unwrap().into(),
+            EntityPayload::RegisteredJson { payload, .. } => payload.clone(),
         }
     }
 }
@@ -279,7 +287,88 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             }
             EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, "user.preference")
                 .map(EntityPayload::UserPreference),
-            other => Err(format!("unknown entity type: {other}")),
+            other => {
+                let registered_type = match other {
+                    EntityType::EXECUTION_PROJECT => Some(EntityType::EXECUTION_PROJECT),
+                    EntityType::EXECUTION_RECURRENCE_RULE => {
+                        Some(EntityType::EXECUTION_RECURRENCE_RULE)
+                    }
+                    EntityType::EXECUTION_TASK => Some(EntityType::EXECUTION_TASK),
+                    EntityType::EXECUTION_TASK_DEPENDENCY => {
+                        Some(EntityType::EXECUTION_TASK_DEPENDENCY)
+                    }
+                    EntityType::EXECUTION_TASK_OCCURRENCE => {
+                        Some(EntityType::EXECUTION_TASK_OCCURRENCE)
+                    }
+                    EntityType::EXECUTION_WAITING_ITEM => Some(EntityType::EXECUTION_WAITING_ITEM),
+                    EntityType::EXECUTION_CALENDAR_EVENT => {
+                        Some(EntityType::EXECUTION_CALENDAR_EVENT)
+                    }
+                    EntityType::EXECUTION_CALENDAR_OCCURRENCE => {
+                        Some(EntityType::EXECUTION_CALENDAR_OCCURRENCE)
+                    }
+                    EntityType::EXECUTION_MEMO => Some(EntityType::EXECUTION_MEMO),
+                    EntityType::EXECUTION_MEMO_TAG => Some(EntityType::EXECUTION_MEMO_TAG),
+                    EntityType::EXECUTION_MEMO_TAG_RELATION => {
+                        Some(EntityType::EXECUTION_MEMO_TAG_RELATION)
+                    }
+                    EntityType::EXECUTION_REMINDER => Some(EntityType::EXECUTION_REMINDER),
+                    EntityType::EXECUTION_COMPLETION_RESULT => {
+                        Some(EntityType::EXECUTION_COMPLETION_RESULT)
+                    }
+                    EntityType::EXECUTION_ENTITY_LINK => Some(EntityType::EXECUTION_ENTITY_LINK),
+                    _ => None,
+                };
+                let Some(registered_type) = registered_type else {
+                    return Err(format!("unknown entity type: {other}"));
+                };
+                if crate::registry::describe(registered_type).is_none() {
+                    return Err(format!("unregistered entity type: {other}"));
+                }
+                let entity_id = value
+                    .0
+                    .get("meta")
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|meta| meta.get("id"))
+                    .and_then(serde_json::Value::as_str)
+                    .filter(|id| !id.is_empty())
+                    .ok_or_else(|| format!("invalid {other} payload: meta.id is required"))?;
+                Ok(EntityPayload::RegisteredJson {
+                    entity_type: registered_type,
+                    entity_id: EntityId::new(entity_id),
+                    payload: value,
+                })
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod execution_registered_json_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn registered_execution_payload_preserves_json_and_id() {
+        let entity_type = EntityType::new(EntityType::EXECUTION_TASK);
+        let raw = JsonValue(json!({
+            "meta": {"id": "task-1", "userId": "local"},
+            "title": "Ship EPIC20",
+            "status": "todo"
+        }));
+        let payload = EntityPayload::try_from((&entity_type, raw.clone())).unwrap();
+        assert_eq!(payload.entity_type().as_str(), EntityType::EXECUTION_TASK);
+        assert_eq!(payload.entity_id().as_str(), "task-1");
+        assert_eq!(payload.to_json(), raw);
+    }
+
+    #[test]
+    fn execution_payload_requires_meta_id_and_unknown_type_stays_rejected() {
+        let entity_type = EntityType::new(EntityType::EXECUTION_MEMO);
+        let missing_id = JsonValue(json!({"meta": {}, "content": "memo"}));
+        assert!(EntityPayload::try_from((&entity_type, missing_id)).is_err());
+        let unknown = EntityType::new("future.secret");
+        let raw = JsonValue(json!({"meta": {"id": "x"}}));
+        assert!(EntityPayload::try_from((&unknown, raw)).is_err());
     }
 }

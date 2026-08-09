@@ -624,4 +624,133 @@ mod tests {
             .unwrap();
         assert!(deleted.is_some());
     }
+
+    #[test]
+    fn offline_core_entities_sync_into_second_device_real_tables() {
+        let (source, source_profile) = db("offline-source");
+        let (target, target_profile) = db("offline-target");
+        let stamp = "2026-08-09T00:00:00Z";
+
+        source.execute("INSERT INTO execution_tasks(id,user_id,title,status,priority,created_at,updated_at) VALUES('task-sync',?1,'Offline Task','todo','normal',?2,?2)", params![source_profile, stamp]).unwrap();
+        source.execute("INSERT INTO execution_calendar_events(id,user_id,title,is_all_day,start_at,end_at,status,created_at,updated_at) VALUES('event-sync',?1,'Focus',0,'2026-08-09T02:00:00Z','2026-08-09T03:00:00Z','scheduled',?2,?2)", params![source_profile, stamp]).unwrap();
+        source.execute("INSERT INTO execution_waiting_items(id,user_id,title,status,waiting_for,source_task_id,created_at,updated_at) VALUES('waiting-sync',?1,'Waiting','open','Alice','task-sync',?2,?2)", params![source_profile, stamp]).unwrap();
+        source.execute("INSERT INTO execution_memos(id,user_id,content,plain_text,is_pinned,status,created_at,updated_at) VALUES('memo-sync',?1,'Remember','Remember',0,'active',?2,?2)", params![source_profile, stamp]).unwrap();
+        source.execute("INSERT INTO execution_reminders(id,user_id,subject_type,subject_id,trigger_at,status,fire_key,created_at,updated_at) VALUES('reminder-sync',?1,'task','task-sync','2026-08-10T00:00:00Z','scheduled','task-sync@2026-08-10',?2,?2)", params![source_profile, stamp]).unwrap();
+
+        let queued: i64 = source.query_row("SELECT COUNT(*) FROM sync_outbox WHERE profile_id=?1 AND entity_type LIKE 'execution.%' AND status='pending'", [&source_profile], |row| row.get(0)).unwrap();
+        assert_eq!(
+            queued, 5,
+            "offline writes must be captured before reconnect"
+        );
+
+        target
+            .execute(
+                "UPDATE sync_context SET origin='remote' WHERE singleton=1",
+                [],
+            )
+            .unwrap();
+        for (entity_type, entity_id) in [
+            ("execution.task", "task-sync"),
+            ("execution.calendar_event", "event-sync"),
+            ("execution.waiting_item", "waiting-sync"),
+            ("execution.memo", "memo-sync"),
+            ("execution.reminder", "reminder-sync"),
+        ] {
+            let local = load_local_entity(&source, &source_profile, entity_type, entity_id)
+                .unwrap()
+                .unwrap();
+            let wire = crate::sync::payload::legacy_to_wire(
+                entity_type,
+                &local,
+                &source_profile,
+                Some("1"),
+            )
+            .unwrap();
+            let legacy = crate::sync::payload::wire_to_legacy(&wire).unwrap();
+            apply_upsert(&target, &target_profile, entity_type, &legacy).unwrap();
+        }
+        let target_outbox: i64 = target
+            .query_row(
+                "SELECT COUNT(*) FROM sync_outbox WHERE entity_type LIKE 'execution.%'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(target_outbox, 0, "remote pull must not echo into outbox");
+        let task_status: String = target
+            .query_row(
+                "SELECT status FROM execution_tasks WHERE id='task-sync' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_status, "todo");
+        let event_title: String = target
+            .query_row(
+                "SELECT title FROM execution_calendar_events WHERE id='event-sync' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(event_title, "Focus");
+        let waiting_for: String = target.query_row("SELECT waiting_for FROM execution_waiting_items WHERE id='waiting-sync' AND user_id=?1", [&target_profile], |row| row.get(0)).unwrap();
+        assert_eq!(waiting_for, "Alice");
+        let memo: String = target
+            .query_row(
+                "SELECT content FROM execution_memos WHERE id='memo-sync' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(memo, "Remember");
+        let reminder_status: String = target
+            .query_row(
+                "SELECT status FROM execution_reminders WHERE id='reminder-sync' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(reminder_status, "scheduled");
+
+        source.execute("UPDATE execution_tasks SET status='done',completed_at='2026-08-09T01:00:00Z',updated_at='2026-08-09T01:00:00Z',version=version+1 WHERE id='task-sync'", []).unwrap();
+        let task_local = load_local_entity(&source, &source_profile, "execution.task", "task-sync")
+            .unwrap()
+            .unwrap();
+        let task_wire = crate::sync::payload::legacy_to_wire(
+            "execution.task",
+            &task_local,
+            &source_profile,
+            Some("2"),
+        )
+        .unwrap();
+        let task_legacy = crate::sync::payload::wire_to_legacy(&task_wire).unwrap();
+        apply_upsert(&target, &target_profile, "execution.task", &task_legacy).unwrap();
+        let task_status: String = target
+            .query_row(
+                "SELECT status FROM execution_tasks WHERE id='task-sync'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(task_status, "done");
+
+        source.execute("UPDATE execution_memos SET deleted_at='2026-08-09T02:00:00Z',updated_at='2026-08-09T02:00:00Z',version=version+1 WHERE id='memo-sync'", []).unwrap();
+        let memo_operation: String = source.query_row("SELECT operation FROM sync_outbox WHERE profile_id=?1 AND entity_type='execution.memo' AND entity_id='memo-sync' AND status='pending'", [&source_profile], |row| row.get(0)).unwrap();
+        assert_eq!(memo_operation, "delete");
+        apply_delete(&target, &target_profile, "execution.memo", "memo-sync").unwrap();
+        let deleted: Option<String> = target
+            .query_row(
+                "SELECT deleted_at FROM execution_memos WHERE id='memo-sync'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(deleted.is_some());
+        target
+            .execute(
+                "UPDATE sync_context SET origin='local' WHERE singleton=1",
+                [],
+            )
+            .unwrap();
+    }
 }
