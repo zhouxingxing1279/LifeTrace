@@ -1,6 +1,6 @@
 use ammonia::Builder;
 use chrono::{DateTime, Utc};
-use mail_parser::{MessageParser, MimeHeaders};
+use mail_parser::{HeaderValue, MessageParser, MimeHeaders};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
@@ -40,6 +40,26 @@ fn address_json<T: serde::Serialize>(value: Option<&T>) -> Value {
     value
         .and_then(|address| serde_json::to_value(address).ok())
         .unwrap_or_else(|| json!([]))
+}
+
+fn clean_message_id(value: &str) -> String {
+    value.trim().trim_start_matches('<').trim_end_matches('>').trim().to_owned()
+}
+
+fn references_parent(value: &HeaderValue<'_>) -> Option<String> {
+    match value {
+        HeaderValue::TextList(values) => values
+            .iter()
+            .rev()
+            .map(|value| clean_message_id(value))
+            .find(|value| !value.is_empty()),
+        HeaderValue::Text(value) => value
+            .split_whitespace()
+            .rev()
+            .map(clean_message_id)
+            .find(|value| !value.is_empty()),
+        _ => None,
+    }
 }
 
 pub fn sanitize_html(input: &str) -> String {
@@ -101,9 +121,16 @@ pub fn parse_message(raw: &[u8]) -> Result<ParsedMessage, &'static str> {
         })
         .collect();
 
+    let in_reply_to = message
+        .in_reply_to()
+        .as_text()
+        .map(clean_message_id)
+        .filter(|value| !value.is_empty())
+        .or_else(|| references_parent(message.references()));
+
     Ok(ParsedMessage {
-        message_id: message.message_id().map(str::to_owned),
-        in_reply_to: message.in_reply_to().as_text().map(str::to_owned),
+        message_id: message.message_id().map(clean_message_id),
+        in_reply_to,
         normalized_subject: normalize_subject(message.thread_name().unwrap_or(&subject)),
         subject,
         from_json: address_json(message.from()),
@@ -143,5 +170,12 @@ mod tests {
         assert_eq!(parsed.in_reply_to.as_deref(), Some("parent@example.com"));
         assert_eq!(parsed.normalized_subject, "project update");
         assert!(parsed.body_text.contains("Status is green"));
+    }
+
+    #[test]
+    fn references_falls_back_to_latest_parent_when_in_reply_to_is_missing() {
+        let raw = b"From: Alice <alice@example.com>\r\nTo: Bob <bob@example.com>\r\nMessage-ID: <m3@example.com>\r\nReferences: <root@example.com> <m2@example.com>\r\nSubject: Re: Project Update\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nFollow-up.";
+        let parsed = parse_message(raw).expect("parse");
+        assert_eq!(parsed.in_reply_to.as_deref(), Some("m2@example.com"));
     }
 }
