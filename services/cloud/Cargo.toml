@@ -19,7 +19,7 @@ imap = { version = "3.0.0-alpha.15", default-features = false, features = ["rust
 ipnet = "2"
 lettre = { version = "=0.11.22", default-features = false, features = ["builder", "smtp-transport", "tokio1-rustls-tls"] }
 lifetrace-contracts = { path = "../../crates/lifetrace-contracts" }
-mail-parser = { version = "0.11.5", features = ["full_encoding"] }
+mail-parser = { version = "0.11.5", features = ["full_encoding", "serde"] }
 rand = "0.8"
 rpassword = "7"
 serde = { version = "1", features = ["derive"] }
