@@ -842,12 +842,6 @@ SELECT id,user_id,provider,email_address,display_name,
 FROM mail_accounts WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL
 "#;
 
-const MESSAGE_SELECT_FIELDS: &str = r#"
-id,account_id,folder_id,thread_id,remote_uid,uidvalidity,message_id,in_reply_to,subject,
-from_json,to_json,cc_json,reply_to_json,sent_at,received_at,flags_json,is_read,is_archived,
-size_bytes,snippet,body_text,body_html_sanitized,has_attachments
-"#;
-
 const MESSAGE_SELECT_BY_THREAD: &str = r#"
 SELECT id,account_id,folder_id,thread_id,remote_uid,uidvalidity,message_id,in_reply_to,subject,
        from_json,to_json,cc_json,reply_to_json,sent_at,received_at,flags_json,is_read,is_archived,
@@ -1078,6 +1072,7 @@ fn folder_role(value: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mail::domain::MailProvider;
 
     #[test]
     fn recognizes_common_folder_roles() {
