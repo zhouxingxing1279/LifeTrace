@@ -49,8 +49,42 @@ jobs:
         run: python tools/epic20_phase9a_patch.py
       - name: Rustfmt
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Rust compile check
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --lib 2>&1 | tee /tmp/phase9a-check.log || {
+            echo '--- cargo check tail ---'
+            tail -n 180 /tmp/phase9a-check.log
+            exit 1
+          }
+      - name: Relation domain tests
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml execution_relation --lib -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase9a-relation.log || {
+            echo '--- relation test tail ---'
+            tail -n 220 /tmp/phase9a-relation.log
+            exit 1
+          }
+      - name: Completion backfill migration test
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml m0011_execution_completion_backfill --lib -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase9a-migration.log || {
+            echo '--- migration test tail ---'
+            tail -n 220 /tmp/phase9a-migration.log
+            exit 1
+          }
       - name: Desktop Rust tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1 2>&1 | tee /tmp/phase9a-full.log || {
+            echo '--- full Rust test tail ---'
+            tail -n 260 /tmp/phase9a-full.log
+            exit 1
+          }
       - name: Desktop Clippy
         run: |
           cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- \
