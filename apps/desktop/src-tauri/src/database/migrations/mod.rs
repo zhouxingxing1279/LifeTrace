@@ -14,6 +14,7 @@ mod m0008_sync_triggers;
 mod m0009_execution;
 mod m0010_execution_sync;
 mod m0011_execution_completion_backfill;
+mod m0012_analytics_insights;
 
 pub use m0001_framework::M0001Framework;
 pub use m0002_finance::M0002Finance;
@@ -26,6 +27,7 @@ pub use m0008_sync_triggers::M0008SyncTriggers;
 pub use m0009_execution::M0009Execution;
 pub use m0010_execution_sync::M0010ExecutionSync;
 pub use m0011_execution_completion_backfill::M0011ExecutionCompletionBackfill;
+pub use m0012_analytics_insights::M0012AnalyticsInsights;
 
 use crate::database::migration_runner::Migration;
 
@@ -43,5 +45,6 @@ pub fn all() -> Vec<Box<dyn Migration>> {
         Box::new(M0009Execution),
         Box::new(M0010ExecutionSync),
         Box::new(M0011ExecutionCompletionBackfill),
+        Box::new(M0012AnalyticsInsights),
     ]
 }
