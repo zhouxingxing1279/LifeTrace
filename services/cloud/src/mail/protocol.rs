@@ -304,10 +304,12 @@ pub async fn wait_for_inbox_change(
         session
             .select("INBOX")
             .map_err(|_| MailProtocolError::Folder)?;
-        let outcome = session
-            .idle()
-            .wait_with_timeout(timeout)
-            .map_err(|_| MailProtocolError::Connect)?;
+        let outcome = {
+            let mut idle = session.idle();
+            idle.timeout(timeout).keepalive(false);
+            idle.wait_while(imap::extensions::idle::stop_on_any)
+                .map_err(|_| MailProtocolError::Connect)?
+        };
         let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
         let _ = session.logout();
         Ok(changed)

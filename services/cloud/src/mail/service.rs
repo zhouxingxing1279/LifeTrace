@@ -10,7 +10,7 @@ use lifetrace_contracts::UserId;
 use super::credential::{CredentialCipher, CredentialError};
 use super::domain::{
     provider_preset, ConnectionTestResult, MailAccount, MailAccountInput, MailAccountSecret,
-    MailAttachment, MailFolder, MailListQuery, MailMessage, MailProvider, MailSecurity, MailThread,
+    MailAttachment, MailFolder, MailListQuery, MailMessage, MailSecurity, MailThread,
     SendMailInput,
 };
 use super::parser::{parse_message, ParsedMessage};
