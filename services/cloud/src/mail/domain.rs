@@ -260,7 +260,9 @@ pub fn normalize_subject(value: &str) -> String {
     loop {
         let lower = current.to_ascii_lowercase();
         let next = ["re:", "fw:", "fwd:"].iter().find_map(|prefix| {
-            lower.strip_prefix(prefix).map(|_| current[prefix.len()..].trim())
+            lower
+                .strip_prefix(prefix)
+                .map(|_| current[prefix.len()..].trim())
         });
         match next {
             Some(value) => current = value,
@@ -284,6 +286,9 @@ mod tests {
 
     #[test]
     fn subject_normalization_strips_reply_prefixes() {
-        assert_eq!(normalize_subject(" Re: FWD:  Project Update "), "project update");
+        assert_eq!(
+            normalize_subject(" Re: FWD:  Project Update "),
+            "project update"
+        );
     }
 }

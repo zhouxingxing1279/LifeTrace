@@ -124,11 +124,10 @@ pub async fn fetch_folder(
         let mailbox = session
             .select(&folder)
             .map_err(|_| MailProtocolError::Folder)?;
-        let uidvalidity = mailbox
-            .uid_validity
-            .ok_or(MailProtocolError::Capability)?;
+        let uidvalidity = mailbox.uid_validity.ok_or(MailProtocolError::Capability)?;
 
-        let uid_query = if previous_uidvalidity == Some(i64::from(uidvalidity)) && last_seen_uid > 0 {
+        let uid_query = if previous_uidvalidity == Some(i64::from(uidvalidity)) && last_seen_uid > 0
+        {
             format!("{}:*", last_seen_uid.saturating_add(1))
         } else if let Some(since) = initial_since {
             let query = format!("SINCE {}", since.format("%d-%b-%Y"));
@@ -155,7 +154,10 @@ pub async fn fetch_folder(
         };
 
         let fetched = session
-            .uid_fetch(uid_query, "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])")
+            .uid_fetch(
+                uid_query,
+                "(UID FLAGS INTERNALDATE RFC822.SIZE BODY.PEEK[])",
+            )
             .map_err(|_| MailProtocolError::Fetch)?;
         let messages = fetched
             .iter()
@@ -244,9 +246,7 @@ pub async fn archive_message(
             session
                 .uid_store(uid.to_string(), "+FLAGS.SILENT (\\Deleted)")
                 .map_err(|_| MailProtocolError::State)?;
-            session
-                .expunge()
-                .map_err(|_| MailProtocolError::State)?;
+            session.expunge().map_err(|_| MailProtocolError::State)?;
         }
         let _ = session.logout();
         Ok(())
@@ -278,10 +278,7 @@ pub async fn wait_for_inbox_change(
             .idle()
             .wait_with_timeout(timeout)
             .map_err(|_| MailProtocolError::Connect)?;
-        let changed = matches!(
-            outcome,
-            imap::extensions::idle::WaitOutcome::MailboxChanged
-        );
+        let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
         let _ = session.logout();
         Ok(changed)
     })
@@ -321,9 +318,7 @@ pub async fn probe_smtp(
 }
 
 fn mailbox(value: &str) -> Result<Mailbox, MailProtocolError> {
-    value
-        .parse()
-        .map_err(|_| MailProtocolError::InvalidAddress)
+    value.parse().map_err(|_| MailProtocolError::InvalidAddress)
 }
 
 pub async fn send_mail(
@@ -334,10 +329,7 @@ pub async fn send_mail(
     in_reply_to: Option<&str>,
 ) -> Result<(), MailProtocolError> {
     let from = mailbox(&account.email_address)?;
-    let first_to = input
-        .to
-        .first()
-        .ok_or(MailProtocolError::InvalidAddress)?;
+    let first_to = input.to.first().ok_or(MailProtocolError::InvalidAddress)?;
     let mut builder = Message::builder()
         .from(from)
         .to(mailbox(first_to)?)

@@ -25,18 +25,24 @@ pub struct CredentialCipher {
 
 impl CredentialCipher {
     pub fn from_env() -> Result<Self, CredentialError> {
-        let encoded = std::env::var("MAIL_CREDENTIAL_KEY").map_err(|_| CredentialError::MissingKey)?;
+        let encoded =
+            std::env::var("MAIL_CREDENTIAL_KEY").map_err(|_| CredentialError::MissingKey)?;
         Self::from_base64(&encoded)
     }
 
     pub fn from_base64(encoded: &str) -> Result<Self, CredentialError> {
-        let decoded = STANDARD.decode(encoded.trim()).map_err(|_| CredentialError::InvalidKey)?;
-        let key: [u8; 32] = decoded.try_into().map_err(|_| CredentialError::InvalidKey)?;
+        let decoded = STANDARD
+            .decode(encoded.trim())
+            .map_err(|_| CredentialError::InvalidKey)?;
+        let key: [u8; 32] = decoded
+            .try_into()
+            .map_err(|_| CredentialError::InvalidKey)?;
         Ok(Self { key })
     }
 
     pub fn encrypt(&self, plaintext: &str) -> Result<(Vec<u8>, Vec<u8>), CredentialError> {
-        let cipher = Aes256Gcm::new_from_slice(&self.key).map_err(|_| CredentialError::InvalidKey)?;
+        let cipher =
+            Aes256Gcm::new_from_slice(&self.key).map_err(|_| CredentialError::InvalidKey)?;
         let mut nonce_bytes = [0_u8; 12];
         OsRng.fill_bytes(&mut nonce_bytes);
         let ciphertext = cipher
@@ -49,7 +55,8 @@ impl CredentialCipher {
         if nonce.len() != 12 {
             return Err(CredentialError::Decrypt);
         }
-        let cipher = Aes256Gcm::new_from_slice(&self.key).map_err(|_| CredentialError::InvalidKey)?;
+        let cipher =
+            Aes256Gcm::new_from_slice(&self.key).map_err(|_| CredentialError::InvalidKey)?;
         let plaintext = cipher
             .decrypt(Nonce::from_slice(nonce), ciphertext)
             .map_err(|_| CredentialError::Decrypt)?;

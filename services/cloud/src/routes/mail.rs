@@ -15,18 +15,42 @@ use crate::state::AppState;
 
 pub fn router() -> Router<AppState> {
     Router::<AppState>::new()
-        .route("/api/v1/mail/accounts", get(list_accounts).post(create_account))
-        .route("/api/v1/mail/accounts/{id}", get(get_account).delete(disconnect_account))
-        .route("/api/v1/mail/accounts/{id}/test", axum::routing::post(test_account))
-        .route("/api/v1/mail/accounts/{id}/sync", axum::routing::post(sync_account))
+        .route(
+            "/api/v1/mail/accounts",
+            get(list_accounts).post(create_account),
+        )
+        .route(
+            "/api/v1/mail/accounts/{id}",
+            get(get_account).delete(disconnect_account),
+        )
+        .route(
+            "/api/v1/mail/accounts/{id}/test",
+            axum::routing::post(test_account),
+        )
+        .route(
+            "/api/v1/mail/accounts/{id}/sync",
+            axum::routing::post(sync_account),
+        )
         .route("/api/v1/mail/accounts/{id}/folders", get(list_folders))
-        .route("/api/v1/mail/accounts/{id}/send", axum::routing::post(send_mail))
+        .route(
+            "/api/v1/mail/accounts/{id}/send",
+            axum::routing::post(send_mail),
+        )
         .route("/api/v1/mail/threads", get(list_threads))
         .route("/api/v1/mail/threads/{id}/messages", get(thread_messages))
         .route("/api/v1/mail/messages/{id}", get(get_message))
-        .route("/api/v1/mail/messages/{id}/attachments", get(message_attachments))
-        .route("/api/v1/mail/messages/{id}/read", axum::routing::post(set_read))
-        .route("/api/v1/mail/messages/{id}/archive", axum::routing::post(archive_message))
+        .route(
+            "/api/v1/mail/messages/{id}/attachments",
+            get(message_attachments),
+        )
+        .route(
+            "/api/v1/mail/messages/{id}/read",
+            axum::routing::post(set_read),
+        )
+        .route(
+            "/api/v1/mail/messages/{id}/archive",
+            axum::routing::post(archive_message),
+        )
 }
 
 fn service(state: &AppState) -> MailService {
@@ -35,17 +59,35 @@ fn service(state: &AppState) -> MailService {
 
 fn map_error(error: MailServiceError) -> ApiError {
     let (status, message) = match error {
-        MailServiceError::DatabaseRequired => (StatusCode::SERVICE_UNAVAILABLE, "mail storage requires PostgreSQL"),
-        MailServiceError::InvalidUser | MailServiceError::InvalidAccount => (StatusCode::BAD_REQUEST, "invalid mail request"),
+        MailServiceError::DatabaseRequired => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "mail storage requires PostgreSQL",
+        ),
+        MailServiceError::InvalidUser | MailServiceError::InvalidAccount => {
+            (StatusCode::BAD_REQUEST, "invalid mail request")
+        }
         MailServiceError::AccountNotFound => (StatusCode::NOT_FOUND, "mail account not found"),
         MailServiceError::MessageNotFound => (StatusCode::NOT_FOUND, "mail message not found"),
         MailServiceError::ThreadNotFound => (StatusCode::NOT_FOUND, "mail thread not found"),
-        MailServiceError::ArchiveUnavailable => (StatusCode::CONFLICT, "archive folder is unavailable"),
-        MailServiceError::Credential => (StatusCode::SERVICE_UNAVAILABLE, "mail credential store is unavailable"),
+        MailServiceError::ArchiveUnavailable => {
+            (StatusCode::CONFLICT, "archive folder is unavailable")
+        }
+        MailServiceError::Credential => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            "mail credential store is unavailable",
+        ),
         MailServiceError::Protocol => (StatusCode::BAD_GATEWAY, "mail provider operation failed"),
-        MailServiceError::Database => (StatusCode::INTERNAL_SERVER_ERROR, "mail storage operation failed"),
-        MailServiceError::Parse => (StatusCode::UNPROCESSABLE_ENTITY, "mail message could not be parsed"),
-        MailServiceError::SendInProgress => (StatusCode::CONFLICT, "mail send is already in progress"),
+        MailServiceError::Database => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "mail storage operation failed",
+        ),
+        MailServiceError::Parse => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "mail message could not be parsed",
+        ),
+        MailServiceError::SendInProgress => {
+            (StatusCode::CONFLICT, "mail send is already in progress")
+        }
     };
     let code = if status.is_server_error() {
         ErrorCode::TemporarilyUnavailable

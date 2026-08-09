@@ -70,7 +70,10 @@ pub struct MailService {
 
 impl MailService {
     pub fn new(pool: PgPool, database_enabled: bool) -> Self {
-        Self { pool, database_enabled }
+        Self {
+            pool,
+            database_enabled,
+        }
     }
 
     fn require_database(&self) -> Result<(), MailServiceError> {
@@ -153,7 +156,8 @@ impl MailService {
         let user_id = Self::user_uuid(user_id)?;
         let resolved = Self::resolve_input(&input)?;
         let cipher = CredentialCipher::from_env()?;
-        let (credential_ciphertext, credential_nonce) = cipher.encrypt(&input.authorization_code)?;
+        let (credential_ciphertext, credential_nonce) =
+            cipher.encrypt(&input.authorization_code)?;
         let id = Uuid::new_v4();
         sqlx::query(
             r#"
@@ -169,7 +173,13 @@ impl MailService {
         .bind(user_id)
         .bind(input.provider.as_db())
         .bind(&resolved.email)
-        .bind(input.display_name.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+        .bind(
+            input
+                .display_name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+        )
         .bind(&resolved.imap_host)
         .bind(i32::from(resolved.imap_port))
         .bind(resolved.imap_security.as_db())
@@ -186,7 +196,10 @@ impl MailService {
         self.account_by_id(user_id, id).await
     }
 
-    pub async fn list_accounts(&self, user_id: &UserId) -> Result<Vec<MailAccount>, MailServiceError> {
+    pub async fn list_accounts(
+        &self,
+        user_id: &UserId,
+    ) -> Result<Vec<MailAccount>, MailServiceError> {
         self.require_database()?;
         let user_id = Self::user_uuid(user_id)?;
         sqlx::query_as::<_, MailAccount>(ACCOUNT_SELECT_LIST)
@@ -196,7 +209,11 @@ impl MailService {
             .map_err(Into::into)
     }
 
-    async fn account_by_id(&self, user_id: Uuid, account_id: Uuid) -> Result<MailAccount, MailServiceError> {
+    async fn account_by_id(
+        &self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> Result<MailAccount, MailServiceError> {
         sqlx::query_as::<_, MailAccount>(ACCOUNT_SELECT_ONE)
             .bind(user_id)
             .bind(account_id)
@@ -205,7 +222,11 @@ impl MailService {
             .ok_or(MailServiceError::AccountNotFound)
     }
 
-    async fn account_secret(&self, user_id: Uuid, account_id: Uuid) -> Result<MailAccountSecret, MailServiceError> {
+    async fn account_secret(
+        &self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> Result<MailAccountSecret, MailServiceError> {
         sqlx::query_as::<_, MailAccountSecret>(
             r#"
             SELECT id,user_id,provider,email_address,display_name,
@@ -223,10 +244,8 @@ impl MailService {
     }
 
     fn decrypt_secret(account: &MailAccountSecret) -> Result<String, MailServiceError> {
-        Ok(CredentialCipher::from_env()?.decrypt(
-            &account.credential_ciphertext,
-            &account.credential_nonce,
-        )?)
+        Ok(CredentialCipher::from_env()?
+            .decrypt(&account.credential_ciphertext, &account.credential_nonce)?)
     }
 
     pub async fn test_account(
@@ -235,7 +254,8 @@ impl MailService {
         account_id: Uuid,
     ) -> Result<ConnectionTestResult, MailServiceError> {
         self.require_database()?;
-        self.test_account_uuid(Self::user_uuid(user_id)?, account_id).await
+        self.test_account_uuid(Self::user_uuid(user_id)?, account_id)
+            .await
     }
 
     async fn test_account_uuid(
@@ -284,10 +304,19 @@ impl MailService {
         if imap_ok {
             self.upsert_folders(user_id, account_id, &folders).await?;
         }
-        Ok(ConnectionTestResult { imap_ok, smtp_ok, idle_supported, folders })
+        Ok(ConnectionTestResult {
+            imap_ok,
+            smtp_ok,
+            idle_supported,
+            folders,
+        })
     }
 
-    pub async fn disconnect_account(&self, user_id: &UserId, account_id: Uuid) -> Result<(), MailServiceError> {
+    pub async fn disconnect_account(
+        &self,
+        user_id: &UserId,
+        account_id: Uuid,
+    ) -> Result<(), MailServiceError> {
         self.require_database()?;
         let result = sqlx::query(
             r#"
@@ -307,7 +336,12 @@ impl MailService {
         Ok(())
     }
 
-    async fn upsert_folders(&self, user_id: Uuid, account_id: Uuid, folders: &[String]) -> Result<(), MailServiceError> {
+    async fn upsert_folders(
+        &self,
+        user_id: Uuid,
+        account_id: Uuid,
+        folders: &[String],
+    ) -> Result<(), MailServiceError> {
         for name in folders {
             let role = folder_role(name);
             let sync_enabled = !matches!(role, "trash" | "spam" | "drafts");
@@ -331,7 +365,11 @@ impl MailService {
         Ok(())
     }
 
-    pub async fn list_folders(&self, user_id: &UserId, account_id: Uuid) -> Result<Vec<MailFolder>, MailServiceError> {
+    pub async fn list_folders(
+        &self,
+        user_id: &UserId,
+        account_id: Uuid,
+    ) -> Result<Vec<MailFolder>, MailServiceError> {
         self.require_database()?;
         sqlx::query_as::<_, MailFolder>(
             r#"
@@ -346,9 +384,14 @@ impl MailService {
         .map_err(Into::into)
     }
 
-    pub async fn sync_account(&self, user_id: &UserId, account_id: Uuid) -> Result<usize, MailServiceError> {
+    pub async fn sync_account(
+        &self,
+        user_id: &UserId,
+        account_id: Uuid,
+    ) -> Result<usize, MailServiceError> {
         self.require_database()?;
-        self.sync_account_uuid(Self::user_uuid(user_id)?, account_id).await
+        self.sync_account_uuid(Self::user_uuid(user_id)?, account_id)
+            .await
     }
 
     pub async fn sync_due_accounts(&self, limit: i64) -> Result<usize, MailServiceError> {
@@ -373,7 +416,11 @@ impl MailService {
         Ok(synced)
     }
 
-    async fn sync_account_uuid(&self, user_id: Uuid, account_id: Uuid) -> Result<usize, MailServiceError> {
+    async fn sync_account_uuid(
+        &self,
+        user_id: Uuid,
+        account_id: Uuid,
+    ) -> Result<usize, MailServiceError> {
         let account = self.account_secret(user_id, account_id).await?;
         let secret = Self::decrypt_secret(&account)?;
         let folders = sqlx::query_as::<_, MailFolder>(
@@ -388,7 +435,8 @@ impl MailService {
         .await?;
         if folders.is_empty() {
             let probe = protocol::probe_imap(account.clone(), secret.clone()).await?;
-            self.upsert_folders(user_id, account_id, &probe.folders).await?;
+            self.upsert_folders(user_id, account_id, &probe.folders)
+                .await?;
             return Box::pin(self.sync_account_uuid(user_id, account_id)).await;
         }
 
@@ -416,12 +464,16 @@ impl MailService {
             .await;
             match snapshot {
                 Ok(snapshot) => {
-                    let count = self.persist_folder_snapshot(user_id, &folder, snapshot).await?;
-                    total += count;
-                    sqlx::query("UPDATE mail_sync_jobs SET state='success',finished_at=now() WHERE id=$1")
-                        .bind(job_id)
-                        .execute(&self.pool)
+                    let count = self
+                        .persist_folder_snapshot(user_id, &folder, snapshot)
                         .await?;
+                    total += count;
+                    sqlx::query(
+                        "UPDATE mail_sync_jobs SET state='success',finished_at=now() WHERE id=$1",
+                    )
+                    .bind(job_id)
+                    .execute(&self.pool)
+                    .await?;
                 }
                 Err(_) => {
                     sqlx::query("UPDATE mail_sync_jobs SET state='retry_wait',attempt=attempt+1,finished_at=now(),next_retry_at=now()+interval '3 minutes',error_code='MAIL_SYNC_FAILED',error_detail_redacted='protocol operation failed' WHERE id=$1")
@@ -446,7 +498,8 @@ impl MailService {
         snapshot: RemoteFolderSnapshot,
     ) -> Result<usize, MailServiceError> {
         let mut transaction = self.pool.begin().await?;
-        let uidvalidity_changed = folder.uidvalidity.is_some() && folder.uidvalidity != Some(i64::from(snapshot.uidvalidity));
+        let uidvalidity_changed = folder.uidvalidity.is_some()
+            && folder.uidvalidity != Some(i64::from(snapshot.uidvalidity));
         if uidvalidity_changed {
             // Existing rows remain as local historical mail, but the remote UID cursor is invalidated.
             sqlx::query("UPDATE mail_folders SET last_seen_uid=0 WHERE id=$1")
@@ -456,7 +509,11 @@ impl MailService {
         }
         let mut touched_threads = BTreeSet::new();
         let mut persisted = 0;
-        let mut highest_uid = if uidvalidity_changed { 0 } else { folder.last_seen_uid };
+        let mut highest_uid = if uidvalidity_changed {
+            0
+        } else {
+            folder.last_seen_uid
+        };
         for remote in snapshot.messages {
             highest_uid = highest_uid.max(i64::from(remote.uid));
             let parsed = parse_message(&remote.raw).map_err(|_| MailServiceError::Parse)?;
@@ -490,10 +547,18 @@ impl MailService {
         Ok(persisted)
     }
 
-    pub async fn list_threads(&self, user_id: &UserId, query: MailListQuery) -> Result<Vec<MailThread>, MailServiceError> {
+    pub async fn list_threads(
+        &self,
+        user_id: &UserId,
+        query: MailListQuery,
+    ) -> Result<Vec<MailThread>, MailServiceError> {
         self.require_database()?;
         let user_id = Self::user_uuid(user_id)?;
-        let q = query.q.as_deref().map(str::trim).filter(|value| !value.is_empty());
+        let q = query
+            .q
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
         sqlx::query_as::<_, MailThread>(
             r#"
             SELECT id,account_id,normalized_subject,latest_message_at,message_count,unread_count,participant_summary,snippet
@@ -517,7 +582,11 @@ impl MailService {
         .map_err(Into::into)
     }
 
-    pub async fn thread_messages(&self, user_id: &UserId, thread_id: Uuid) -> Result<Vec<MailMessage>, MailServiceError> {
+    pub async fn thread_messages(
+        &self,
+        user_id: &UserId,
+        thread_id: Uuid,
+    ) -> Result<Vec<MailMessage>, MailServiceError> {
         self.require_database()?;
         let rows = sqlx::query_as::<_, MailMessage>(MESSAGE_SELECT_BY_THREAD)
             .bind(Self::user_uuid(user_id)?)
@@ -530,7 +599,11 @@ impl MailService {
         Ok(rows)
     }
 
-    pub async fn message(&self, user_id: &UserId, message_id: Uuid) -> Result<MailMessage, MailServiceError> {
+    pub async fn message(
+        &self,
+        user_id: &UserId,
+        message_id: Uuid,
+    ) -> Result<MailMessage, MailServiceError> {
         self.require_database()?;
         sqlx::query_as::<_, MailMessage>(MESSAGE_SELECT_ONE)
             .bind(Self::user_uuid(user_id)?)
@@ -540,7 +613,11 @@ impl MailService {
             .ok_or(MailServiceError::MessageNotFound)
     }
 
-    pub async fn attachments(&self, user_id: &UserId, message_id: Uuid) -> Result<Vec<MailAttachment>, MailServiceError> {
+    pub async fn attachments(
+        &self,
+        user_id: &UserId,
+        message_id: Uuid,
+    ) -> Result<Vec<MailAttachment>, MailServiceError> {
         self.require_database()?;
         sqlx::query_as::<_, MailAttachment>(
             r#"
@@ -556,24 +633,35 @@ impl MailService {
         .map_err(Into::into)
     }
 
-    pub async fn set_message_read(&self, user_id: &UserId, message_id: Uuid, read: bool) -> Result<(), MailServiceError> {
+    pub async fn set_message_read(
+        &self,
+        user_id: &UserId,
+        message_id: Uuid,
+        read: bool,
+    ) -> Result<(), MailServiceError> {
         self.require_database()?;
         let user_id = Self::user_uuid(user_id)?;
         let remote = self.remote_message_ref(user_id, message_id).await?;
         let account = self.account_secret(user_id, remote.account_id).await?;
         let secret = Self::decrypt_secret(&account)?;
         protocol::set_seen(account, secret, remote.folder_name, remote.uid as u32, read).await?;
-        sqlx::query("UPDATE mail_messages SET is_read=$3,updated_at=now() WHERE user_id=$1 AND id=$2")
-            .bind(user_id)
-            .bind(message_id)
-            .bind(read)
-            .execute(&self.pool)
-            .await?;
+        sqlx::query(
+            "UPDATE mail_messages SET is_read=$3,updated_at=now() WHERE user_id=$1 AND id=$2",
+        )
+        .bind(user_id)
+        .bind(message_id)
+        .bind(read)
+        .execute(&self.pool)
+        .await?;
         refresh_thread_pool(&self.pool, remote.thread_id).await?;
         Ok(())
     }
 
-    pub async fn archive_message(&self, user_id: &UserId, message_id: Uuid) -> Result<(), MailServiceError> {
+    pub async fn archive_message(
+        &self,
+        user_id: &UserId,
+        message_id: Uuid,
+    ) -> Result<(), MailServiceError> {
         self.require_database()?;
         let user_id = Self::user_uuid(user_id)?;
         let remote = self.remote_message_ref(user_id, message_id).await?;
@@ -587,16 +675,29 @@ impl MailService {
         let archive_folder = archive_folder.ok_or(MailServiceError::ArchiveUnavailable)?;
         let account = self.account_secret(user_id, remote.account_id).await?;
         let secret = Self::decrypt_secret(&account)?;
-        protocol::archive_message(account, secret, remote.folder_name, remote.uid as u32, archive_folder).await?;
-        sqlx::query("UPDATE mail_messages SET is_archived=TRUE,updated_at=now() WHERE user_id=$1 AND id=$2")
-            .bind(user_id)
-            .bind(message_id)
-            .execute(&self.pool)
-            .await?;
+        protocol::archive_message(
+            account,
+            secret,
+            remote.folder_name,
+            remote.uid as u32,
+            archive_folder,
+        )
+        .await?;
+        sqlx::query(
+            "UPDATE mail_messages SET is_archived=TRUE,updated_at=now() WHERE user_id=$1 AND id=$2",
+        )
+        .bind(user_id)
+        .bind(message_id)
+        .execute(&self.pool)
+        .await?;
         Ok(())
     }
 
-    async fn remote_message_ref(&self, user_id: Uuid, message_id: Uuid) -> Result<RemoteMessageRef, MailServiceError> {
+    async fn remote_message_ref(
+        &self,
+        user_id: Uuid,
+        message_id: Uuid,
+    ) -> Result<RemoteMessageRef, MailServiceError> {
         sqlx::query_as::<_, RemoteMessageRef>(
             r#"
             SELECT m.account_id,m.folder_id,m.thread_id,m.remote_uid AS uid,f.remote_name AS folder_name
@@ -624,7 +725,11 @@ impl MailService {
         }
         let account = self.account_secret(user_id, account_id).await?;
         let secret = Self::decrypt_secret(&account)?;
-        let domain = account.email_address.split('@').nth(1).unwrap_or("lifetrace.local");
+        let domain = account
+            .email_address
+            .split('@')
+            .nth(1)
+            .unwrap_or("lifetrace.local");
         let generated_message_id = format!("<{}@{}>", Uuid::new_v4(), domain);
         let outbox_id = Uuid::new_v4();
         sqlx::query(
@@ -674,7 +779,15 @@ impl MailService {
         } else {
             None
         };
-        match protocol::send_mail(&account, &secret, &input, &message_id, in_reply_to.as_deref()).await {
+        match protocol::send_mail(
+            &account,
+            &secret,
+            &input,
+            &message_id,
+            in_reply_to.as_deref(),
+        )
+        .await
+        {
             Ok(()) => {
                 sqlx::query("UPDATE mail_outbox SET state='sent',sent_at=now(),updated_at=now(),last_error_code=NULL WHERE id=$1")
                     .bind(existing.0)
@@ -766,14 +879,19 @@ async fn persist_message(
     .bind(i64::from(remote.uid))
     .fetch_optional(&mut **transaction)
     .await?;
-    let seen = remote.flags.iter().any(|flag| flag.eq_ignore_ascii_case("\\Seen") || flag.eq_ignore_ascii_case("Seen"));
+    let seen = remote
+        .flags
+        .iter()
+        .any(|flag| flag.eq_ignore_ascii_case("\\Seen") || flag.eq_ignore_ascii_case("Seen"));
     if let Some(message_id) = existing {
-        sqlx::query("UPDATE mail_messages SET flags_json=$2,is_read=$3,updated_at=now() WHERE id=$1")
-            .bind(message_id)
-            .bind(serde_json::to_value(&remote.flags).unwrap_or_default())
-            .bind(seen)
-            .execute(&mut **transaction)
-            .await?;
+        sqlx::query(
+            "UPDATE mail_messages SET flags_json=$2,is_read=$3,updated_at=now() WHERE id=$1",
+        )
+        .bind(message_id)
+        .bind(serde_json::to_value(&remote.flags).unwrap_or_default())
+        .bind(seen)
+        .execute(&mut **transaction)
+        .await?;
         let thread_id: Uuid = sqlx::query_scalar("SELECT thread_id FROM mail_messages WHERE id=$1")
             .bind(message_id)
             .fetch_one(&mut **transaction)
@@ -881,7 +999,10 @@ async fn persist_message(
     Ok(Some(thread_id))
 }
 
-async fn refresh_thread(transaction: &mut Transaction<'_, Postgres>, thread_id: Uuid) -> Result<(), MailServiceError> {
+async fn refresh_thread(
+    transaction: &mut Transaction<'_, Postgres>,
+    thread_id: Uuid,
+) -> Result<(), MailServiceError> {
     sqlx::query(
         r#"
         UPDATE mail_threads t SET
@@ -931,13 +1052,21 @@ fn folder_role(value: &str) -> &'static str {
     let normalized = value.to_ascii_lowercase();
     if normalized == "inbox" || value.contains("收件") {
         "inbox"
-    } else if normalized.contains("sent") || value.contains("已发送") || value.contains("发件") {
+    } else if normalized.contains("sent") || value.contains("已发送") || value.contains("发件")
+    {
         "sent"
     } else if normalized.contains("draft") || value.contains("草稿") {
         "drafts"
-    } else if normalized.contains("trash") || normalized.contains("deleted") || value.contains("垃圾箱") || value.contains("已删除") {
+    } else if normalized.contains("trash")
+        || normalized.contains("deleted")
+        || value.contains("垃圾箱")
+        || value.contains("已删除")
+    {
         "trash"
-    } else if normalized.contains("spam") || normalized.contains("junk") || value.contains("垃圾邮件") {
+    } else if normalized.contains("spam")
+        || normalized.contains("junk")
+        || value.contains("垃圾邮件")
+    {
         "spam"
     } else if normalized.contains("archive") || value.contains("归档") {
         "archive"
@@ -974,6 +1103,9 @@ mod tests {
             smtp_port: None,
             smtp_security: None,
         };
-        assert!(matches!(MailService::resolve_input(&input), Err(MailServiceError::InvalidAccount)));
+        assert!(matches!(
+            MailService::resolve_input(&input),
+            Err(MailServiceError::InvalidAccount)
+        ));
     }
 }

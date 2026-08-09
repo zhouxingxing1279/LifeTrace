@@ -215,8 +215,14 @@ mod tests {
         let granted = allowed_scopes(AppId::DESKTOP);
         assert!(granted.contains("mail:read"));
         assert!(granted.contains("mail:write"));
-        assert_eq!(required_entity_scope("mail.message", false), Some("mail:read"));
-        assert_eq!(required_entity_scope("mail.account", true), Some("mail:write"));
+        assert_eq!(
+            required_entity_scope("mail.message", false),
+            Some("mail:read")
+        );
+        assert_eq!(
+            required_entity_scope("mail.account", true),
+            Some("mail:write")
+        );
     }
 
     #[test]

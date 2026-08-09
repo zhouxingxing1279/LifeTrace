@@ -45,13 +45,21 @@ fn address_json<T: serde::Serialize>(value: Option<&T>) -> Value {
 pub fn sanitize_html(input: &str) -> String {
     // Images are removed server-side so opening an email cannot fire remote tracking pixels.
     // Links remain usable and Ammonia adds noopener/noreferrer to them.
-    Builder::default().rm_tags(&["img"]).clean(input).to_string()
+    Builder::default()
+        .rm_tags(&["img"])
+        .clean(input)
+        .to_string()
 }
 
 pub fn parse_message(raw: &[u8]) -> Result<ParsedMessage, &'static str> {
-    let message = MessageParser::default().parse(raw).ok_or("invalid MIME message")?;
+    let message = MessageParser::default()
+        .parse(raw)
+        .ok_or("invalid MIME message")?;
     let subject = message.subject().unwrap_or("").trim().to_owned();
-    let body_text = message.body_text(0).map(|value| value.into_owned()).unwrap_or_default();
+    let body_text = message
+        .body_text(0)
+        .map(|value| value.into_owned())
+        .unwrap_or_default();
     let body_html_sanitized = message
         .body_html(0)
         .map(|value| sanitize_html(value.as_ref()))
@@ -71,11 +79,15 @@ pub fn parse_message(raw: &[u8]) -> Result<ParsedMessage, &'static str> {
         .attachments()
         .enumerate()
         .map(|(index, part)| {
-            let mime_type = part.content_type().map(|content_type| match content_type.subtype() {
-                Some(subtype) => format!("{}/{}", content_type.ctype(), subtype),
-                None => content_type.ctype().to_owned(),
-            });
-            let disposition = part.content_disposition().map(|value| value.ctype().to_owned());
+            let mime_type = part
+                .content_type()
+                .map(|content_type| match content_type.subtype() {
+                    Some(subtype) => format!("{}/{}", content_type.ctype(), subtype),
+                    None => content_type.ctype().to_owned(),
+                });
+            let disposition = part
+                .content_disposition()
+                .map(|value| value.ctype().to_owned());
             let checksum = hex::encode(Sha256::digest(part.contents()));
             ParsedAttachment {
                 part_id: index.to_string(),
