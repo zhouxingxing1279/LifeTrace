@@ -43,7 +43,12 @@ fn address_json<T: serde::Serialize>(value: Option<&T>) -> Value {
 }
 
 fn clean_message_id(value: &str) -> String {
-    value.trim().trim_start_matches('<').trim_end_matches('>').trim().to_owned()
+    value
+        .trim()
+        .trim_start_matches('<')
+        .trim_end_matches('>')
+        .trim()
+        .to_owned()
 }
 
 fn references_parent(value: &HeaderValue<'_>) -> Option<String> {
