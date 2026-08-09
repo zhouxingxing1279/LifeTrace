@@ -21,7 +21,10 @@ jobs:
           toolchain: 1.88.0
           components: rustfmt
       - name: Apply Phase 7B patch
-        run: python tools/epic20_phase7b_patch.py
+        shell: bash
+        run: |
+          python tools/epic20_phase7b_patch.py
+          python tools/epic20_phase7b_fix_tests.py
       - name: Format Phase 7B sources
         shell: bash
         run: |
