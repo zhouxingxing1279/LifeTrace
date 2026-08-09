@@ -1,4 +1,4 @@
-import type { CalendarEvent } from "@/src/services/executionApi";
+import type { CalendarEvent, CalendarTimingInput } from "@/src/services/executionApi";
 
 export type CalendarView = "month" | "week" | "day";
 
@@ -133,4 +133,29 @@ export function timedEventPlacement(event: CalendarEvent, day: Date): { topMinut
   const topMinutes = start.getHours() * 60 + start.getMinutes();
   const endMinutes = end >= dayEnd ? 24 * 60 : end.getHours() * 60 + end.getMinutes();
   return { topMinutes, durationMinutes: Math.max(30, endMinutes - topMinutes) };
+}
+
+export function snapCalendarMinutes(value: number, step = 15): number {
+  const safeStep = Math.max(1, step);
+  const snapped = Math.round(value / safeStep) * safeStep;
+  return Math.min(24 * 60 - 1, Math.max(0, snapped));
+}
+
+export function moveTimedEventToSlot(event: CalendarEvent, day: Date, minutes: number): CalendarTimingInput | null {
+  if (event.isAllDay || !event.startAt || !event.endAt) return null;
+  const currentStart = new Date(event.startAt);
+  const currentEnd = new Date(event.endAt);
+  if (Number.isNaN(currentStart.getTime()) || Number.isNaN(currentEnd.getTime()) || currentEnd <= currentStart) return null;
+  const duration = currentEnd.getTime() - currentStart.getTime();
+  const snappedMinutes = snapCalendarMinutes(minutes);
+  const targetStart = new Date(day.getFullYear(), day.getMonth(), day.getDate(), Math.floor(snappedMinutes / 60), snappedMinutes % 60, 0, 0);
+  const targetEnd = new Date(targetStart.getTime() + duration);
+  return {
+    isAllDay: false,
+    startAt: targetStart.toISOString(),
+    endAt: targetEnd.toISOString(),
+    startLocalDate: null,
+    endLocalDate: null,
+    timezone: event.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  };
 }
