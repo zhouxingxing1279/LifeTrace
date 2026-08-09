@@ -11,6 +11,7 @@ import {
   Images,
   Languages,
   ListChecks,
+  Mail,
   NotebookPen,
   WalletCards,
 } from "lucide-react";
@@ -20,6 +21,7 @@ export type PlatformView =
   | "dashboard"
   | "execution"
   | "assistant"
+  | "mail"
   | "habits"
   | "english"
   | "fitness"
@@ -55,6 +57,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { id: "notes", label: "笔记", icon: NotebookPen },
       { id: "photos", label: "照片", icon: Images },
+      { id: "mail", label: "邮件", icon: Mail },
     ],
   },
   {
@@ -83,6 +86,7 @@ export const pageTitles: Record<PlatformView, string> = {
   dashboard: "今天",
   execution: "执行中心",
   assistant: "AI 管家",
+  mail: "邮件行动中心",
   habits: "坚持",
   english: "每日英语",
   fitness: "健身训练",
