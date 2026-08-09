@@ -70,6 +70,7 @@ async fn download_attachment(
         .read(&principal.user_id, id)
         .await
         .map_err(map_error)?;
+    let content_length = content.bytes.len();
 
     let mut response = Response::new(Body::from(content.bytes));
     let headers = response.headers_mut();
@@ -82,7 +83,7 @@ async fn download_attachment(
     headers.insert(CACHE_CONTROL, HeaderValue::from_static("private, no-store"));
     headers.insert(
         CONTENT_LENGTH,
-        HeaderValue::from_str(&response.body().size_hint().lower().to_string())
+        HeaderValue::from_str(&content_length.to_string())
             .unwrap_or_else(|_| HeaderValue::from_static("0")),
     );
     headers.insert(
