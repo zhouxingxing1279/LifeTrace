@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import {
   Archive,
   Bell,
@@ -12,6 +12,7 @@ import {
   ListTodo,
   LoaderCircle,
   Pin,
+  Pencil,
   Plus,
   RefreshCw,
   RotateCcw,
@@ -20,6 +21,11 @@ import {
   Users,
   X,
 } from "lucide-react";
+import TaskAdvancedPanel from "@/src/components/feature/execution/TaskAdvancedPanel";
+import SubjectReminderPanel from "@/src/components/feature/execution/SubjectReminderPanel";
+import MemoConvertPanel from "@/src/components/feature/execution/MemoConvertPanel";
+import ExecutionContextMenu, { type ExecutionMenuItem } from "@/src/components/feature/execution/ExecutionContextMenu";
+import { preserveTaskUpdateFields, waitingToTaskInput } from "@/src/components/feature/execution/executionViewModel";
 import {
   browserTimezone,
   executionApi,
@@ -54,8 +60,10 @@ type Editor =
   | { kind: "calendar"; value?: CalendarEvent; sourceTask?: ExecutionTask }
   | { kind: "waiting"; value?: WaitingItem }
   | { kind: "memo"; value?: Memo }
-  | { kind: "reminder"; subjectType: Reminder["subjectType"]; subjectId: string; title: string }
   | null;
+
+type ReminderSubject = { subjectType: Reminder["subjectType"]; subjectId: string; title: string };
+type ContextMenuState = { x: number; y: number; items: ExecutionMenuItem[] } | null;
 
 type Data = {
   projects: ExecutionProject[];
@@ -144,6 +152,7 @@ function TaskRow({
   onEdit,
   onSchedule,
   onReminder,
+  onContextMenu,
 }: {
   task: ExecutionTask;
   project?: ExecutionProject;
@@ -151,13 +160,15 @@ function TaskRow({
   onEdit: (task: ExecutionTask) => void;
   onSchedule: (task: ExecutionTask) => void;
   onReminder: (task: ExecutionTask) => void;
+  onContextMenu: (event: ReactMouseEvent<HTMLElement>, task: ExecutionTask) => void;
 }) {
   const nextStatus: ExecutionTaskStatus = task.status === "done" ? "todo" : "done";
-  return <article className={`lt-exec-row lt-exec-task priority-${task.priority}`}>
+  return <article className={`lt-exec-row lt-exec-task priority-${task.priority}`} onContextMenu={(event) => onContextMenu(event, task)}>
     <button
       className={`lt-exec-check ${task.status === "done" ? "done" : ""}`}
       type="button"
-      aria-label={task.status === "done" ? `恢复任务 ${task.title}` : `完成任务 ${task.title}`}
+      aria-label={task.status === "cancelled" ? `任务已取消 ${task.title}` : task.status === "done" ? `恢复任务 ${task.title}` : `完成任务 ${task.title}`}
+      disabled={task.status === "cancelled"}
       onClick={() => onStatus(task, nextStatus)}
     >{task.status === "done" ? <Check aria-hidden="true"/> : null}</button>
     <button className="lt-exec-row-main" type="button" onClick={() => onEdit(task)}>
@@ -263,11 +274,6 @@ function MemoEditor({ value, busy, close, save, remove }: { value?: Memo; busy: 
   return <div className="lt-exec-editor" role="dialog" aria-modal="true" aria-label="Memo"><header><div><strong>{value ? "编辑 Memo" : "快速记一下"}</strong><span>临时信息，不要求行动</span></div><button type="button" onClick={close} aria-label="关闭"><X/></button></header><div className="lt-exec-form"><label>内容<textarea autoFocus rows={9} value={content} onChange={(e) => setContent(e.target.value)} placeholder="先记下来，之后再决定是否转成任务或日历"/></label><label>标签<input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="工作, 生活"/></label><label>上下文<input value={context} onChange={(e) => setContext(e.target.value)} placeholder="可选"/></label></div><footer>{value ? <button className="lt-exec-danger" type="button" onClick={() => void remove()}><Trash2/>删除</button> : <span/>}<div><button type="button" onClick={close}>取消</button><button className="hx-btn primary" type="button" disabled={busy || !content.trim()} onClick={() => void save({ content, context: context || undefined, tags: tags.split(/[,，]/).map((item) => item.trim()).filter(Boolean) })}>保存</button></div></footer></div>;
 }
 
-function ReminderEditor({ title, busy, close, save }: { title: string; busy: boolean; close: () => void; save: (triggerAt: string) => Promise<void> }) {
-  const [triggerAt, setTriggerAt] = useState("");
-  return <div className="lt-exec-editor compact" role="dialog" aria-modal="true" aria-label="添加提醒"><header><div><strong>添加提醒</strong><span>{title}</span></div><button type="button" onClick={close} aria-label="关闭"><X/></button></header><div className="lt-exec-form"><label>提醒时间<input autoFocus type="datetime-local" value={triggerAt} onChange={(e) => setTriggerAt(e.target.value)}/></label></div><footer><span/><div><button type="button" onClick={close}>取消</button><button className="hx-btn primary" type="button" disabled={busy || !triggerAt} onClick={() => void save(triggerAt)}>保存</button></div></footer></div>;
-}
-
 export default function ExecutionModule() {
   const [tab, setTab] = useState<Tab>("today");
   const [data, setData] = useState<Data>(emptyData);
@@ -275,6 +281,10 @@ export default function ExecutionModule() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [editor, setEditor] = useState<Editor>(null);
+  const [inspectTask, setInspectTask] = useState<ExecutionTask | null>(null);
+  const [reminderSubject, setReminderSubject] = useState<ReminderSubject | null>(null);
+  const [convertMemo, setConvertMemo] = useState<Memo | null>(null);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [taskProjectFilter, setTaskProjectFilter] = useState("");
   const [taskStatusFilter, setTaskStatusFilter] = useState("");
   const [memoQuery, setMemoQuery] = useState("");
@@ -319,6 +329,13 @@ export default function ExecutionModule() {
       toast(success);
       setEditor(null);
       await load();
+      if (tab === "memos" && (memoArchived || memoQuery.trim())) {
+        const memos = await executionApi.memos.list({
+          status: memoArchived ? "archived" : "active",
+          q: memoQuery.trim() || undefined,
+        });
+        setData((current) => ({ ...current, memos }));
+      }
     } catch (cause) {
       toast(cause instanceof Error ? cause.message : "操作失败", "error");
     } finally {
@@ -335,6 +352,41 @@ export default function ExecutionModule() {
 
   const setTaskStatus = (task: ExecutionTask, status: ExecutionTaskStatus) => void run(() => executionApi.tasks.setStatus(task.id, status), status === "done" ? "任务已完成" : "任务状态已更新");
 
+  const menuPosition = (event: ReactMouseEvent<HTMLElement>) => {
+    event.preventDefault();
+    const rect = event.currentTarget.getBoundingClientRect();
+    return {
+      x: event.clientX || rect.left + 24,
+      y: event.clientY || rect.top + 24,
+    };
+  };
+
+  const openTaskMenu = (event: ReactMouseEvent<HTMLElement>, task: ExecutionTask) => {
+    const position = menuPosition(event);
+    const items: ExecutionMenuItem[] = [
+      { id: "details", label: "查看任务详情", action: () => setInspectTask(task) },
+      { id: "edit", label: "编辑任务", icon: Pencil, action: () => setEditor({ kind: "task", value: task }) },
+      { id: "schedule", label: "安排到日历", icon: CalendarDays, action: () => setEditor({ kind: "calendar", sourceTask: task }) },
+      { id: "reminder", label: "管理提醒", icon: Bell, action: () => setReminderSubject({ subjectType: "task", subjectId: task.id, title: task.title }) },
+      { id: "complete", label: task.status === "done" ? "恢复为待办" : "标记完成", icon: Check, disabled: task.status === "cancelled", action: () => setTaskStatus(task, task.status === "done" ? "todo" : "done") },
+      { id: "delete", label: "删除任务", icon: Trash2, danger: true, action: () => { if (window.confirm(`确定删除“${task.title}”吗？`)) void run(() => executionApi.tasks.remove(task.id), "任务已删除"); } },
+    ];
+    setContextMenu({ ...position, items });
+  };
+
+  const openMemoMenu = (event: ReactMouseEvent<HTMLElement>, memo: Memo) => {
+    const position = menuPosition(event);
+    const items: ExecutionMenuItem[] = [
+      { id: "edit", label: "编辑 Memo", icon: Pencil, action: () => setEditor({ kind: "memo", value: memo }) },
+      { id: "pin", label: memo.isPinned ? "取消置顶" : "置顶", icon: Pin, action: () => void run(() => executionApi.memos.pin(memo.id, !memo.isPinned), memo.isPinned ? "已取消置顶" : "已置顶") },
+      { id: "reminder", label: "管理提醒", icon: Bell, action: () => setReminderSubject({ subjectType: "memo", subjectId: memo.id, title: memo.plainText.slice(0, 30) }) },
+      { id: "convert", label: "转换为…", action: () => setConvertMemo(memo), disabled: memo.status !== "active" },
+      { id: "archive", label: memo.status === "active" ? "归档" : "恢复", icon: memo.status === "active" ? Archive : RotateCcw, action: () => void run(() => memo.status === "active" ? executionApi.memos.archive(memo.id) : executionApi.memos.restore(memo.id), memo.status === "active" ? "Memo 已归档" : "Memo 已恢复") },
+      { id: "delete", label: "删除 Memo", icon: Trash2, danger: true, action: () => { if (window.confirm("确定删除这条 Memo 吗？")) void run(() => executionApi.memos.remove(memo.id), "Memo 已删除"); } },
+    ];
+    setContextMenu({ ...position, items });
+  };
+
   const renderToday = () => <div className="lt-exec-today">
     <div className="lt-exec-summary">
       <button type="button" onClick={() => setTab("tasks")}><span>今日 / 逾期任务</span><strong>{todayTasks.length}</strong></button>
@@ -343,19 +395,19 @@ export default function ExecutionModule() {
       <button type="button" onClick={() => setTab("memos")}><span>置顶 Memo</span><strong>{pinnedMemos.length}</strong></button>
     </div>
     <div className="lt-exec-today-grid">
-      <section><header><div><strong>现在要做</strong><span>按优先级和截止时间排序</span></div><button type="button" onClick={() => setEditor({ kind: "task" })}><Plus/>任务</button></header>{todayTasks.length ? todayTasks.map((task) => <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) : undefined} onStatus={setTaskStatus} onEdit={(value) => setEditor({ kind: "task", value })} onSchedule={(sourceTask) => setEditor({ kind: "calendar", sourceTask })} onReminder={(value) => setEditor({ kind: "reminder", subjectType: "task", subjectId: value.id, title: value.title })}/>) : <SectionEmpty>今天没有需要推进的任务</SectionEmpty>}</section>
+      <section><header><div><strong>现在要做</strong><span>按优先级和截止时间排序</span></div><button type="button" onClick={() => setEditor({ kind: "task" })}><Plus/>任务</button></header>{todayTasks.length ? todayTasks.map((task) => <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) : undefined} onStatus={setTaskStatus} onEdit={(value) => setInspectTask(value)} onSchedule={(sourceTask) => setEditor({ kind: "calendar", sourceTask })} onReminder={(value) => setReminderSubject({ subjectType: "task", subjectId: value.id, title: value.title })}onContextMenu={openTaskMenu}/>) : <SectionEmpty>今天没有需要推进的任务</SectionEmpty>}</section>
       <section><header><div><strong>时间与等待</strong><span>未来七天</span></div></header><div className="lt-exec-stream">{todayEvents.map((event) => <button key={event.id} type="button" onClick={() => setEditor({ kind: "calendar", value: event })}><CalendarDays/><span><strong>{event.title}</strong><small>{event.isAllDay ? "全天" : `${formatDateTime(event.startAt)} – ${formatDateTime(event.endAt)}`}</small></span></button>)}{openWaiting.slice(0, 5).map((item) => <button key={item.id} type="button" onClick={() => setEditor({ kind: "waiting", value: item })}><Users/><span><strong>{item.title}</strong><small>等待 {item.waitingFor}{item.followUpAt ? ` · ${formatDateTime(item.followUpAt)} 跟进` : ""}</small></span></button>)}{!todayEvents.length && !openWaiting.length ? <SectionEmpty>暂无时间块或等待事项</SectionEmpty> : null}</div></section>
     </div>
     {data.reminders.length ? <section className="lt-exec-due"><header><Bell/><strong>已到期提醒</strong><span>{data.reminders.length}</span></header><div>{data.reminders.slice(0, 6).map((reminder) => <button key={reminder.id} type="button" onClick={() => void run(() => executionApi.reminders.dismiss(reminder.id), "提醒已处理")}><Clock3/><span>{formatDateTime(reminder.snoozedUntil || reminder.triggerAt)}</span><small>点击处理</small></button>)}</div></section> : null}
   </div>;
 
-  const renderTasks = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><select aria-label="项目筛选" value={taskProjectFilter} onChange={(e) => setTaskProjectFilter(e.target.value)}><option value="">全部项目</option>{data.projects.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select aria-label="状态筛选" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}><option value="">全部状态</option><option value="todo">待办</option><option value="in_progress">进行中</option><option value="waiting">等待</option><option value="done">完成</option><option value="cancelled">取消</option></select></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "task" })}><Plus/>新建任务</button></div><div className="lt-exec-quick"><Plus/><input value={quickTask} onChange={(e) => setQuickTask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void createQuickTask(); }} placeholder="快速添加任务，按 Enter 保存"/><span>{taskProjectFilter ? projectById.get(taskProjectFilter)?.name : "无项目"}</span></div><div className="lt-exec-list">{visibleTasks.length ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) : undefined} onStatus={setTaskStatus} onEdit={(value) => setEditor({ kind: "task", value })} onSchedule={(sourceTask) => setEditor({ kind: "calendar", sourceTask })} onReminder={(value) => setEditor({ kind: "reminder", subjectType: "task", subjectId: value.id, title: value.title })}/>) : <SectionEmpty>当前筛选下没有任务</SectionEmpty>}</div></div>;
+  const renderTasks = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><select aria-label="项目筛选" value={taskProjectFilter} onChange={(e) => setTaskProjectFilter(e.target.value)}><option value="">全部项目</option>{data.projects.filter((item) => item.status === "active").map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><select aria-label="状态筛选" value={taskStatusFilter} onChange={(e) => setTaskStatusFilter(e.target.value)}><option value="">全部状态</option><option value="todo">待办</option><option value="in_progress">进行中</option><option value="waiting">等待</option><option value="done">完成</option><option value="cancelled">取消</option></select></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "task" })}><Plus/>新建任务</button></div><div className="lt-exec-quick"><Plus/><input value={quickTask} onChange={(e) => setQuickTask(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void createQuickTask(); }} placeholder="快速添加任务，按 Enter 保存"/><span>{taskProjectFilter ? projectById.get(taskProjectFilter)?.name : "无项目"}</span></div><div className="lt-exec-list">{visibleTasks.length ? visibleTasks.map((task) => <TaskRow key={task.id} task={task} project={task.projectId ? projectById.get(task.projectId) : undefined} onStatus={setTaskStatus} onEdit={(value) => setInspectTask(value)} onSchedule={(sourceTask) => setEditor({ kind: "calendar", sourceTask })} onReminder={(value) => setReminderSubject({ subjectType: "task", subjectId: value.id, title: value.title })}onContextMenu={openTaskMenu}/>) : <SectionEmpty>当前筛选下没有任务</SectionEmpty>}</div></div>;
 
   const renderProjects = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>{data.projects.filter((item) => item.status === "active").length}</strong><span> 个进行中项目</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "project" })}><Plus/>新建项目</button></div><div className="lt-exec-project-grid">{data.projects.length ? data.projects.map((project) => { const tasks = data.tasks.filter((task) => task.projectId === project.id && task.status !== "cancelled"); const done = tasks.filter((task) => task.status === "done").length; const ratio = tasks.length ? Math.round(done / tasks.length * 100) : 0; return <button key={project.id} type="button" onClick={() => setEditor({ kind: "project", value: project })}><div><span className={`lt-exec-project-dot ${project.status}`}/><strong>{project.name}</strong><small>{project.status}</small></div><p>{project.description || "暂无说明"}</p><div className="lt-exec-progress"><i style={{ width: `${ratio}%` }}/></div><footer><span>{done}/{tasks.length} 完成</span><ChevronRight/></footer></button>; }) : <SectionEmpty>还没有项目</SectionEmpty>}</div></div>;
 
   const renderCalendar = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>未来 7 天</strong><span> · {data.calendar.length} 个事件</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "calendar" })}><Plus/>新建事件</button></div><div className="lt-exec-agenda">{data.calendar.length ? [...data.calendar].sort((a, b) => String(a.startAt || a.startLocalDate).localeCompare(String(b.startAt || b.startLocalDate))).map((event) => <button key={event.id} type="button" onClick={() => setEditor({ kind: "calendar", value: event })}><div className="lt-exec-agenda-time">{event.isAllDay ? <><strong>{event.startLocalDate}</strong><span>全天</span></> : <><strong>{formatDateTime(event.startAt)}</strong><span>至 {formatDateTime(event.endAt)}</span></>}</div><div><strong>{event.title}</strong><span>{event.description || (event.sourceTaskId ? "由任务安排" : "日历事件")}</span></div><span className={`lt-exec-status ${event.status}`}>{event.status}</span></button>) : <SectionEmpty>未来 7 天没有安排</SectionEmpty>}</div></div>;
 
-  const renderWaiting = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>{openWaiting.length}</strong><span> 个事项正在等待外部结果</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "waiting" })}><Plus/>新建等待</button></div><div className="lt-exec-list">{data.waiting.length ? data.waiting.map((item) => <article key={item.id} className="lt-exec-row"><Users/><button className="lt-exec-row-main" type="button" onClick={() => setEditor({ kind: "waiting", value: item })}><strong>{item.title}</strong><span>等待 {item.waitingFor}{item.expectedAt ? ` · 预计 ${formatDateTime(item.expectedAt)}` : ""}{item.followUpAt ? ` · ${formatDateTime(item.followUpAt)} 跟进` : ""}</span></button><span className={`lt-exec-status ${item.status}`}>{item.status}</span><div className="lt-exec-row-actions">{item.status === "open" ? <><button type="button" title="添加提醒" onClick={() => setEditor({ kind: "reminder", subjectType: "waiting_item", subjectId: item.id, title: item.title })}><Bell/></button><button type="button" title="标记已解决" onClick={() => void run(() => executionApi.waiting.resolve(item.id), "等待事项已解决")}><Check/></button></> : null}</div></article>) : <SectionEmpty>没有等待事项</SectionEmpty>}</div></div>;
+  const renderWaiting = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>{openWaiting.length}</strong><span> 个事项正在等待外部结果</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "waiting" })}><Plus/>新建等待</button></div><div className="lt-exec-list">{data.waiting.length ? data.waiting.map((item) => <article key={item.id} className="lt-exec-row"><Users/><button className="lt-exec-row-main" type="button" onClick={() => setEditor({ kind: "waiting", value: item })}><strong>{item.title}</strong><span>等待 {item.waitingFor}{item.expectedAt ? ` · 预计 ${formatDateTime(item.expectedAt)}` : ""}{item.followUpAt ? ` · ${formatDateTime(item.followUpAt)} 跟进` : ""}</span></button><span className={`lt-exec-status ${item.status}`}>{item.status}</span><div className="lt-exec-row-actions">{item.status === "open" ? <><button type="button" title="添加提醒" onClick={() => setReminderSubject({ subjectType: "waiting_item", subjectId: item.id, title: item.title })}><Bell/></button><button type="button" title="转为任务" onClick={() => void run(() => executionApi.waiting.convertToTask(item.id, waitingToTaskInput(item)), "已转为任务")}><ChevronRight/></button><button type="button" title="标记已解决" onClick={() => void run(() => executionApi.waiting.resolve(item.id), "等待事项已解决")}><Check/></button></> : null}</div></article>) : <SectionEmpty>没有等待事项</SectionEmpty>}</div></div>;
 
   const refreshMemos = async (archived = memoArchived, q = memoQuery) => {
     setBusy(true);
@@ -367,7 +419,7 @@ export default function ExecutionModule() {
     } finally { setBusy(false); }
   };
 
-  const renderMemos = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div className="lt-exec-search"><Search/><input value={memoQuery} onChange={(e) => setMemoQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void refreshMemos(); }} placeholder="搜索 Memo、上下文或标签"/><button type="button" onClick={() => void refreshMemos()}>搜索</button></div><div><button type="button" className={memoArchived ? "active" : ""} onClick={() => { const next = !memoArchived; setMemoArchived(next); void refreshMemos(next); }}>{memoArchived ? <RotateCcw/> : <Archive/>}{memoArchived ? "返回当前" : "归档"}</button><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "memo" })}><Plus/>快速记</button></div></div><div className="lt-exec-memo-grid">{data.memos.length ? data.memos.map((memo) => <article key={memo.id} className={memo.isPinned ? "pinned" : ""}><header><button type="button" title={memo.isPinned ? "取消置顶" : "置顶"} onClick={() => void run(() => executionApi.memos.pin(memo.id, !memo.isPinned), memo.isPinned ? "已取消置顶" : "已置顶")}><Pin className={memo.isPinned ? "filled" : ""}/></button><span>{formatDateTime(memo.updatedAt)}</span></header><button className="lt-exec-memo-content" type="button" onClick={() => setEditor({ kind: "memo", value: memo })}>{memo.content}</button>{memo.tags.length ? <div className="lt-exec-tags">{memo.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}<footer>{memo.status === "active" ? <button type="button" onClick={() => void run(() => executionApi.memos.archive(memo.id), "Memo 已归档")}><Archive/>归档</button> : <button type="button" onClick={() => void run(() => executionApi.memos.restore(memo.id), "Memo 已恢复")}><RotateCcw/>恢复</button>}<button type="button" onClick={() => setEditor({ kind: "reminder", subjectType: "memo", subjectId: memo.id, title: memo.plainText.slice(0, 30) })}><Bell/>提醒</button>{memo.status === "active" ? <button type="button" onClick={() => void run(() => executionApi.memos.convertToTask(memo.id, { title: memo.plainText.slice(0, 80), priority: "normal", timezone: browserTimezone() }), "已转换为任务")}>转任务<ChevronRight/></button> : null}</footer></article>) : <SectionEmpty>{memoArchived ? "没有已归档 Memo" : "还没有 Memo，先快速记一条"}</SectionEmpty>}</div></div>;
+  const renderMemos = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div className="lt-exec-search"><Search/><input value={memoQuery} onChange={(e) => setMemoQuery(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void refreshMemos(); }} placeholder="搜索 Memo、上下文或标签"/><button type="button" onClick={() => void refreshMemos()}>搜索</button></div><div><button type="button" className={memoArchived ? "active" : ""} onClick={() => { const next = !memoArchived; setMemoArchived(next); void refreshMemos(next); }}>{memoArchived ? <RotateCcw/> : <Archive/>}{memoArchived ? "返回当前" : "归档"}</button><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "memo" })}><Plus/>快速记</button></div></div><div className="lt-exec-memo-grid">{data.memos.length ? data.memos.map((memo) => <article key={memo.id} className={memo.isPinned ? "pinned" : ""} onContextMenu={(event) => openMemoMenu(event, memo)}><header><button type="button" title={memo.isPinned ? "取消置顶" : "置顶"} onClick={() => void run(() => executionApi.memos.pin(memo.id, !memo.isPinned), memo.isPinned ? "已取消置顶" : "已置顶")}><Pin className={memo.isPinned ? "filled" : ""}/></button><span>{formatDateTime(memo.updatedAt)}</span></header><button className="lt-exec-memo-content" type="button" onClick={() => setEditor({ kind: "memo", value: memo })}>{memo.content}</button>{memo.tags.length ? <div className="lt-exec-tags">{memo.tags.map((tag) => <span key={tag}>#{tag}</span>)}</div> : null}<footer>{memo.status === "active" ? <button type="button" onClick={() => void run(() => executionApi.memos.archive(memo.id), "Memo 已归档")}><Archive/>归档</button> : <button type="button" onClick={() => void run(() => executionApi.memos.restore(memo.id), "Memo 已恢复")}><RotateCcw/>恢复</button>}<button type="button" onClick={() => setReminderSubject({ subjectType: "memo", subjectId: memo.id, title: memo.plainText.slice(0, 30) })}><Bell/>提醒</button>{memo.status === "active" ? <button type="button" onClick={() => setConvertMemo(memo)}>转换<ChevronRight/></button> : null}</footer></article>) : <SectionEmpty>{memoArchived ? "没有已归档 Memo" : "还没有 Memo，先快速记一条"}</SectionEmpty>}</div></div>;
 
   const activeTab = tabs.find(([id]) => id === tab)!;
   const renderContent = () => ({ today: renderToday, tasks: renderTasks, projects: renderProjects, calendar: renderCalendar, waiting: renderWaiting, memos: renderMemos }[tab])();
@@ -377,12 +429,30 @@ export default function ExecutionModule() {
     <nav className="lt-exec-tabs" aria-label="执行中心"><div>{tabs.map(([id, label, Icon]) => <button key={id} type="button" className={tab === id ? "active" : ""} aria-current={tab === id ? "page" : undefined} onClick={() => setTab(id)}><Icon/>{label}</button>)}</div><span>{activeTab[1]}</span></nav>
     {loading ? <div className="lt-exec-loading"><LoaderCircle className="spin"/><span>正在读取本地执行数据…</span></div> : error ? <div className="lt-exec-error"><strong>执行数据暂时无法读取</strong><span>{error}</span><button className="hx-btn primary" type="button" onClick={() => { setLoading(true); void load(); }}>重试</button></div> : renderContent()}
     {editor ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}>
-      {editor.kind === "task" ? <TaskEditor value={editor.value} projects={data.projects} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.tasks.update(editor.value.id, input) : executionApi.tasks.create(input), editor.value ? "任务已更新" : "任务已创建")} remove={() => run(() => executionApi.tasks.remove(editor.value!.id), "任务已删除")}/>: null}
+      {editor.kind === "task" ? <TaskEditor value={editor.value} projects={data.projects} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.tasks.update(editor.value.id, preserveTaskUpdateFields(editor.value, input)) : executionApi.tasks.create(input), editor.value ? "任务已更新" : "任务已创建")} remove={() => run(() => executionApi.tasks.remove(editor.value!.id), "任务已删除")}/>: null}
       {editor.kind === "project" ? <ProjectEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.projects.update(editor.value.id, input) : executionApi.projects.create(input), editor.value ? "项目已更新" : "项目已创建")} remove={() => run(() => executionApi.projects.remove(editor.value!.id), "项目已删除")}/>: null}
       {editor.kind === "calendar" ? <CalendarEditor value={editor.value} sourceTask={editor.sourceTask} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.sourceTask ? executionApi.tasks.schedule(editor.sourceTask.id, input) : editor.value ? executionApi.calendar.update(editor.value.id, input) : executionApi.calendar.create(input), editor.sourceTask ? "任务已安排到日历" : editor.value ? "事件已更新" : "事件已创建")} remove={() => run(() => executionApi.calendar.remove(editor.value!.id), "事件已删除")}/>: null}
       {editor.kind === "waiting" ? <WaitingEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.waiting.update(editor.value.id, input) : executionApi.waiting.create(input), editor.value ? "等待事项已更新" : "等待事项已创建")} remove={() => run(() => executionApi.waiting.remove(editor.value!.id), "等待事项已删除")}/>: null}
       {editor.kind === "memo" ? <MemoEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.memos.update(editor.value.id, input) : executionApi.memos.create(input), editor.value ? "Memo 已更新" : "Memo 已保存")} remove={() => run(() => executionApi.memos.remove(editor.value!.id), "Memo 已删除")}/>: null}
-      {editor.kind === "reminder" ? <ReminderEditor title={editor.title} busy={busy} close={() => setEditor(null)} save={(value) => { const triggerAt = localDateTimeToRfc3339(value); if (!triggerAt) return Promise.resolve(); return run(() => executionApi.reminders.create({ subjectType: editor.subjectType, subjectId: editor.subjectId, triggerAt, timezone: browserTimezone() }), "提醒已添加"); }}/>: null}
     </div> : null}
+    {inspectTask ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setInspectTask(null); }}>
+      <TaskAdvancedPanel
+        task={inspectTask}
+        projects={data.projects}
+        allTasks={data.tasks}
+        onClose={() => setInspectTask(null)}
+        onEdit={() => { const value = inspectTask; setInspectTask(null); setEditor({ kind: "task", value }); }}
+        onSchedule={() => { const sourceTask = inspectTask; setInspectTask(null); setEditor({ kind: "calendar", sourceTask }); }}
+        onReminder={() => { const value = inspectTask; setInspectTask(null); setReminderSubject({ subjectType: "task", subjectId: value.id, title: value.title }); }}
+        onChanged={load}
+      />
+    </div> : null}
+    {reminderSubject ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setReminderSubject(null); }}>
+      <SubjectReminderPanel {...reminderSubject} onClose={() => setReminderSubject(null)} onChanged={load}/>
+    </div> : null}
+    {convertMemo ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setConvertMemo(null); }}>
+      <MemoConvertPanel memo={convertMemo} projects={data.projects} onClose={() => setConvertMemo(null)} onConverted={async () => { await load(); if (tab === "memos") await refreshMemos(); }}/>
+    </div> : null}
+    {contextMenu ? <ExecutionContextMenu {...contextMenu} onClose={() => setContextMenu(null)}/> : null}
   </div>;
 }
