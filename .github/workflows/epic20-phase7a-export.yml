@@ -20,10 +20,11 @@ jobs:
         with:
           toolchain: 1.88.0
           components: rustfmt
-      - name: Register execution sync entities and adapters
+      - name: Build final Phase 7A source set
         shell: bash
         run: |
           python - <<'PY'
+          import json
           from pathlib import Path
 
           entity_types = [
@@ -127,18 +128,78 @@ jobs:
                   raise SystemExit("outbox existing profile anchor not found")
               text = text.replace(execution_anchor, execution_insert, 1)
           outbox.write_text(text, encoding="utf-8")
+
+          execution = Path("apps/desktop/src-tauri/src/sync/execution.rs")
+          text = execution.read_text(encoding="utf-8")
+          old = "    statement\n        .query_map([], |row| row.get::<_, String>(1))\n        .map_err(|error| error.to_string())?\n        .collect::<rusqlite::Result<Vec<_>>>()\n        .map_err(|error| error.to_string())\n}"
+          new = "    let columns = statement\n        .query_map([], |row| row.get::<_, String>(1))\n        .map_err(|error| error.to_string())?\n        .collect::<rusqlite::Result<Vec<_>>>()\n        .map_err(|error| error.to_string())?;\n    Ok(columns)\n}"
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif "let columns = statement" not in text:
+              raise SystemExit("table_columns lifetime fix anchor not found")
+          execution.write_text(text, encoding="utf-8")
+
+          scope = Path("services/cloud/src/auth/scope.rs")
+          text = scope.read_text(encoding="utf-8")
+          if '"execution:read"' not in text:
+              anchor = '    "workouts:read",\n    "workouts:write",\n];'
+              replacement = '    "workouts:read",\n    "workouts:write",\n    "execution:read",\n    "execution:write",\n];'
+              if anchor not in text:
+                  raise SystemExit("scope list anchor not found")
+              text = text.replace(anchor, replacement, 1)
+
+              anchor = '    } else if entity_type.starts_with("workout.") || entity_type == "training.note" {\n        "workouts"\n    } else if entity_type == "file.metadata" {'
+              replacement = '    } else if entity_type.starts_with("workout.") || entity_type == "training.note" {\n        "workouts"\n    } else if entity_type.starts_with("execution.") {\n        "execution"\n    } else if entity_type == "file.metadata" {'
+              if anchor not in text:
+                  raise SystemExit("required_entity_scope domain anchor not found")
+              text = text.replace(anchor, replacement, 1)
+
+              anchor = '        ("workouts", "read") => "workouts:read",\n        ("workouts", _) => "workouts:write",\n        ("files", "read") => "files:read",'
+              replacement = '        ("workouts", "read") => "workouts:read",\n        ("workouts", _) => "workouts:write",\n        ("execution", "read") => "execution:read",\n        ("execution", _) => "execution:write",\n        ("files", "read") => "files:read",'
+              if anchor not in text:
+                  raise SystemExit("required_entity_scope match anchor not found")
+              text = text.replace(anchor, replacement, 1)
+
+              test_anchor = '    #[test]\n    fn unknown_entity_type_never_defaults_to_allow() {'
+              test = '    #[test]\n    fn desktop_execution_entities_have_read_and_write_scopes() {\n        let granted = allowed_scopes(AppId::DESKTOP);\n        assert!(granted.contains("execution:read"));\n        assert!(granted.contains("execution:write"));\n        assert_eq!(required_entity_scope("execution.task", false), Some("execution:read"));\n        assert_eq!(required_entity_scope("execution.memo", true), Some("execution:write"));\n    }\n\n'
+              if test_anchor not in text:
+                  raise SystemExit("scope test anchor not found")
+              text = text.replace(test_anchor, test + test_anchor, 1)
+          scope.write_text(text, encoding="utf-8")
+
+          fixture = Path("crates/lifetrace-contracts/tests/fixtures/sync-v1/capabilities.json")
+          data = json.loads(fixture.read_text(encoding="utf-8"))
+          execution_wires = [wire for _, wire in entity_types]
+          supported = data["supportedEntityTypes"]
+          if "execution.project" not in supported:
+              index = supported.index("file.metadata")
+              supported[index:index] = execution_wires
+          if len(supported) != 44:
+              raise SystemExit(f"unexpected capabilities entity count: {len(supported)}")
+          fixture.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+          golden = Path("crates/lifetrace-contracts/tests/golden.rs")
+          text = golden.read_text(encoding="utf-8")
+          text = text.replace("assert_eq!(capabilities.supported_entity_types.len(), 30);", "assert_eq!(capabilities.supported_entity_types.len(), 44);")
+          if "assert_eq!(capabilities.supported_entity_types.len(), 44);" not in text:
+              raise SystemExit("golden capabilities count anchor not found")
+          golden.write_text(text, encoding="utf-8")
           PY
       - name: Format Phase 7A sources
         shell: bash
         run: |
           cargo fmt --manifest-path crates/lifetrace-contracts/Cargo.toml
+          cargo fmt --manifest-path services/cloud/Cargo.toml
           cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
-      - name: Export formatted sources from clean main
+      - name: Export final source set from clean main
         shell: bash
         run: |
           git fetch origin main
           git diff --binary origin/main -- \
             crates/lifetrace-contracts/src/registry.rs \
+            crates/lifetrace-contracts/tests/golden.rs \
+            crates/lifetrace-contracts/tests/fixtures/sync-v1/capabilities.json \
+            services/cloud/src/auth/scope.rs \
             apps/desktop/src-tauri/src/database/migrations/m0010_execution_sync.rs \
             apps/desktop/src-tauri/src/database/migrations/mod.rs \
             apps/desktop/src-tauri/src/sync/execution.rs \
