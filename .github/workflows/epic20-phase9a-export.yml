@@ -63,6 +63,12 @@ jobs:
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database::repositories::execution_relation::tests::links_are_bidirectionally_queryable_and_idempotent -- --exact --test-threads=1 --nocapture
       - name: Completion backfill migration test
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database::migrations::m0011_execution_completion_backfill::tests::backfill_creates_missing_completion_result_once -- --exact --test-threads=1 --nocapture
+      - name: Legacy migration tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib migration -- --test-threads=1 --nocapture
+      - name: Legacy execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution::tests -- --test-threads=1 --nocapture
+      - name: Legacy sync and outbox tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib sync -- --test-threads=1 --nocapture
       - name: Desktop Rust tests
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Desktop Clippy
