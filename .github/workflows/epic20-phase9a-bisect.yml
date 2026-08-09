@@ -41,26 +41,38 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
       - name: Database tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database:: -- --test-threads=1
       - name: Desktop tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib desktop:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib desktop:: -- --test-threads=1
       - name: Calendar execution tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_calendar:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_calendar:: -- --test-threads=1
       - name: Memo execution tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_memo:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_memo:: -- --test-threads=1
       - name: Reminder execution tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_reminder:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_reminder:: -- --test-threads=1
       - name: Structure execution tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_structure:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_structure:: -- --test-threads=1
       - name: Waiting execution tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_waiting:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_waiting:: -- --test-threads=1
       - name: Cloud auth tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib cloud_auth:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib cloud_auth:: -- --test-threads=1
       - name: Observability tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib observability:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib observability:: -- --test-threads=1
       - name: Server tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib server:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib server:: -- --test-threads=1
       - name: Storage tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib storage:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib storage:: -- --test-threads=1
       - name: Vault tests
-        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib vault:: -- --test-threads=1
+        run: |
+          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib vault:: -- --test-threads=1
