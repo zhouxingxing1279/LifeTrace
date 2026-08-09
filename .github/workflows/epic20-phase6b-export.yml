@@ -26,6 +26,31 @@ jobs:
           python - <<'PY'
           from pathlib import Path
 
+          memo = Path("apps/desktop/src-tauri/src/execution_memo.rs")
+          text = memo.read_text(encoding="utf-8")
+          old = """    database::{
+        profile,
+        repositories::execution_memo::{self as repository, MemoFilter, MemoRecord, MemoWrite},
+    },
+"""
+          new = """    database::{
+        profile,
+        repositories::{
+            execution_calendar::CalendarEventRecord,
+            execution_memo::{self as repository, MemoFilter, MemoRecord, MemoWrite},
+        },
+    },
+"""
+          if old not in text and "execution_calendar::CalendarEventRecord" not in text:
+              raise SystemExit("memo repository import anchor not found")
+          text = text.replace(old, new, 1)
+          text = text.replace(
+              "execution_calendar::{self, CalendarEventInput, CalendarEventRecord, CalendarTimingInput},",
+              "execution_calendar::{self, CalendarEventInput, CalendarTimingInput},",
+              1,
+          )
+          memo.write_text(text, encoding="utf-8")
+
           repo_mod = Path("apps/desktop/src-tauri/src/database/repositories/mod.rs")
           text = repo_mod.read_text(encoding="utf-8")
           needle = "pub mod execution_calendar;\n"
