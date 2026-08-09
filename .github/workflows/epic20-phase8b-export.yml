@@ -1,0 +1,59 @@
+name: EPIC20 Phase8B Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase8b-advanced-actions
+
+permissions:
+  contents: write
+
+jobs:
+  validate-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase8b-advanced-actions
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Assemble formal UI changes
+        run: python tools/epic20_phase8b_patch.py
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: npm run lint
+      - name: Unit tests
+        working-directory: apps/desktop
+        run: npm run test:unit
+      - name: Web build
+        working-directory: apps/desktop
+        run: npm run web:build
+      - name: Export clean branch
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src/components/feature/execution/ExecutionModule.tsx \
+            apps/desktop/src/components/feature/execution/TaskAdvancedPanel.tsx \
+            apps/desktop/src/components/feature/execution/SubjectReminderPanel.tsx \
+            apps/desktop/src/components/feature/execution/MemoConvertPanel.tsx \
+            apps/desktop/src/components/feature/execution/ExecutionContextMenu.tsx \
+            apps/desktop/src/components/feature/execution/executionViewModel.ts \
+            apps/desktop/app/execution.css \
+            apps/desktop/tests/execution-view-model.test.ts \
+            > /tmp/phase8b.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase8b-advanced-actions-clean origin/main
+          git apply --index /tmp/phase8b.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add advanced execution actions"
+          git push --force origin HEAD:agent/epic20-phase8b-advanced-actions-clean
