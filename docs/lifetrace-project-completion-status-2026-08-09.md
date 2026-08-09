@@ -3,7 +3,7 @@
 > 评估日期：**2026-08-09**  
 > 评估分支：`main`  
 > 评估基线提交：`025bf4ac102839a86cda8c725f89d6ae190e09dc`  
-> Roadmap 基线：`docs/LifeTrace_Complete_Roadmap_v2.md`  
+> Roadmap 基线：`docs/lifetrace-complete-roadmap.md`  
 > 用途：记录当前代码主干的真实完成程度，区分“已规划”“已实现”“已验证”和“尚未开始”，作为后续 Epic 排期与阶段复盘的统一状态基线。
 
 ---
@@ -205,13 +205,13 @@ EPIC-21~26 是未来从“AI 页面”升级为“LifeTrace 自然语言操作�
 
 ### 6.1 Roadmap 勾选状态已经滞后
 
-`docs/LifeTrace_Complete_Roadmap_v2.md` 中大量任务仍为 `[ ]`，但 EPIC-01、03、04、05、14、20、27 等已经有明显代码实现。
+`docs/lifetrace-complete-roadmap.md` 中大量任务仍为 `[ ]`，但 EPIC-01、03、04、05、14、20、27 等已经有明显代码实现。
 
 因此以后不应使用 Roadmap checkbox 直接判断项目完成度。
 
 ### 6.2 EPIC-14 执行报告状态已经过时
 
-`docs/epic-14/LifeTrace_EPIC14_Analytics_Insights_Execution_Report.md` 当前顶部仍写：
+`docs/epic-14/execution-report.md` 当前顶部仍写：
 
 ```text
 状态：待实施 / 可直接交给 Agent 执行
@@ -234,21 +234,9 @@ EPIC-21~26 是未来从“AI 页面”升级为“LifeTrace 自然语言操作�
 
 EPIC-02 的 2026-08-05 校验报告仍记录“前端验证待执行”，但当前仓库已经有完整前端构建与后续跨模块 CI。这条说明应视为历史快照，而不是当前阻塞项。
 
-### 6.4 Roadmap 文件名与正文版本号不一致
+### 6.4 文档命名已经统一
 
-文件名仍为：
-
-```text
-docs/LifeTrace_Complete_Roadmap_v2.md
-```
-
-正文标题已经是：
-
-```text
-LifeTrace 完整产品与开发路线图 v3
-```
-
-建议后续统一版本号，避免自动化工具和 Agent 读取错误版本。
+2026-08-09 已将 `docs/` 文档统一为小写 kebab-case 命名，并移除 Roadmap 文件名与标题中的 `v2 / v3` 版本号。Epic 目录内的实施方案统一使用 `implementation-plan.md`，报告与状态文件使用明确的职责名称。
 
 ---
 
@@ -328,7 +316,7 @@ LifeTrace 当前已经跨过“功能 Demo”阶段，进入了 **平台化重�
 后续每次重要阶段完成时新增：
 
 ```text
-docs/LifeTrace_Project_Completion_Status_YYYY-MM-DD.md
+docs/lifetrace-project-completion-status-YYYY-MM-DD.md
 ```
 
 每次重新评估时至少检查：
