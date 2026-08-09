@@ -1,3 +1,4 @@
+mod analytics;
 mod assistant;
 mod dictionary;
 mod english;
@@ -151,6 +152,12 @@ pub async fn serve(
     let app = Router::new()
         .route("/api/health", get(health))
         .route("/api/state", get(state::get).post(state::mutate))
+        .route("/api/analytics/status", get(analytics::status))
+        .route("/api/analytics/rebuild", axum::routing::post(analytics::rebuild))
+        .route("/api/analytics/timeline", get(analytics::timeline))
+        .route("/api/analytics/search", get(analytics::search))
+        .route("/api/analytics/report", get(analytics::report))
+        .route("/api/analytics/insights", get(analytics::insights))
         .route(
             "/api/execution/projects",
             get(execution::list_projects).post(execution::create_project),
