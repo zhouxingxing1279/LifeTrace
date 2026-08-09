@@ -46,7 +46,9 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri
       - name: Assemble formal changes
-        run: python tools/epic20_phase9a_patch.py
+        run: |
+          python tools/epic20_phase9a_patch.py
+          python tools/epic20_phase9a_nested_tx_fix.py
       - name: Rustfmt
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Rust compile check
@@ -69,6 +71,8 @@ jobs:
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution::tests -- --test-threads=1 --nocapture
       - name: Legacy sync and outbox tests
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib sync -- --test-threads=1 --nocapture
+      - name: Task to waiting transaction regression
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_waiting::tests::task_to_waiting_is_atomic_and_does_not_duplicate_open_item -- --exact --test-threads=1 --nocapture
       - name: Desktop Rust tests
         run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Desktop Clippy
