@@ -20,7 +20,7 @@ impl Migration for M0012AnalyticsInsights {
     }
 
     fn checksum(&self) -> &'static str {
-        "m0012-analytics-insights-v1"
+        "m0012-analytics-insights-v2"
     }
 
     fn up(
@@ -31,6 +31,14 @@ impl Migration for M0012AnalyticsInsights {
         transaction
             .execute_batch(
                 r#"
+                CREATE TABLE IF NOT EXISTS analytics_projection_state (
+                  user_id TEXT PRIMARY KEY,
+                  dirty INTEGER NOT NULL DEFAULT 1 CHECK(dirty IN (0,1)),
+                  projection_version INTEGER NOT NULL DEFAULT 1 CHECK(projection_version >= 1),
+                  last_rebuilt_at TEXT,
+                  last_error TEXT
+                );
+
                 CREATE TABLE IF NOT EXISTS analytics_events (
                   id TEXT PRIMARY KEY,
                   user_id TEXT NOT NULL DEFAULT 'local',
@@ -122,6 +130,205 @@ impl Migration for M0012AnalyticsInsights {
                   ON analytics_insights(
                     user_id, insight_type, period_start, period_end, algorithm_version
                   );
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_transactions_insert
+                AFTER INSERT ON transactions BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_transactions_update
+                AFTER UPDATE ON transactions BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_transactions_delete
+                AFTER DELETE ON transactions BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_activities_update
+                AFTER UPDATE ON activities BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_activity_logs_insert
+                AFTER INSERT ON activity_logs BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_activity_logs_update
+                AFTER UPDATE ON activity_logs BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_activity_logs_delete
+                AFTER DELETE ON activity_logs BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_daily_reviews_change
+                AFTER INSERT ON daily_reviews BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_daily_reviews_update
+                AFTER UPDATE ON daily_reviews BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_daily_reviews_delete
+                AFTER DELETE ON daily_reviews BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_notes_insert
+                AFTER INSERT ON notes BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_notes_update
+                AFTER UPDATE ON notes BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_notes_delete
+                AFTER DELETE ON notes BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_records_insert
+                AFTER INSERT ON english_learning_records BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_records_update
+                AFTER UPDATE ON english_learning_records BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_records_delete
+                AFTER DELETE ON english_learning_records BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_vocab_insert
+                AFTER INSERT ON english_vocabulary BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_vocab_update
+                AFTER UPDATE ON english_vocabulary BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_vocab_delete
+                AFTER DELETE ON english_vocabulary BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_english_articles_update
+                AFTER UPDATE ON english_articles BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  SELECT DISTINCT user_id,1,1 FROM english_learning_records
+                   WHERE article_id=NEW.id AND deleted_at IS NULL
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_workouts_insert
+                AFTER INSERT ON workouts BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_workouts_update
+                AFTER UPDATE ON workouts BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_workouts_delete
+                AFTER DELETE ON workouts BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_tasks_insert
+                AFTER INSERT ON execution_tasks BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_tasks_update
+                AFTER UPDATE ON execution_tasks BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_tasks_delete
+                AFTER DELETE ON execution_tasks BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_calendar_insert
+                AFTER INSERT ON execution_calendar_events BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_calendar_update
+                AFTER UPDATE ON execution_calendar_events BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_calendar_delete
+                AFTER DELETE ON execution_calendar_events BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_memos_insert
+                AFTER INSERT ON execution_memos BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_memos_update
+                AFTER UPDATE ON execution_memos BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(NEW.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
+                CREATE TRIGGER IF NOT EXISTS trg_analytics_execution_memos_delete
+                AFTER DELETE ON execution_memos BEGIN
+                  INSERT INTO analytics_projection_state(user_id,dirty,projection_version)
+                  VALUES(OLD.user_id,1,1)
+                  ON CONFLICT(user_id) DO UPDATE SET dirty=1,last_error=NULL;
+                END;
                 "#,
             )
             .map_err(|error| MigrationError {
@@ -136,6 +343,9 @@ impl Migration for M0012AnalyticsInsights {
             .insert("analytics_search_documents".to_owned(), 1);
         report.metrics.insert("analytics_reports".to_owned(), 1);
         report.metrics.insert("analytics_insights".to_owned(), 1);
+        report
+            .metrics
+            .insert("analytics_projection_state".to_owned(), 1);
         Ok(report)
     }
 }
@@ -151,7 +361,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
-    fn migration_creates_epic14_projection_tables_without_touching_sources() {
+    fn migration_creates_projection_tables_and_source_triggers() {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap()
@@ -165,6 +375,7 @@ mod tests {
         run(&mut connection, &context, &all()).unwrap();
 
         for table in [
+            "analytics_projection_state",
             "analytics_events",
             "analytics_search_documents",
             "analytics_reports",
@@ -180,13 +391,26 @@ mod tests {
             assert_eq!(exists, 1, "missing analytics table {table}");
         }
 
-        let source_exists: i64 = connection
+        connection
+            .execute(
+                "INSERT INTO transactions(
+                   id,user_id,transaction_type,amount_cents,currency,occurred_at,local_date,status,
+                   source_type,created_at,updated_at,version
+                 ) VALUES(
+                   'tx-analytics-test','local','expense',1200,'CNY','2026-08-09T08:00:00Z',
+                   '2026-08-09','confirmed','manual','2026-08-09T08:00:00Z',
+                   '2026-08-09T08:00:00Z',1
+                 )",
+                [],
+            )
+            .unwrap();
+        let dirty: i64 = connection
             .query_row(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='transactions'",
+                "SELECT dirty FROM analytics_projection_state WHERE user_id='local'",
                 [],
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(source_exists, 1);
+        assert_eq!(dirty, 1);
     }
 }
