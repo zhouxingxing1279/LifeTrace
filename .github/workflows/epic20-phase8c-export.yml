@@ -1,0 +1,59 @@
+name: EPIC20 Phase8C Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase8c-calendar-views
+
+permissions:
+  contents: write
+
+jobs:
+  validate-export:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase8c-calendar-views
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Assemble formal UI changes
+        run: python tools/epic20_phase8c_patch.py
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: npm run lint
+      - name: Unit tests
+        working-directory: apps/desktop
+        run: npm run test:unit
+      - name: Web build
+        working-directory: apps/desktop
+        run: npm run web:build
+      - name: Export clean branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          FORMAL=(
+            apps/desktop/app/execution-calendar.css
+            apps/desktop/src/components/feature/execution/CalendarWorkspace.tsx
+            apps/desktop/src/components/feature/execution/calendarViewModel.ts
+            apps/desktop/src/components/feature/execution/ExecutionModule.tsx
+            apps/desktop/tauri-ui/main.tsx
+            apps/desktop/tests/execution-calendar-view.test.ts
+          )
+          git diff origin/main -- "${FORMAL[@]}" > /tmp/phase8c.patch
+          test -s /tmp/phase8c.patch
+          git checkout -B agent/epic20-phase8c-calendar-views-clean origin/main
+          git apply /tmp/phase8c.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "${FORMAL[@]}"
+          git diff --cached --check
+          git commit -m "feat(epic20): add month week day calendar views"
+          git push --force origin agent/epic20-phase8c-calendar-views-clean
