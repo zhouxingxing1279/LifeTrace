@@ -79,11 +79,9 @@ Prompt Injection 与模型上下文相关能力
 QQ 邮箱
 163 邮箱
 126 邮箱
-y e a h . n e t 邮箱（实现中使用正常域名 yeah.net）
+yeah.net 邮箱
 通用 IMAP / SMTP
 ```
-
-> 实际代码中使用正常的 `yeah.net`，上方仅为避免部分 Markdown/转义工具误处理域名。
 
 后续再支持：
 
