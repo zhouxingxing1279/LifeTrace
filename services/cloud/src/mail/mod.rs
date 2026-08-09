@@ -1,3 +1,4 @@
+pub mod attachment;
 pub mod credential;
 pub mod domain;
 pub mod parser;
