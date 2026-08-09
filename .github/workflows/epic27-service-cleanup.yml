@@ -21,22 +21,28 @@ jobs:
         with:
           toolchain: 1.88.0
           components: rustfmt,clippy
-      - name: Apply narrow service cleanup
+      - name: Apply final service behavior fixes
         shell: bash
         run: |
           python3 <<'PY'
           from pathlib import Path
           path = Path("services/cloud/src/mail/service.rs")
           text = path.read_text()
-          dead = "const MESSAGE_SELECT_FIELDS: &str = r#\"\nid,account_id,folder_id,thread_id,remote_uid,uidvalidity,message_id,in_reply_to,subject,\nfrom_json,to_json,cc_json,reply_to_json,sent_at,received_at,flags_json,is_read,is_archived,\nsize_bytes,snippet,body_text,body_html_sanitized,has_attachments\n\"#;\n\n"
-          if dead not in text:
-              raise SystemExit("unused MESSAGE_SELECT_FIELDS block not found")
-          text = text.replace(dead, "", 1)
-          marker = "#[cfg(test)]\nmod tests {\n    use super::*;\n"
-          replacement = "#[cfg(test)]\nmod tests {\n    use super::*;\n    use crate::mail::domain::MailProvider;\n"
-          if marker not in text:
-              raise SystemExit("test module marker not found")
-          path.write_text(text.replace(marker, replacement, 1))
+          old_credential = "credential_ciphertext='\\\\x'::bytea,credential_nonce='\\\\x'::bytea"
+          new_credential = "credential_ciphertext=decode('', 'hex'),credential_nonce=decode('', 'hex')"
+          if old_credential not in text:
+              raise SystemExit("disconnect credential reset block not found")
+          text = text.replace(old_credential, new_credential, 1)
+          old_sql = "              AND ($3::text IS NULL OR normalized_subject ILIKE '%' || $3 || '%' OR coalesce(snippet,'') ILIKE '%' || $3 || '%')\n              AND ($4::boolean IS NULL OR ($4=TRUE AND unread_count>0) OR $4=FALSE)\n            ORDER BY latest_message_at DESC NULLS LAST\n            LIMIT $5 OFFSET $6\n"
+          new_sql = "              AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM mail_messages m WHERE m.thread_id=mail_threads.id AND m.folder_id=$3))\n              AND ($4::text IS NULL OR normalized_subject ILIKE '%' || $4 || '%' OR coalesce(snippet,'') ILIKE '%' || $4 || '%')\n              AND ($5::boolean IS NULL OR ($5=TRUE AND unread_count>0) OR $5=FALSE)\n            ORDER BY latest_message_at DESC NULLS LAST\n            LIMIT $6 OFFSET $7\n"
+          if old_sql not in text:
+              raise SystemExit("thread filter SQL block not found")
+          text = text.replace(old_sql, new_sql, 1)
+          old_bind = "        .bind(query.account_id)\n        .bind(q)\n        .bind(query.unread_only)\n        .bind(query.limit.unwrap_or(100).clamp(1, 200))\n        .bind(query.offset.unwrap_or(0).max(0))\n"
+          new_bind = "        .bind(query.account_id)\n        .bind(query.folder_id)\n        .bind(q)\n        .bind(query.unread_only)\n        .bind(query.limit.unwrap_or(100).clamp(1, 200))\n        .bind(query.offset.unwrap_or(0).max(0))\n"
+          if old_bind not in text:
+              raise SystemExit("thread filter bind block not found")
+          path.write_text(text.replace(old_bind, new_bind, 1))
           PY
       - name: Format cloud Rust
         run: cargo fmt --manifest-path services/cloud/Cargo.toml
@@ -44,10 +50,10 @@ jobs:
         run: cargo test --manifest-path services/cloud/Cargo.toml --lib --no-run
       - name: Clippy cloud targets
         run: cargo clippy --manifest-path services/cloud/Cargo.toml --all-targets -- -D warnings
-      - name: Commit cleanup
+      - name: Commit behavior fixes
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add services/cloud/src/mail/service.rs
-          git commit -m "fix(epic27): keep test-only provider import scoped"
+          git commit -m "fix(epic27): apply folder filtering and secure credential reset"
           git push origin HEAD:agent/epic27-mail-foundation
