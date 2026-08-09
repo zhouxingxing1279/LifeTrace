@@ -29,20 +29,8 @@ jobs:
 
           protocol = Path("services/cloud/src/mail/protocol.rs")
           text = protocol.read_text()
-          old = """        let outcome = session
-              .idle()
-              .wait_with_timeout(timeout)
-              .map_err(|_| MailProtocolError::Connect)?;
-          let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
-          """
-          new = """        let outcome = {
-              let mut idle = session.idle();
-              idle.timeout(timeout).keepalive(false);
-              idle.wait_while(imap::extensions::idle::stop_on_any)
-                  .map_err(|_| MailProtocolError::Connect)?
-          };
-          let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
-          """
+          old = "        let outcome = session\n            .idle()\n            .wait_with_timeout(timeout)\n            .map_err(|_| MailProtocolError::Connect)?;\n        let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);\n"
+          new = "        let outcome = {\n            let mut idle = session.idle();\n            idle.timeout(timeout).keepalive(false);\n            idle.wait_while(imap::extensions::idle::stop_on_any)\n                .map_err(|_| MailProtocolError::Connect)?\n        };\n        let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);\n"
           if old not in text:
               raise SystemExit("expected protocol block not found")
           protocol.write_text(text.replace(old, new, 1))
