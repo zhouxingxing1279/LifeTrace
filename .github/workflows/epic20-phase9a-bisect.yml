@@ -1,0 +1,66 @@
+name: EPIC20 Phase9A Rust Bisect
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase9a-relations-completion
+
+jobs:
+  rust-bisect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase9a-relations-completion
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo timeout 240s apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20
+          sudo timeout 240s apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('apps/desktop/xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Assemble formal changes
+        run: python tools/epic20_phase9a_patch.py
+      - name: Rustfmt
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+      - name: Database tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database:: -- --test-threads=1
+      - name: Desktop tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib desktop:: -- --test-threads=1
+      - name: Calendar execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_calendar:: -- --test-threads=1
+      - name: Memo execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_memo:: -- --test-threads=1
+      - name: Reminder execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_reminder:: -- --test-threads=1
+      - name: Structure execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_structure:: -- --test-threads=1
+      - name: Waiting execution tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_waiting:: -- --test-threads=1
+      - name: Cloud auth tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib cloud_auth:: -- --test-threads=1
+      - name: Observability tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib observability:: -- --test-threads=1
+      - name: Server tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib server:: -- --test-threads=1
+      - name: Storage tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib storage:: -- --test-threads=1
+      - name: Vault tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib vault:: -- --test-threads=1
