@@ -10,6 +10,7 @@ import {
   Home,
   Images,
   Languages,
+  ListChecks,
   NotebookPen,
   WalletCards,
 } from "lucide-react";
@@ -17,6 +18,7 @@ import type { NavGroup } from "./AppShell";
 
 export type PlatformView =
   | "dashboard"
+  | "execution"
   | "assistant"
   | "habits"
   | "english"
@@ -35,7 +37,10 @@ export type PlatformView =
 export const navGroups: NavGroup[] = [
   {
     label: "今天",
-    items: [{ id: "dashboard", label: "今天", icon: Home }],
+    items: [
+      { id: "dashboard", label: "今天", icon: Home },
+      { id: "execution", label: "执行", icon: ListChecks },
+    ],
   },
   {
     label: "生活",
@@ -76,6 +81,7 @@ export const navGroups: NavGroup[] = [
 
 export const pageTitles: Record<PlatformView, string> = {
   dashboard: "今天",
+  execution: "执行中心",
   assistant: "AI 管家",
   habits: "坚持",
   english: "每日英语",
