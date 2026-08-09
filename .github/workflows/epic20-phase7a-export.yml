@@ -1,0 +1,156 @@
+name: EPIC20 Phase7A Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase7a-sync
+
+permissions:
+  contents: write
+
+jobs:
+  export-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase7a-sync
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Register execution sync entities and adapters
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          entity_types = [
+              ("EXECUTION_PROJECT", "execution.project"),
+              ("EXECUTION_RECURRENCE_RULE", "execution.recurrence_rule"),
+              ("EXECUTION_TASK", "execution.task"),
+              ("EXECUTION_TASK_DEPENDENCY", "execution.task_dependency"),
+              ("EXECUTION_TASK_OCCURRENCE", "execution.task_occurrence"),
+              ("EXECUTION_WAITING_ITEM", "execution.waiting_item"),
+              ("EXECUTION_CALENDAR_EVENT", "execution.calendar_event"),
+              ("EXECUTION_CALENDAR_OCCURRENCE", "execution.calendar_occurrence"),
+              ("EXECUTION_MEMO", "execution.memo"),
+              ("EXECUTION_MEMO_TAG", "execution.memo_tag"),
+              ("EXECUTION_MEMO_TAG_RELATION", "execution.memo_tag_relation"),
+              ("EXECUTION_REMINDER", "execution.reminder"),
+              ("EXECUTION_COMPLETION_RESULT", "execution.completion_result"),
+              ("EXECUTION_ENTITY_LINK", "execution.entity_link"),
+          ]
+
+          registry = Path("crates/lifetrace-contracts/src/registry.rs")
+          text = registry.read_text(encoding="utf-8")
+          if "pub const EXECUTION_PROJECT" not in text:
+              descriptor_anchor = "    EntityDescriptor {\n        entity_type: EntityType::FILE_METADATA,"
+              descriptors = ""
+              for const_name, _ in entity_types:
+                  descriptors += (
+                      "    EntityDescriptor {\n"
+                      f"        entity_type: EntityType::{const_name},\n"
+                      "        schema_version: 1,\n"
+                      "        ownership: EntityOwnership::UserOwned,\n"
+                      "        sync_mode: SyncMode::Bidirectional,\n"
+                      "        conflict_mode: ConflictMode::Optimistic,\n"
+                      "        contains_file_references: false,\n"
+                      "    },\n"
+                  )
+              if descriptor_anchor not in text:
+                  raise SystemExit("registry descriptor anchor not found")
+              text = text.replace(descriptor_anchor, descriptors + descriptor_anchor, 1)
+
+              const_anchor = "    pub const FILE_METADATA: &'static str = \"file.metadata\";"
+              constants = "\n".join(
+                  f"    pub const {const_name}: &'static str = \"{wire}\";"
+                  for const_name, wire in entity_types
+              ) + "\n"
+              if const_anchor not in text:
+                  raise SystemExit("registry const anchor not found")
+              text = text.replace(const_anchor, constants + const_anchor, 1)
+
+              known_anchor = "            Self::FILE_METADATA,"
+              known = "\n".join(f"            Self::{const_name}," for const_name, _ in entity_types) + "\n"
+              if known_anchor not in text:
+                  raise SystemExit("registry known anchor not found")
+              text = text.replace(known_anchor, known + known_anchor, 1)
+          registry.write_text(text, encoding="utf-8")
+
+          migrations = Path("apps/desktop/src-tauri/src/database/migrations/mod.rs")
+          text = migrations.read_text(encoding="utf-8")
+          if "mod m0010_execution_sync;" not in text:
+              text = text.replace("mod m0009_execution;\n", "mod m0009_execution;\nmod m0010_execution_sync;\n", 1)
+              text = text.replace("pub use m0009_execution::M0009Execution;\n", "pub use m0009_execution::M0009Execution;\npub use m0010_execution_sync::M0010ExecutionSync;\n", 1)
+              text = text.replace("        Box::new(M0009Execution),\n", "        Box::new(M0009Execution),\n        Box::new(M0010ExecutionSync),\n", 1)
+          migrations.write_text(text, encoding="utf-8")
+
+          sync_mod = Path("apps/desktop/src-tauri/src/sync/mod.rs")
+          text = sync_mod.read_text(encoding="utf-8")
+          if "mod execution;" not in text:
+              text = text.replace("pub mod commands;\n", "pub mod commands;\nmod execution;\n", 1)
+          sync_mod.write_text(text, encoding="utf-8")
+
+          store = Path("apps/desktop/src-tauri/src/sync/store.rs")
+          text = store.read_text(encoding="utf-8")
+          load_anchor = "    ) -> Result<Option<Value>, SyncError> {\n        let value = match entity_type {"
+          load_insert = "    ) -> Result<Option<Value>, SyncError> {\n        if super::execution::is_execution(entity_type) {\n            return super::execution::load_local_entity(connection, profile, entity_type, entity_id)\n                .map_err(Self::db_error);\n        }\n        let value = match entity_type {"
+          if "super::execution::load_local_entity" not in text:
+              if load_anchor not in text:
+                  raise SystemExit("store load_local_entity anchor not found")
+              text = text.replace(load_anchor, load_insert, 1)
+
+          upsert_anchor = "        let legacy = Self::force_owner(wire_to_legacy(payload).map_err(Self::db_error)?, profile);\n        let result = match entity_type {"
+          upsert_insert = "        let legacy = Self::force_owner(wire_to_legacy(payload).map_err(Self::db_error)?, profile);\n        if super::execution::is_execution(entity_type) {\n            return super::execution::apply_upsert(connection, profile, entity_type, &legacy)\n                .map_err(Self::db_error);\n        }\n        let result = match entity_type {"
+          if "super::execution::apply_upsert" not in text:
+              if upsert_anchor not in text:
+                  raise SystemExit("store apply_upsert anchor not found")
+              text = text.replace(upsert_anchor, upsert_insert, 1)
+
+          delete_anchor = "    ) -> Result<(), SyncError> {\n        let result = match entity_type {"
+          delete_insert = "    ) -> Result<(), SyncError> {\n        if super::execution::is_execution(entity_type) {\n            return super::execution::apply_delete(connection, profile, entity_type, entity_id)\n                .map_err(Self::db_error);\n        }\n        let result = match entity_type {"
+          if "super::execution::apply_delete" not in text:
+              first = text.find(delete_anchor, text.find("fn apply_delete"))
+              if first < 0:
+                  raise SystemExit("store apply_delete anchor not found")
+              text = text[:first] + text[first:].replace(delete_anchor, delete_insert, 1)
+          store.write_text(text, encoding="utf-8")
+
+          outbox = Path("apps/desktop/src-tauri/src/sync/outbox.rs")
+          text = outbox.read_text(encoding="utf-8")
+          execution_anchor = "    let mut ids = connection\n        .prepare(\"SELECT id FROM notes WHERE user_id=?1 AND deleted_at IS NULL\")"
+          execution_insert = "    for (entity_type, value) in super::execution::existing_entities(connection, profile_id)? {\n        if enqueue_upsert(connection, entity_type, &value, None, MutationOrigin::Local)?.is_some() {\n            total += 1;\n        }\n    }\n    let mut ids = connection\n        .prepare(\"SELECT id FROM notes WHERE user_id=?1 AND deleted_at IS NULL\")"
+          if "super::execution::existing_entities" not in text:
+              if execution_anchor not in text:
+                  raise SystemExit("outbox existing profile anchor not found")
+              text = text.replace(execution_anchor, execution_insert, 1)
+          outbox.write_text(text, encoding="utf-8")
+          PY
+      - name: Format Phase 7A sources
+        shell: bash
+        run: |
+          cargo fmt --manifest-path crates/lifetrace-contracts/Cargo.toml
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Export formatted sources from clean main
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            crates/lifetrace-contracts/src/registry.rs \
+            apps/desktop/src-tauri/src/database/migrations/m0010_execution_sync.rs \
+            apps/desktop/src-tauri/src/database/migrations/mod.rs \
+            apps/desktop/src-tauri/src/sync/execution.rs \
+            apps/desktop/src-tauri/src/sync/mod.rs \
+            apps/desktop/src-tauri/src/sync/store.rs \
+            apps/desktop/src-tauri/src/sync/outbox.rs \
+            > /tmp/phase7a.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase7a-sync-clean origin/main
+          git apply --index /tmp/phase7a.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): wire execution entities into sync"
+          git push --force origin HEAD:agent/epic20-phase7a-sync-clean
