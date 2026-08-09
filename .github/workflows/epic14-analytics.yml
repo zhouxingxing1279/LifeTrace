@@ -1,0 +1,99 @@
+name: EPIC14 Analytics
+
+on:
+  push:
+    branches:
+      - agent/epic14-active
+      - main
+    paths:
+      - "apps/desktop/src-tauri/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/tauri-ui/**"
+      - "apps/desktop/app/**"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/tsconfig.json"
+      - ".github/workflows/epic14-analytics.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epic14-analytics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  desktop-validation:
+    name: Desktop typecheck, builds and Rust regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo timeout 240s apt-get update -o Acquire::Retries=3
+          sudo timeout 240s apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Typecheck and unit tests
+        run: |
+          npm run lint
+          npm run test:unit
+      - name: Build desktop and browser frontends
+        run: |
+          npm run web:build
+          npm run browser:build
+      - name: Verify Rust formatting and lockfile
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+          cargo metadata --manifest-path src-tauri/Cargo.toml --locked --no-deps > /dev/null
+      - name: Rust desktop regression tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml --lib -- --test-threads=1
+      - name: Clippy
+        run: |
+          cargo clippy --locked --manifest-path src-tauri/Cargo.toml --lib -- \
+            -D warnings \
+            -A dead_code \
+            -A clippy::explicit_auto_deref \
+            -A clippy::field_reassign_with_default \
+            -A clippy::manual_async_fn \
+            -A clippy::map_identity \
+            -A clippy::needless_borrow \
+            -A clippy::needless_question_mark \
+            -A clippy::needless_range_loop \
+            -A clippy::question_mark \
+            -A clippy::redundant_closure \
+            -A clippy::result_large_err \
+            -A clippy::too_many_arguments \
+            -A clippy::type_complexity \
+            -A clippy::uninlined_format_args \
+            -A clippy::unnecessary_lazy_evaluations
