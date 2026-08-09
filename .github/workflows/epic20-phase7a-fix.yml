@@ -1,0 +1,55 @@
+name: EPIC20 Phase7A Fix Clean Branch
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase7a-sync
+
+permissions:
+  contents: write
+
+jobs:
+  fix-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase7a-sync-clean
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Fix table_columns borrow lifetime
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("apps/desktop/src-tauri/src/sync/execution.rs")
+          text = path.read_text(encoding="utf-8")
+          old = '''    statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| error.to_string())
+}'''
+          new = '''    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|error| error.to_string())?;
+    Ok(columns)
+}'''
+          if old not in text:
+              raise SystemExit("table_columns anchor not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit fix to clean PR branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src-tauri/src/sync/execution.rs
+          git commit -m "fix(epic20): end sqlite statement borrow before return"
+          git push origin HEAD:agent/epic20-phase7a-sync-clean
