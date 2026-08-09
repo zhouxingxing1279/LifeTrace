@@ -3,7 +3,7 @@
 > 评估日期：**2026-08-09**  
 > 评估分支：`main`  
 > 评估基线提交：`025bf4ac102839a86cda8c725f89d6ae190e09dc`  
-> Roadmap 基线：`docs/lifetrace-complete-roadmap.md`  
+> Roadmap 基线：`docs/roadmap.md`  
 > 用途：记录当前代码主干的真实完成程度，区分“已规划”“已实现”“已验证”和“尚未开始”，作为后续 Epic 排期与阶段复盘的统一状态基线。
 
 ---
@@ -205,7 +205,7 @@ EPIC-21~26 是未来从“AI 页面”升级为“LifeTrace 自然语言操作�
 
 ### 6.1 Roadmap 勾选状态已经滞后
 
-`docs/lifetrace-complete-roadmap.md` 中大量任务仍为 `[ ]`，但 EPIC-01、03、04、05、14、20、27 等已经有明显代码实现。
+`docs/roadmap.md` 中大量任务仍为 `[ ]`，但 EPIC-01、03、04、05、14、20、27 等已经有明显代码实现。
 
 因此以后不应使用 Roadmap checkbox 直接判断项目完成度。
 
@@ -316,7 +316,7 @@ LifeTrace 当前已经跨过“功能 Demo”阶段，进入了 **平台化重�
 后续每次重要阶段完成时新增：
 
 ```text
-docs/lifetrace-project-completion-status-YYYY-MM-DD.md
+docs/project-completion-status-YYYY-MM-DD.md
 ```
 
 每次重新评估时至少检查：
