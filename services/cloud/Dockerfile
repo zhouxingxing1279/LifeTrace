@@ -10,7 +10,8 @@ RUN cargo build --release \
     --config 'source.crates-io.replace-with="rsproxy-sparse"' \
     --config 'source.rsproxy-sparse.registry="sparse+https://rsproxy.cn/index/"' \
     --manifest-path services/cloud/Cargo.toml \
-    --bin lifetrace-cloud
+    --bin lifetrace-cloud \
+    --bin mail_worker
 
 FROM debian:bookworm-slim
 RUN useradd --create-home --uid 10001 lifetrace \
@@ -19,6 +20,7 @@ RUN useradd --create-home --uid 10001 lifetrace \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
+COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker
 USER lifetrace
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
