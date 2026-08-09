@@ -21,7 +21,7 @@ services:
     build:
       context: ../..
       dockerfile: services/cloud/Dockerfile
-    environment:
+    environment: &cloud_environment
       LIFETRACE_ENV: development
       LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
       DATABASE_URL: postgres://${POSTGRES_USER:-lifetrace}:${POSTGRES_PASSWORD:-lifetrace_dev_password}@postgres:5432/${POSTGRES_DB:-lifetrace}
@@ -39,6 +39,7 @@ services:
       PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY:-dev-page-token-key}
       AUTH_PASSWORD_PEPPER: ${AUTH_PASSWORD_PEPPER:-development-password-pepper}
       AUTH_TOKEN_HASH_PEPPER: ${AUTH_TOKEN_HASH_PEPPER:-development-token-pepper}
+      MAIL_CREDENTIAL_KEY: ${MAIL_CREDENTIAL_KEY:-bGlmZXRyYWNlLWRldi1tYWlsLWtleS0zMi1ieXRlcyE=}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
@@ -53,6 +54,21 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
+
+  lifetrace-mail-worker:
+    profiles: ["cloud"]
+    build:
+      context: ../..
+      dockerfile: services/cloud/Dockerfile
+    entrypoint: ["/app/mail_worker"]
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
 
 volumes:
   lifetrace_pgdata:
