@@ -28,6 +28,7 @@ import "@/app/ui-menus.css";
 import "@/app/auth-shell-fixes.css";
 import "@/app/desktop-workspace.css";
 import "@/app/execution.css";
+import "@/app/execution-calendar.css";
 import "@/app/record-workspace.css";
 
 installGlobalFetchInstrumentation();

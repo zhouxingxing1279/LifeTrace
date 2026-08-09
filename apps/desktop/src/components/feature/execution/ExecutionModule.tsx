@@ -24,6 +24,7 @@ import {
 import TaskAdvancedPanel from "@/src/components/feature/execution/TaskAdvancedPanel";
 import SubjectReminderPanel from "@/src/components/feature/execution/SubjectReminderPanel";
 import MemoConvertPanel from "@/src/components/feature/execution/MemoConvertPanel";
+import CalendarWorkspace from "@/src/components/feature/execution/CalendarWorkspace";
 import ExecutionContextMenu, { type ExecutionMenuItem } from "@/src/components/feature/execution/ExecutionContextMenu";
 import { preserveTaskUpdateFields, waitingToTaskInput } from "@/src/components/feature/execution/executionViewModel";
 import {
@@ -290,6 +291,7 @@ export default function ExecutionModule() {
   const [memoQuery, setMemoQuery] = useState("");
   const [memoArchived, setMemoArchived] = useState(false);
   const [quickTask, setQuickTask] = useState("");
+  const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
 
   const load = useCallback(async () => {
     setError("");
@@ -329,6 +331,7 @@ export default function ExecutionModule() {
       toast(success);
       setEditor(null);
       await load();
+      setCalendarRefreshToken((value) => value + 1);
       if (tab === "memos" && (memoArchived || memoQuery.trim())) {
         const memos = await executionApi.memos.list({
           status: memoArchived ? "archived" : "active",
@@ -405,7 +408,12 @@ export default function ExecutionModule() {
 
   const renderProjects = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>{data.projects.filter((item) => item.status === "active").length}</strong><span> 个进行中项目</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "project" })}><Plus/>新建项目</button></div><div className="lt-exec-project-grid">{data.projects.length ? data.projects.map((project) => { const tasks = data.tasks.filter((task) => task.projectId === project.id && task.status !== "cancelled"); const done = tasks.filter((task) => task.status === "done").length; const ratio = tasks.length ? Math.round(done / tasks.length * 100) : 0; return <button key={project.id} type="button" onClick={() => setEditor({ kind: "project", value: project })}><div><span className={`lt-exec-project-dot ${project.status}`}/><strong>{project.name}</strong><small>{project.status}</small></div><p>{project.description || "暂无说明"}</p><div className="lt-exec-progress"><i style={{ width: `${ratio}%` }}/></div><footer><span>{done}/{tasks.length} 完成</span><ChevronRight/></footer></button>; }) : <SectionEmpty>还没有项目</SectionEmpty>}</div></div>;
 
-  const renderCalendar = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>未来 7 天</strong><span> · {data.calendar.length} 个事件</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "calendar" })}><Plus/>新建事件</button></div><div className="lt-exec-agenda">{data.calendar.length ? [...data.calendar].sort((a, b) => String(a.startAt || a.startLocalDate).localeCompare(String(b.startAt || b.startLocalDate))).map((event) => <button key={event.id} type="button" onClick={() => setEditor({ kind: "calendar", value: event })}><div className="lt-exec-agenda-time">{event.isAllDay ? <><strong>{event.startLocalDate}</strong><span>全天</span></> : <><strong>{formatDateTime(event.startAt)}</strong><span>至 {formatDateTime(event.endAt)}</span></>}</div><div><strong>{event.title}</strong><span>{event.description || (event.sourceTaskId ? "由任务安排" : "日历事件")}</span></div><span className={`lt-exec-status ${event.status}`}>{event.status}</span></button>) : <SectionEmpty>未来 7 天没有安排</SectionEmpty>}</div></div>;
+  const renderCalendar = () => <CalendarWorkspace
+    refreshToken={calendarRefreshToken}
+    onCreate={() => setEditor({ kind: "calendar" })}
+    onEdit={(value) => setEditor({ kind: "calendar", value })}
+    onReminder={(subject) => setReminderSubject(subject)}
+  />;
 
   const renderWaiting = () => <div className="lt-exec-workspace"><div className="lt-exec-toolbar"><div><strong>{openWaiting.length}</strong><span> 个事项正在等待外部结果</span></div><button className="hx-btn primary" type="button" onClick={() => setEditor({ kind: "waiting" })}><Plus/>新建等待</button></div><div className="lt-exec-list">{data.waiting.length ? data.waiting.map((item) => <article key={item.id} className="lt-exec-row"><Users/><button className="lt-exec-row-main" type="button" onClick={() => setEditor({ kind: "waiting", value: item })}><strong>{item.title}</strong><span>等待 {item.waitingFor}{item.expectedAt ? ` · 预计 ${formatDateTime(item.expectedAt)}` : ""}{item.followUpAt ? ` · ${formatDateTime(item.followUpAt)} 跟进` : ""}</span></button><span className={`lt-exec-status ${item.status}`}>{item.status}</span><div className="lt-exec-row-actions">{item.status === "open" ? <><button type="button" title="添加提醒" onClick={() => setReminderSubject({ subjectType: "waiting_item", subjectId: item.id, title: item.title })}><Bell/></button><button type="button" title="转为任务" onClick={() => void run(() => executionApi.waiting.convertToTask(item.id, waitingToTaskInput(item)), "已转为任务")}><ChevronRight/></button><button type="button" title="标记已解决" onClick={() => void run(() => executionApi.waiting.resolve(item.id), "等待事项已解决")}><Check/></button></> : null}</div></article>) : <SectionEmpty>没有等待事项</SectionEmpty>}</div></div>;
 
