@@ -61,11 +61,12 @@ fn now() -> String {
 }
 
 fn completion_from_row(row: &Row<'_>) -> rusqlite::Result<CompletionResultRecord> {
+    let summary: String = row.get(3)?;
     Ok(CompletionResultRecord {
         id: row.get(0)?,
         user_id: row.get(1)?,
         task_id: row.get(2)?,
-        summary: row.get(3)?,
+        summary: if summary.trim().is_empty() { None } else { Some(summary) },
         completed_at: row.get(4)?,
         actual_minutes: row.get(5)?,
         version: row.get(6)?,
@@ -110,6 +111,7 @@ pub fn save_completion_result(
     input: &CompletionResultWrite,
 ) -> Result<CompletionResultRecord, String> {
     let stamp = now();
+    let summary = input.summary.as_deref().unwrap_or("");
     if let Some(existing) = get_completion_result(connection, &input.user_id, &input.task_id)? {
         let changed = connection
             .execute(
@@ -117,7 +119,7 @@ pub fn save_completion_result(
                  SET summary=?1,completed_at=?2,actual_minutes=?3,updated_at=?4,version=version+1
                  WHERE id=?5 AND user_id=?6 AND deleted_at IS NULL",
                 params![
-                    input.summary,
+                    summary,
                     input.completed_at,
                     input.actual_minutes,
                     stamp,
@@ -139,7 +141,7 @@ pub fn save_completion_result(
                     Uuid::new_v4().to_string(),
                     input.user_id,
                     input.task_id,
-                    input.summary,
+                    summary,
                     input.completed_at,
                     input.actual_minutes,
                     stamp
