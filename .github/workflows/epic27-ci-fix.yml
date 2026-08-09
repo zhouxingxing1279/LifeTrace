@@ -22,26 +22,27 @@ jobs:
           toolchain: 1.88.0
           components: rustfmt
       - name: Apply exact fixes
-        shell: python
+        shell: bash
         run: |
+          python3 <<'PY'
           from pathlib import Path
 
           protocol = Path("services/cloud/src/mail/protocol.rs")
           text = protocol.read_text()
-          old = '''        let outcome = session
+          old = """        let outcome = session
               .idle()
               .wait_with_timeout(timeout)
               .map_err(|_| MailProtocolError::Connect)?;
           let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
-'''
-          new = '''        let outcome = {
+          """
+          new = """        let outcome = {
               let mut idle = session.idle();
               idle.timeout(timeout).keepalive(false);
               idle.wait_while(imap::extensions::idle::stop_on_any)
                   .map_err(|_| MailProtocolError::Connect)?
           };
           let changed = matches!(outcome, imap::extensions::idle::WaitOutcome::MailboxChanged);
-'''
+          """
           if old not in text:
               raise SystemExit("expected protocol block not found")
           protocol.write_text(text.replace(old, new, 1))
@@ -53,6 +54,7 @@ jobs:
           if old not in text:
               raise SystemExit("expected service import not found")
           service.write_text(text.replace(old, new, 1))
+          PY
       - name: Format cloud Rust
         run: cargo fmt --manifest-path services/cloud/Cargo.toml
       - name: Commit fixes
