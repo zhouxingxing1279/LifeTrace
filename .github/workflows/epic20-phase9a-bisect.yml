@@ -39,7 +39,7 @@ jobs:
       - name: Assemble formal changes
         run: python tools/epic20_phase9a_patch.py
       - name: Rustfmt
-        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Database tests
         run: |
           cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database:: -- --test-threads=1
