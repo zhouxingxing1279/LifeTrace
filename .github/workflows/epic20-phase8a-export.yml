@@ -1,0 +1,58 @@
+name: EPIC20 Phase8A Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase8a-execution-ui
+
+permissions:
+  contents: write
+
+jobs:
+  validate-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase8a-execution-ui
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Assemble formal UI changes
+        run: python tools/epic20_phase8a_patch.py
+      - name: Install frontend dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Typecheck
+        working-directory: apps/desktop
+        run: npm run lint
+      - name: Unit tests
+        working-directory: apps/desktop
+        run: npm run test:unit
+      - name: Web build
+        working-directory: apps/desktop
+        run: npm run web:build
+      - name: Export clean branch
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src/services/executionApi.ts \
+            apps/desktop/src/components/feature/execution/ExecutionModule.tsx \
+            apps/desktop/app/execution.css \
+            apps/desktop/src/components/layout/navigation.ts \
+            apps/desktop/src/components/HengXuShell.tsx \
+            apps/desktop/tauri-ui/main.tsx \
+            apps/desktop/tests/execution-api.test.ts \
+            > /tmp/phase8a.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase8a-execution-ui-clean origin/main
+          git apply --index /tmp/phase8a.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add execution center UI"
+          git push --force origin HEAD:agent/epic20-phase8a-execution-ui-clean
