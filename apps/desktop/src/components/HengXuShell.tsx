@@ -36,6 +36,7 @@ import EditorModal, {
 } from "@/src/components/feature/forms/EditorModal";
 import DailyEnglish from "@/src/components/english/DailyEnglish";
 import ExecutionModule from "@/src/components/feature/execution/ExecutionModule";
+import MailActionCenter from "@/src/components/feature/mail/MailActionCenter";
 import NotesModule from "@/src/components/NotesModule";
 import PhotoSyncModule from "@/src/components/PhotoSyncModule";
 import AIAssistantModule from "@/src/components/AIAssistantModule";
@@ -283,6 +284,7 @@ export default function HengXuShell() {
         {view === "assistant" ? (
           <AIAssistantModule openSettings={() => setView("settings")} />
         ) : null}
+        {view === "mail" ? <MailActionCenter /> : null}
         {view === "habits" ? (
           <Habits
             edit={(value) => setModal({ kind: "activity", value })}

@@ -2,11 +2,12 @@
 services:
   lifetrace-cloud:
     image: lifetrace-cloud:${TAG:-latest}
-    environment:
+    environment: &cloud_environment
       LIFETRACE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
       CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
       PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY}
+      MAIL_CREDENTIAL_KEY: ${MAIL_CREDENTIAL_KEY}
       DEV_AUTH_ENABLED: "false"
       AUTH_PASSWORD_MIN_LENGTH: "${AUTH_PASSWORD_MIN_LENGTH:-9}"
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
@@ -15,6 +16,24 @@ services:
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
     secrets:
       - database_url
+    restart: unless-stopped
+
+  lifetrace-mail-worker:
+    image: lifetrace-cloud:${TAG:-latest}
+    entrypoint: ["/app/mail_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    secrets:
+      - database_url
+    depends_on:
+      - lifetrace-cloud
     restart: unless-stopped
 
 secrets:

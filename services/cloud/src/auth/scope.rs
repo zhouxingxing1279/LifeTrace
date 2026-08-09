@@ -32,6 +32,8 @@ pub const ALL_SCOPES: &[&str] = &[
     "workouts:write",
     "execution:read",
     "execution:write",
+    "mail:read",
+    "mail:write",
 ];
 
 pub fn supported_app(app_id: &str) -> bool {
@@ -130,6 +132,8 @@ pub fn required_entity_scope(entity_type: &str, write: bool) -> Option<&'static 
         "workouts"
     } else if entity_type.starts_with("execution.") {
         "execution"
+    } else if entity_type.starts_with("mail.") {
+        "mail"
     } else if entity_type == "file.metadata" {
         "files"
     } else if entity_type == "user.preference" || entity_type == "entity.link" {
@@ -152,6 +156,8 @@ pub fn required_entity_scope(entity_type: &str, write: bool) -> Option<&'static 
         ("workouts", _) => "workouts:write",
         ("execution", "read") => "execution:read",
         ("execution", _) => "execution:write",
+        ("mail", "read") => "mail:read",
+        ("mail", _) => "mail:write",
         ("files", "read") => "files:read",
         ("files", _) => "files:write",
         ("account", "read") => "account:read",
@@ -201,6 +207,21 @@ mod tests {
         assert_eq!(
             required_entity_scope("execution.memo", true),
             Some("execution:write")
+        );
+    }
+
+    #[test]
+    fn desktop_mail_scope_is_available() {
+        let granted = allowed_scopes(AppId::DESKTOP);
+        assert!(granted.contains("mail:read"));
+        assert!(granted.contains("mail:write"));
+        assert_eq!(
+            required_entity_scope("mail.message", false),
+            Some("mail:read")
+        );
+        assert_eq!(
+            required_entity_scope("mail.account", true),
+            Some("mail:write")
         );
     }
 
