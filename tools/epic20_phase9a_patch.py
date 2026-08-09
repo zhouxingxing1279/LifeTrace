@@ -6,49 +6,92 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
         raise SystemExit(f"missing patch anchor: {label}")
     return text.replace(old, new, 1)
 
+
+def add_after(text: str, anchor: str, addition: str, marker: str, label: str) -> str:
+    if marker in text:
+        return text
+    return replace_once(text, anchor, anchor + addition, label)
+
+
 # Repository registration.
 path = Path("apps/desktop/src-tauri/src/database/repositories/mod.rs")
 text = path.read_text(encoding="utf-8")
-if "pub mod execution_relation;" not in text:
-    text = replace_once(text, "pub mod execution_reminder;\n", "pub mod execution_reminder;\npub mod execution_relation;\n", "repository module")
+text = add_after(
+    text,
+    "pub mod execution_reminder;\n",
+    "pub mod execution_relation;\n",
+    "pub mod execution_relation;",
+    "repository module",
+)
 path.write_text(text, encoding="utf-8")
 
 # Migration registration.
 path = Path("apps/desktop/src-tauri/src/database/migrations/mod.rs")
 text = path.read_text(encoding="utf-8")
-if "mod m0011_execution_completion_backfill;" not in text:
-    text = replace_once(text, "mod m0010_execution_sync;\n", "mod m0010_execution_sync;\nmod m0011_execution_completion_backfill;\n", "migration module")
-if "pub use m0011_execution_completion_backfill::M0011ExecutionCompletionBackfill;" not in text:
-    text = replace_once(text, "pub use m0010_execution_sync::M0010ExecutionSync;\n", "pub use m0010_execution_sync::M0010ExecutionSync;\npub use m0011_execution_completion_backfill::M0011ExecutionCompletionBackfill;\n", "migration export")
-if "Box::new(M0011ExecutionCompletionBackfill)," not in text:
-    text = replace_once(text, "        Box::new(M0010ExecutionSync),\n", "        Box::new(M0010ExecutionSync),\n        Box::new(M0011ExecutionCompletionBackfill),\n", "migration registry")
+text = add_after(
+    text,
+    "mod m0010_execution_sync;\n",
+    "mod m0011_execution_completion_backfill;\n",
+    "mod m0011_execution_completion_backfill;",
+    "migration module",
+)
+text = add_after(
+    text,
+    "pub use m0010_execution_sync::M0010ExecutionSync;\n",
+    "pub use m0011_execution_completion_backfill::M0011ExecutionCompletionBackfill;\n",
+    "pub use m0011_execution_completion_backfill::M0011ExecutionCompletionBackfill;",
+    "migration export",
+)
+text = add_after(
+    text,
+    "        Box::new(M0010ExecutionSync),\n",
+    "        Box::new(M0011ExecutionCompletionBackfill),\n",
+    "Box::new(M0011ExecutionCompletionBackfill),",
+    "migration registry",
+)
 path.write_text(text, encoding="utf-8")
 
 # Crate module registration.
 path = Path("apps/desktop/src-tauri/src/lib.rs")
 text = path.read_text(encoding="utf-8")
-if "mod execution_relation;" not in text:
-    text = replace_once(text, "mod execution_reminder;\n", "mod execution_reminder;\nmod execution_relation;\n", "domain module")
+text = add_after(
+    text,
+    "mod execution_reminder;\n",
+    "mod execution_relation;\n",
+    "mod execution_relation;",
+    "domain module",
+)
 path.write_text(text, encoding="utf-8")
 
 # Server module + routes.
 path = Path("apps/desktop/src-tauri/src/server.rs")
 text = path.read_text(encoding="utf-8")
-if "mod execution_relation;" not in text:
-    text = replace_once(text, "mod execution_reminder;\n", "mod execution_reminder;\nmod execution_relation;\n", "server module")
-completion_route = '''        .route(
-            "/api/execution/tasks/{id}/completion-result",
-            get(execution_relation::get_completion).put(execution_relation::save_completion),
-        )
-'''
+text = add_after(
+    text,
+    "mod execution_reminder;\n",
+    "mod execution_relation;\n",
+    "mod execution_relation;",
+    "server module",
+)
 if "/completion-result" not in text:
     anchor = '''        .route(
             "/api/execution/tasks/{id}/status",
             axum::routing::put(execution::change_task_status),
         )
 '''
-    text = replace_once(text, anchor, anchor + completion_route, "completion route")
-links_routes = '''        .route(
+    route = '''        .route(
+            "/api/execution/tasks/{id}/completion-result",
+            get(execution_relation::get_completion).put(execution_relation::save_completion),
+        )
+'''
+    text = replace_once(text, anchor, anchor + route, "completion route")
+if '"/api/execution/entity-links"' not in text:
+    anchor = '''        .route(
+            "/api/execution/waiting-items/{id}/convert-to-task",
+            axum::routing::post(execution_waiting::convert_waiting_to_task),
+        )
+'''
+    routes = '''        .route(
             "/api/execution/entity-links",
             get(execution_relation::list_links).post(execution_relation::create_link),
         )
@@ -57,16 +100,10 @@ links_routes = '''        .route(
             axum::routing::delete(execution_relation::delete_link),
         )
 '''
-if '"/api/execution/entity-links"' not in text:
-    anchor = '''        .route(
-            "/api/execution/waiting-items/{id}/convert-to-task",
-            axum::routing::post(execution_waiting::convert_waiting_to_task),
-        )
-'''
-    text = replace_once(text, anchor, anchor + links_routes, "entity link routes")
+    text = replace_once(text, anchor, anchor + routes, "entity link routes")
 path.write_text(text, encoding="utf-8")
 
-# Make task completion/result state atomic.
+# Make task status and completion-result lifecycle atomic.
 path = Path("apps/desktop/src-tauri/src/execution.rs")
 text = path.read_text(encoding="utf-8")
 start = text.index("pub fn change_task_status(")
@@ -171,14 +208,14 @@ new_status = r'''pub fn change_task_status(
 '''
 text = text[:start] + new_status + text[end:]
 
-# Keep completion result lifecycle aligned with task soft-delete.
 old_delete_tail = '''    if repository::soft_delete_task(connection, &user_id, id).map_err(ExecutionError::storage)? {
         Ok(())
     } else {
         Err(ExecutionError::not_found("任务不存在"))
     }
 }'''
-new_delete_tail = '''    let transaction = connection
+if old_delete_tail in text:
+    new_delete_tail = '''    let transaction = connection
         .unchecked_transaction()
         .map_err(|error| ExecutionError::storage(error.to_string()))?;
     if !repository::soft_delete_task(&transaction, &user_id, id).map_err(ExecutionError::storage)? {
@@ -190,27 +227,31 @@ new_delete_tail = '''    let transaction = connection
         .map_err(|error| ExecutionError::storage(error.to_string()))?;
     Ok(())
 }'''
-text = replace_once(text, old_delete_tail, new_delete_tail, "task delete completion cleanup")
+    text = text.replace(old_delete_tail, new_delete_tail, 1)
+path.write_text(text, encoding="utf-8")
 
-# Extend existing status lifecycle test with completion-result assertions.
-old_assert = '''        assert_eq!(done.status, "done");
-        assert!(done.completed_at.is_some());
-        let reopened = change_task_status('''
-new_assert = '''        assert_eq!(done.status, "done");
-        assert!(done.completed_at.is_some());
-        assert!(crate::execution_relation::get_completion_result(&connection, &task.id)
-            .unwrap()
-            .is_some());
-        let reopened = change_task_status('''
-text = replace_once(text, old_assert, new_assert, "completion created assertion")
-old_reopen = '''        assert_eq!(reopened.status, "todo");
-        assert!(reopened.completed_at.is_none());'''
-new_reopen = '''        assert_eq!(reopened.status, "todo");
-        assert!(reopened.completed_at.is_none());
-        assert!(crate::execution_relation::get_completion_result(&connection, &task.id)
-            .unwrap()
-            .is_none());'''
-text = replace_once(text, old_reopen, new_reopen, "completion cleared assertion")
+# Put lifecycle assertions in the new service test instead of patching legacy tests by formatting-sensitive anchors.
+path = Path("apps/desktop/src-tauri/src/execution_relation.rs")
+text = path.read_text(encoding="utf-8")
+if "automatic.actual_minutes" not in text:
+    anchor = '''        execution::change_task_status(&connection, &task.id, TaskStatusInput { status: "done".to_owned() }).unwrap();
+'''
+    addition = '''        let automatic = get_completion_result(&connection, &task.id).unwrap().unwrap();
+        assert_eq!(automatic.actual_minutes, Some(25));
+'''
+    text = replace_once(text, anchor, anchor + addition, "automatic completion assertion")
+if "completion is cleared when task reopens" not in text:
+    anchor = '''        assert_eq!(result.actual_minutes, Some(30));
+'''
+    addition = '''        execution::change_task_status(
+            &connection,
+            &task.id,
+            TaskStatusInput { status: "todo".to_owned() },
+        )
+        .unwrap();
+        assert!(get_completion_result(&connection, &task.id).unwrap().is_none(), "completion is cleared when task reopens");
+'''
+    text = replace_once(text, anchor, anchor + addition, "completion reopen assertion")
 path.write_text(text, encoding="utf-8")
 
 # Use EPIC-19 instrumented fetch and expose completion/link APIs to the renderer.
@@ -252,7 +293,8 @@ export type EntityLinkInput = Pick<EntityLink, "sourceType" | "sourceId" | "rela
 old_request = '''async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init);
 '''
-new_request = '''async function request<T>(url: string, init?: RequestInit): Promise<T> {
+if old_request in text:
+    new_request = '''async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const method = (init?.method || "GET").toUpperCase();
   const response = await instrumentedFetch(globalThis.fetch, url, init, {
     module: "execution",
@@ -260,7 +302,7 @@ new_request = '''async function request<T>(url: string, init?: RequestInit): Pro
     userMessage: "执行服务请求失败",
   });
 '''
-text = replace_once(text, old_request, new_request, "execution instrumented fetch")
+    text = text.replace(old_request, new_request, 1)
 if 'completion: (id: string)' not in text:
     anchor = '''    schedule: (id: string, timing: CalendarTimingInput) =>
       request<CalendarEvent>(`/api/execution/tasks/${encodeURIComponent(id)}/schedule`, json("POST", { timing })),
