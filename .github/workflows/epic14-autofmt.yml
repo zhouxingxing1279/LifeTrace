@@ -1,0 +1,43 @@
+name: EPIC14 Rustfmt Helper
+
+on:
+  push:
+    branches:
+      - agent/epic14-active
+    paths:
+      - ".github/workflows/epic14-autofmt.yml"
+      - "apps/desktop/src-tauri/**/*.rs"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: epic14-rustfmt-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rustfmt:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Apply rustfmt
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml
+      - name: Commit formatting
+        run: |
+          if git diff --quiet; then
+            echo "No rustfmt changes needed"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src-tauri/src
+          git commit -m "style(epic14): apply rustfmt"
+          git push
