@@ -187,6 +187,36 @@ pub async fn fetch_folder(
     .map_err(|_| MailProtocolError::Task)?
 }
 
+pub async fn fetch_raw_message(
+    account: MailAccountSecret,
+    secret: String,
+    folder: String,
+    uid: u32,
+) -> Result<Vec<u8>, MailProtocolError> {
+    tokio::task::spawn_blocking(move || {
+        let client = imap_client(&account)?;
+        let mut session = client
+            .login(&account.username, &secret)
+            .map_err(|_| MailProtocolError::Authentication)?;
+        session
+            .select(&folder)
+            .map_err(|_| MailProtocolError::Folder)?;
+        let fetched = session
+            .uid_fetch(uid.to_string(), "(UID BODY.PEEK[])")
+            .map_err(|_| MailProtocolError::Fetch)?;
+        let raw = fetched
+            .iter()
+            .next()
+            .and_then(|item| item.body())
+            .map(ToOwned::to_owned)
+            .ok_or(MailProtocolError::Fetch)?;
+        let _ = session.logout();
+        Ok(raw)
+    })
+    .await
+    .map_err(|_| MailProtocolError::Task)?
+}
+
 pub async fn set_seen(
     account: MailAccountSecret,
     secret: String,
