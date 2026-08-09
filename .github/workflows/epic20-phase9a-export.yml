@@ -50,41 +50,21 @@ jobs:
       - name: Rustfmt
         run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
       - name: Rust compile check
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --lib 2>&1 | tee /tmp/phase9a-check.log || {
-            echo '--- cargo check tail ---'
-            tail -n 180 /tmp/phase9a-check.log
-            exit 1
-          }
-      - name: Relation domain tests
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml execution_relation --lib -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase9a-relation.log || {
-            echo '--- relation test tail ---'
-            tail -n 220 /tmp/phase9a-relation.log
-            exit 1
-          }
+        run: cargo check --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
+      - name: Domain completion lifecycle test
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_relation::tests::completion_result_requires_done_task_and_is_editable -- --exact --test-threads=1 --nocapture
+      - name: Domain external relation test
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_relation::tests::relation_requires_at_least_one_existing_execution_entity -- --exact --test-threads=1 --nocapture
+      - name: Domain missing execution target test
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib execution_relation::tests::internal_execution_targets_must_exist -- --exact --test-threads=1 --nocapture
+      - name: Repository completion upsert test
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database::repositories::execution_relation::tests::completion_result_upserts_and_soft_deletes -- --exact --test-threads=1 --nocapture
+      - name: Repository relation idempotency test
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database::repositories::execution_relation::tests::links_are_bidirectionally_queryable_and_idempotent -- --exact --test-threads=1 --nocapture
       - name: Completion backfill migration test
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml m0011_execution_completion_backfill --lib -- --test-threads=1 --nocapture 2>&1 | tee /tmp/phase9a-migration.log || {
-            echo '--- migration test tail ---'
-            tail -n 220 /tmp/phase9a-migration.log
-            exit 1
-          }
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib database::migrations::m0011_execution_completion_backfill::tests::backfill_creates_missing_completion_result_once -- --exact --test-threads=1 --nocapture
       - name: Desktop Rust tests
-        shell: bash
-        run: |
-          set -o pipefail
-          cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1 2>&1 | tee /tmp/phase9a-full.log || {
-            echo '--- full Rust test tail ---'
-            tail -n 260 /tmp/phase9a-full.log
-            exit 1
-          }
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
       - name: Desktop Clippy
         run: |
           cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- \
