@@ -29,7 +29,7 @@ impl Migration for M0011ExecutionCompletionBackfill {
                 "INSERT INTO execution_completion_results(
                    id,user_id,task_id,summary,completed_at,actual_minutes,created_at,updated_at,version
                  )
-                 SELECT lower(hex(randomblob(16))),t.user_id,t.id,NULL,
+                 SELECT lower(hex(randomblob(16))),t.user_id,t.id,'',
                         COALESCE(t.completed_at,t.updated_at),t.actual_minutes,
                         COALESCE(t.completed_at,t.updated_at),COALESCE(t.completed_at,t.updated_at),1
                    FROM execution_tasks t
@@ -110,15 +110,16 @@ mod tests {
             assert_eq!(report.migrated, 0);
             transaction.commit().unwrap();
         }
-        let value: (String, Option<i64>) = connection
+        let value: (String, String, Option<i64>) = connection
             .query_row(
-                "SELECT completed_at,actual_minutes FROM execution_completion_results
+                "SELECT summary,completed_at,actual_minutes FROM execution_completion_results
                  WHERE task_id='done-task' AND deleted_at IS NULL",
                 [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
             .unwrap();
-        assert_eq!(value.0, "2026-08-09T01:00:00Z");
-        assert_eq!(value.1, Some(42));
+        assert_eq!(value.0, "");
+        assert_eq!(value.1, "2026-08-09T01:00:00Z");
+        assert_eq!(value.2, Some(42));
     }
 }
