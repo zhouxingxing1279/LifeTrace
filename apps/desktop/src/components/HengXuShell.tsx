@@ -29,6 +29,7 @@ import Accounts from "@/src/components/feature/finance/Accounts";
 import ImportBills from "@/src/components/feature/finance/ImportBills";
 import CalendarView from "@/src/components/feature/life/CalendarView";
 import ReviewView from "@/src/components/feature/life/ReviewView";
+import AnalyticsModule from "@/src/components/feature/analytics/AnalyticsModule";
 import SettingsView from "@/src/components/feature/settings/SettingsView";
 import DesignGallery from "@/src/components/design/DesignGallery";
 import EditorModal, {
@@ -105,6 +106,43 @@ export default function HengXuShell() {
     window.dispatchEvent(
       new CustomEvent("hengxu-toast", { detail: "关联笔记已创建" }),
     );
+  };
+
+  const openAnalyticsEntity = (entityType: string, entityId: string) => {
+    switch (entityType) {
+      case "note":
+        window.localStorage.setItem("lifetrace:last-note", entityId);
+        setView("notes");
+        return;
+      case "transaction":
+        setView("transactions");
+        return;
+      case "habit":
+      case "activity_log":
+        setView("habits");
+        return;
+      case "daily_review":
+        setView("review");
+        return;
+      case "workout":
+        setView("fitness");
+        return;
+      case "english_article":
+      case "english_learning_record":
+      case "vocabulary":
+        setView("english");
+        return;
+      case "calendar_event":
+      case "execution_task":
+      case "memo":
+        setView("execution");
+        return;
+      default:
+        window.dispatchEvent(
+          new CustomEvent("hengxu-toast", { detail: "已定位到记录所属模块" }),
+        );
+        setView("dashboard");
+    }
   };
 
   useEffect(() => {
@@ -339,6 +377,7 @@ export default function HengXuShell() {
         {view === "import" ? <ImportBills /> : null}
         {view === "calendar" ? <CalendarView /> : null}
         {view === "review" ? <ReviewView /> : null}
+        {view === "analytics" ? <AnalyticsModule openEntity={openAnalyticsEntity} /> : null}
         {view === "settings" ? <SettingsView /> : null}
         {view === "gallery" ? <DesignGallery /> : null}
       </AppShell>
