@@ -4,6 +4,7 @@ mod english;
 mod execution;
 mod execution_calendar;
 mod execution_memo;
+mod execution_relation;
 mod execution_reminder;
 mod execution_structure;
 mod execution_waiting;
@@ -175,6 +176,10 @@ pub async fn serve(
             axum::routing::put(execution::change_task_status),
         )
         .route(
+            "/api/execution/tasks/{id}/completion-result",
+            get(execution_relation::get_completion).put(execution_relation::save_completion),
+        )
+        .route(
             "/api/execution/tasks/{id}/schedule",
             axum::routing::post(execution_calendar::schedule_task),
         )
@@ -343,6 +348,14 @@ pub async fn serve(
         .route(
             "/api/execution/waiting-items/{id}/convert-to-task",
             axum::routing::post(execution_waiting::convert_waiting_to_task),
+        )
+        .route(
+            "/api/execution/entity-links",
+            get(execution_relation::list_links).post(execution_relation::create_link),
+        )
+        .route(
+            "/api/execution/entity-links/{id}",
+            axum::routing::delete(execution_relation::delete_link),
         )
         .route("/api/assistant/catalog", get(assistant::catalog))
         .route("/api/assistant/chat", axum::routing::post(assistant::chat))

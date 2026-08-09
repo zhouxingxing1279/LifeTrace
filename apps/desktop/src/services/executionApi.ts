@@ -1,3 +1,5 @@
+import { instrumentedFetch } from "@/src/services/clientObservability";
+
 export type ExecutionProject = {
   id: string;
   userId: string;
@@ -122,6 +124,33 @@ export type RecurrenceRule = {
 
 export type TaskBlocker = { taskId: string; title: string; status: string };
 
+export type CompletionResult = {
+  id: string;
+  userId: string;
+  taskId: string;
+  summary?: string | null;
+  completedAt: string;
+  actualMinutes?: number | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EntityLink = {
+  id: string;
+  userId: string;
+  sourceType: string;
+  sourceId: string;
+  relationType: "related_to" | "derived_from" | "converted_to" | "attachment" | "reference";
+  targetType: string;
+  targetId: string;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EntityLinkInput = Pick<EntityLink, "sourceType" | "sourceId" | "relationType" | "targetType" | "targetId">;
+
 export type TaskInput = {
   projectId?: string | null;
   title: string;
@@ -175,7 +204,12 @@ export type RecurrenceInput = {
 export type ApiErrorPayload = { error?: string; code?: string };
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+  const method = (init?.method || "GET").toUpperCase();
+  const response = await instrumentedFetch(globalThis.fetch, url, init, {
+    module: "execution",
+    action: `${method} ${url.split("?", 1)[0]}`,
+    userMessage: "执行服务请求失败",
+  });
   const raw = await response.text();
   let payload: unknown = null;
   if (raw) {
@@ -263,6 +297,10 @@ export const executionApi = {
     clearRecurrence: (id: string) => request<{ ok: true }>(`/api/execution/tasks/${encodeURIComponent(id)}/recurrence`, { method: "DELETE" }),
     schedule: (id: string, timing: CalendarTimingInput) =>
       request<CalendarEvent>(`/api/execution/tasks/${encodeURIComponent(id)}/schedule`, json("POST", { timing })),
+    completion: (id: string) =>
+      request<CompletionResult | null>(`/api/execution/tasks/${encodeURIComponent(id)}/completion-result`),
+    saveCompletion: (id: string, input: { summary?: string | null; actualMinutes?: number | null }) =>
+      request<CompletionResult>(`/api/execution/tasks/${encodeURIComponent(id)}/completion-result`, json("PUT", input)),
   },
   calendar: {
     list: (options: Record<string, string | boolean | undefined> = {}) =>
@@ -301,6 +339,14 @@ export const executionApi = {
     convertToTask: (id: string, input: Partial<TaskInput> & { title?: string }) => request<ExecutionTask>(`/api/execution/memos/${encodeURIComponent(id)}/convert-to-task`, json("POST", input)),
     convertToCalendar: (id: string, input: { title?: string; description?: string; timing: CalendarTimingInput }) => request<CalendarEvent>(`/api/execution/memos/${encodeURIComponent(id)}/convert-to-calendar`, json("POST", input)),
     convertToWaiting: (id: string, input: { title?: string; description?: string; waitingFor: string; expectedAt?: string | null; followUpAt?: string | null }) => request<WaitingItem>(`/api/execution/memos/${encodeURIComponent(id)}/convert-to-waiting`, json("POST", input)),
+  },
+  relations: {
+    list: (entityType: string, entityId: string) =>
+      request<EntityLink[]>(query("/api/execution/entity-links", { entityType, entityId })),
+    create: (input: EntityLinkInput) =>
+      request<EntityLink>("/api/execution/entity-links", json("POST", input)),
+    remove: (id: string) =>
+      request<{ ok: true }>(`/api/execution/entity-links/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   reminders: {
     list: (subjectType: Reminder["subjectType"], subjectId: string) => request<Reminder[]>(query("/api/execution/reminders", { subjectType, subjectId })),

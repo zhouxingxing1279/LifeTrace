@@ -407,6 +407,31 @@ fn transition_allowed(from: &str, to: &str) -> bool {
     )
 }
 
+fn persist_task_status_change(
+    connection: &Connection,
+    user_id: &str,
+    current: &TaskRecord,
+    write: &TaskWrite,
+) -> ExecutionResult<TaskRecord> {
+    let saved = repository::save_task(connection, write).map_err(ExecutionError::storage)?;
+    if saved.status == "done" {
+        let completed_at = saved
+            .completed_at
+            .as_deref()
+            .ok_or_else(|| ExecutionError::validation("已完成任务缺少 completedAt"))?;
+        crate::execution_relation::ensure_completion_for_task(
+            connection,
+            user_id,
+            &saved.id,
+            completed_at,
+            saved.actual_minutes,
+        )?;
+    } else if current.status == "done" {
+        crate::execution_relation::clear_completion_for_task(connection, user_id, &saved.id)?;
+    }
+    Ok(saved)
+}
+
 pub fn change_task_status(
     connection: &Connection,
     id: &str,
@@ -418,6 +443,25 @@ pub fn change_task_status(
         .map_err(ExecutionError::storage)?
         .ok_or_else(|| ExecutionError::not_found("任务不存在"))?;
     if current.status == input.status {
+        if current.status == "done"
+            && crate::database::repositories::execution_relation::get_completion_result(
+                connection, &user_id, id,
+            )
+            .map_err(ExecutionError::storage)?
+            .is_none()
+        {
+            let completed_at = current
+                .completed_at
+                .as_deref()
+                .ok_or_else(|| ExecutionError::validation("已完成任务缺少 completedAt"))?;
+            crate::execution_relation::ensure_completion_for_task(
+                connection,
+                &user_id,
+                id,
+                completed_at,
+                current.actual_minutes,
+            )?;
+        }
         return Ok(current);
     }
     if !transition_allowed(&current.status, &input.status) {
@@ -429,7 +473,7 @@ pub fn change_task_status(
     let stamp = Utc::now().to_rfc3339();
     let write = TaskWrite {
         id: Some(current.id.clone()),
-        user_id,
+        user_id: user_id.clone(),
         project_id: current.project_id.clone(),
         parent_task_id: current.parent_task_id.clone(),
         title: current.title.clone(),
@@ -456,7 +500,19 @@ pub fn change_task_status(
             current.cancelled_at.clone()
         },
     };
-    repository::save_task(connection, &write).map_err(ExecutionError::storage)
+
+    if !connection.is_autocommit() {
+        return persist_task_status_change(connection, &user_id, &current, &write);
+    }
+
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| ExecutionError::storage(error.to_string()))?;
+    let saved = persist_task_status_change(&transaction, &user_id, &current, &write)?;
+    transaction
+        .commit()
+        .map_err(|error| ExecutionError::storage(error.to_string()))?;
+    Ok(saved)
 }
 
 pub fn delete_task(connection: &Connection, id: &str) -> ExecutionResult<()> {
@@ -472,11 +528,17 @@ pub fn delete_task(connection: &Connection, id: &str) -> ExecutionResult<()> {
             "任务仍有子任务，不能直接删除".to_owned(),
         ));
     }
-    if repository::soft_delete_task(connection, &user_id, id).map_err(ExecutionError::storage)? {
-        Ok(())
-    } else {
-        Err(ExecutionError::not_found("任务不存在"))
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| ExecutionError::storage(error.to_string()))?;
+    if !repository::soft_delete_task(&transaction, &user_id, id).map_err(ExecutionError::storage)? {
+        return Err(ExecutionError::not_found("任务不存在"));
     }
+    crate::execution_relation::clear_completion_for_task(&transaction, &user_id, id)?;
+    transaction
+        .commit()
+        .map_err(|error| ExecutionError::storage(error.to_string()))?;
+    Ok(())
 }
 
 #[cfg(test)]
