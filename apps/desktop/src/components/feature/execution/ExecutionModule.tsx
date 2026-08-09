@@ -15,6 +15,7 @@ import {
   Pencil,
   Plus,
   RefreshCw,
+  Repeat2,
   RotateCcw,
   Search,
   Trash2,
@@ -25,6 +26,8 @@ import TaskAdvancedPanel from "@/src/components/feature/execution/TaskAdvancedPa
 import SubjectReminderPanel from "@/src/components/feature/execution/SubjectReminderPanel";
 import MemoConvertPanel from "@/src/components/feature/execution/MemoConvertPanel";
 import CalendarWorkspace from "@/src/components/feature/execution/CalendarWorkspace";
+import CalendarConflictDialog, { type CalendarConflict } from "@/src/components/feature/execution/CalendarConflictDialog";
+import CalendarRecurrencePanel from "@/src/components/feature/execution/CalendarRecurrencePanel";
 import ExecutionContextMenu, { type ExecutionMenuItem } from "@/src/components/feature/execution/ExecutionContextMenu";
 import { preserveTaskUpdateFields, waitingToTaskInput } from "@/src/components/feature/execution/executionViewModel";
 import {
@@ -34,6 +37,7 @@ import {
   rfc3339ToLocalDateTime,
   type CalendarEvent,
   type CalendarInput,
+  type CalendarTimingInput,
   type ExecutionProject,
   type ExecutionTask,
   type ExecutionTaskPriority,
@@ -65,6 +69,7 @@ type Editor =
 
 type ReminderSubject = { subjectType: Reminder["subjectType"]; subjectId: string; title: string };
 type ContextMenuState = { x: number; y: number; items: ExecutionMenuItem[] } | null;
+type PendingCalendarAction = { title: string; conflicts: CalendarConflict[]; action: () => Promise<unknown>; success: string } | null;
 
 type Data = {
   projects: ExecutionProject[];
@@ -244,7 +249,7 @@ function ProjectEditor({ value, busy, close, save, remove }: { value?: Execution
   </div>;
 }
 
-function CalendarEditor({ value, sourceTask, busy, close, save, remove }: { value?: CalendarEvent; sourceTask?: ExecutionTask; busy: boolean; close: () => void; save: (input: CalendarInput) => Promise<void>; remove: () => Promise<void> }) {
+function CalendarEditor({ value, sourceTask, busy, close, save, remove, onRecurrence }: { value?: CalendarEvent; sourceTask?: ExecutionTask; busy: boolean; close: () => void; save: (input: CalendarInput) => Promise<void>; remove: () => Promise<void>; onRecurrence: (event: CalendarEvent) => void }) {
   const [title, setTitle] = useState(value?.title || sourceTask?.title || "");
   const [description, setDescription] = useState(value?.description || "");
   const [allDay, setAllDay] = useState(value?.isAllDay || false);
@@ -255,7 +260,7 @@ function CalendarEditor({ value, sourceTask, busy, close, save, remove }: { valu
   return <div className="lt-exec-editor" role="dialog" aria-modal="true" aria-label="日历事件">
     <header><div><strong>{sourceTask ? "安排任务" : value ? "编辑事件" : "新建事件"}</strong><span>时间块</span></div><button type="button" onClick={close} aria-label="关闭"><X/></button></header>
     <div className="lt-exec-form"><label>标题<input autoFocus value={title} onChange={(e) => setTitle(e.target.value)}/></label><label className="lt-exec-checkbox"><input type="checkbox" checked={allDay} onChange={(e) => setAllDay(e.target.checked)}/>全天事件</label>{allDay ? <div className="lt-exec-form-grid"><label>开始日期<input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}/></label><label>结束日期<input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}/></label></div> : <div className="lt-exec-form-grid"><label>开始<input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)}/></label><label>结束<input type="datetime-local" value={endAt} onChange={(e) => setEndAt(e.target.value)}/></label></div>}<label>说明<textarea rows={4} value={description} onChange={(e) => setDescription(e.target.value)}/></label></div>
-    <footer>{value && !sourceTask ? <button className="lt-exec-danger" type="button" onClick={() => void remove()}><Trash2/>删除</button> : <span/>}<div><button type="button" onClick={close}>取消</button><button className="hx-btn primary" type="button" disabled={busy || !title.trim() || (!allDay && (!startAt || !endAt))} onClick={() => void save({ title, description: description || null, isAllDay: allDay, startAt: allDay ? null : localDateTimeToRfc3339(startAt), endAt: allDay ? null : localDateTimeToRfc3339(endAt), startLocalDate: allDay ? startDate : null, endLocalDate: allDay ? endDate : null, timezone: browserTimezone(), sourceTaskId: sourceTask?.id || value?.sourceTaskId || null })}>保存</button></div></footer>
+    <footer>{value && !sourceTask ? <div className="lt-exec-editor-secondary"><button className="lt-exec-danger" type="button" onClick={() => void remove()}><Trash2/>删除</button><button type="button" onClick={() => onRecurrence(value)}><Repeat2/>重复规则</button></div> : <span/>}<div><button type="button" onClick={close}>取消</button><button className="hx-btn primary" type="button" disabled={busy || !title.trim() || (!allDay && (!startAt || !endAt))} onClick={() => void save({ title, description: description || null, isAllDay: allDay, startAt: allDay ? null : localDateTimeToRfc3339(startAt), endAt: allDay ? null : localDateTimeToRfc3339(endAt), startLocalDate: allDay ? startDate : null, endLocalDate: allDay ? endDate : null, timezone: browserTimezone(), sourceTaskId: sourceTask?.id || value?.sourceTaskId || null })}>保存</button></div></footer>
   </div>;
 }
 
@@ -292,6 +297,8 @@ export default function ExecutionModule() {
   const [memoArchived, setMemoArchived] = useState(false);
   const [quickTask, setQuickTask] = useState("");
   const [calendarRefreshToken, setCalendarRefreshToken] = useState(0);
+  const [recurrenceEvent, setRecurrenceEvent] = useState<CalendarEvent | null>(null);
+  const [pendingCalendarAction, setPendingCalendarAction] = useState<PendingCalendarAction>(null);
 
   const load = useCallback(async () => {
     setError("");
@@ -344,6 +351,33 @@ export default function ExecutionModule() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const guardCalendarAction = async (
+    title: string,
+    timing: CalendarTimingInput,
+    excludeEventId: string | undefined,
+    action: () => Promise<unknown>,
+    success: string,
+  ) => {
+    if (timing.isAllDay) {
+      await run(action, success);
+      return;
+    }
+    setBusy(true);
+    try {
+      const conflicts = await executionApi.calendar.conflicts(timing, excludeEventId);
+      if (conflicts.length) {
+        setPendingCalendarAction({ title, conflicts, action, success });
+        return;
+      }
+    } catch (cause) {
+      toast(cause instanceof Error ? cause.message : "冲突检查失败", "error");
+      return;
+    } finally {
+      setBusy(false);
+    }
+    await run(action, success);
   };
 
   const createQuickTask = async () => {
@@ -412,6 +446,8 @@ export default function ExecutionModule() {
     refreshToken={calendarRefreshToken}
     onCreate={() => setEditor({ kind: "calendar" })}
     onEdit={(value) => setEditor({ kind: "calendar", value })}
+    onMove={(value, timing) => guardCalendarAction(value.title, timing, value.id, () => executionApi.calendar.move(value.id, timing), "事件时间已调整")}
+    onRecurrence={(value) => setRecurrenceEvent(value)}
     onReminder={(subject) => setReminderSubject(subject)}
   />;
 
@@ -439,7 +475,7 @@ export default function ExecutionModule() {
     {editor ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setEditor(null); }}>
       {editor.kind === "task" ? <TaskEditor value={editor.value} projects={data.projects} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.tasks.update(editor.value.id, preserveTaskUpdateFields(editor.value, input)) : executionApi.tasks.create(input), editor.value ? "任务已更新" : "任务已创建")} remove={() => run(() => executionApi.tasks.remove(editor.value!.id), "任务已删除")}/>: null}
       {editor.kind === "project" ? <ProjectEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.projects.update(editor.value.id, input) : executionApi.projects.create(input), editor.value ? "项目已更新" : "项目已创建")} remove={() => run(() => executionApi.projects.remove(editor.value!.id), "项目已删除")}/>: null}
-      {editor.kind === "calendar" ? <CalendarEditor value={editor.value} sourceTask={editor.sourceTask} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.sourceTask ? executionApi.tasks.schedule(editor.sourceTask.id, input) : editor.value ? executionApi.calendar.update(editor.value.id, input) : executionApi.calendar.create(input), editor.sourceTask ? "任务已安排到日历" : editor.value ? "事件已更新" : "事件已创建")} remove={() => run(() => executionApi.calendar.remove(editor.value!.id), "事件已删除")}/>: null}
+      {editor.kind === "calendar" ? <CalendarEditor value={editor.value} sourceTask={editor.sourceTask} busy={busy} close={() => setEditor(null)} save={(input) => guardCalendarAction(input.title, input, editor.value?.id, () => editor.sourceTask ? executionApi.tasks.schedule(editor.sourceTask.id, input) : editor.value ? executionApi.calendar.update(editor.value.id, input) : executionApi.calendar.create(input), editor.sourceTask ? "任务已安排到日历" : editor.value ? "事件已更新" : "事件已创建")} remove={() => run(() => executionApi.calendar.remove(editor.value!.id), "事件已删除")} onRecurrence={(value) => { setEditor(null); setRecurrenceEvent(value); }}/>: null}
       {editor.kind === "waiting" ? <WaitingEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.waiting.update(editor.value.id, input) : executionApi.waiting.create(input), editor.value ? "等待事项已更新" : "等待事项已创建")} remove={() => run(() => executionApi.waiting.remove(editor.value!.id), "等待事项已删除")}/>: null}
       {editor.kind === "memo" ? <MemoEditor value={editor.value} busy={busy} close={() => setEditor(null)} save={(input) => run(() => editor.value ? executionApi.memos.update(editor.value.id, input) : executionApi.memos.create(input), editor.value ? "Memo 已更新" : "Memo 已保存")} remove={() => run(() => executionApi.memos.remove(editor.value!.id), "Memo 已删除")}/>: null}
     </div> : null}
@@ -460,6 +496,18 @@ export default function ExecutionModule() {
     </div> : null}
     {convertMemo ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setConvertMemo(null); }}>
       <MemoConvertPanel memo={convertMemo} projects={data.projects} onClose={() => setConvertMemo(null)} onConverted={async () => { await load(); if (tab === "memos") await refreshMemos(); }}/>
+    </div> : null}
+    {recurrenceEvent ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setRecurrenceEvent(null); }}>
+      <CalendarRecurrencePanel event={recurrenceEvent} onClose={() => setRecurrenceEvent(null)} onChanged={async () => { await load(); setCalendarRefreshToken((value) => value + 1); }}/>
+    </div> : null}
+    {pendingCalendarAction ? <div className="lt-exec-editor-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setPendingCalendarAction(null); }}>
+      <CalendarConflictDialog
+        title={pendingCalendarAction.title}
+        conflicts={pendingCalendarAction.conflicts}
+        busy={busy}
+        onCancel={() => setPendingCalendarAction(null)}
+        onConfirm={() => { const pending = pendingCalendarAction; setPendingCalendarAction(null); void run(pending.action, pending.success); }}
+      />
     </div> : null}
     {contextMenu ? <ExecutionContextMenu {...contextMenu} onClose={() => setContextMenu(null)}/> : null}
   </div>;

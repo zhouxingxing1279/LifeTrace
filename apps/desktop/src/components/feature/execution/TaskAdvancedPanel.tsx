@@ -11,6 +11,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { normalizeWeekdays } from "@/src/components/feature/execution/executionViewModel";
 import {
   browserTimezone,
   executionApi,
@@ -140,7 +141,7 @@ export default function TaskAdvancedPanel({
     () => executionApi.tasks.setRecurrence(task.id, {
       frequency,
       intervalValue: Math.max(1, Number(intervalValue) || 1),
-      weekdays: frequency === "weekly" ? weekdays : [],
+      weekdays: frequency === "weekly" ? normalizeWeekdays(weekdays) : [],
       untilAt: localDateTimeToRfc3339(untilAt),
       timezone: browserTimezone(),
     }),
@@ -183,7 +184,7 @@ export default function TaskAdvancedPanel({
             <label>间隔<input type="number" min="1" value={intervalValue} onChange={(event) => setIntervalValue(event.target.value)}/></label>
             <label className="wide">结束时间<input type="datetime-local" value={untilAt} onChange={(event) => setUntilAt(event.target.value)}/></label>
           </div>
-          {frequency === "weekly" ? <div className="lt-exec-weekdays" aria-label="重复星期">{[[1,"一"],[2,"二"],[3,"三"],[4,"四"],[5,"五"],[6,"六"],[0,"日"]].map(([day,label]) => <button key={day} type="button" className={weekdays.includes(day as number) ? "active" : ""} aria-pressed={weekdays.includes(day as number)} onClick={() => toggleWeekday(day as number)}>{label}</button>)}</div> : null}
+          {frequency === "weekly" ? <div className="lt-exec-weekdays" aria-label="重复星期">{[[1,"一"],[2,"二"],[3,"三"],[4,"四"],[5,"五"],[6,"六"],[7,"日"]].map(([day,label]) => <button key={day} type="button" className={weekdays.includes(day as number) ? "active" : ""} aria-pressed={weekdays.includes(day as number)} onClick={() => toggleWeekday(day as number)}>{label}</button>)}</div> : null}
           <div className="lt-exec-inspector-footer-actions"><button type="button" disabled={busy} onClick={() => void saveRecurrence()}>{busy ? <LoaderCircle className="spin"/> : null}保存重复规则</button>{recurrence ? <button className="danger" type="button" disabled={busy} onClick={() => void run(() => executionApi.tasks.clearRecurrence(task.id), "重复规则已关闭")}>关闭重复</button> : null}</div>
         </section>
       </>}

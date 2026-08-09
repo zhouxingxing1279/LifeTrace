@@ -7,6 +7,8 @@ import {
   eventOverlapsDay,
   eventsForDay,
   localDateKey,
+  moveTimedEventToSlot,
+  snapCalendarMinutes,
   shiftCalendarAnchor,
   timedEventPlacement,
 } from "../src/components/feature/execution/calendarViewModel";
@@ -77,4 +79,37 @@ test("eventsForDay excludes cancelled events and sorts all-day first", () => {
   const allDay = event({ id: "all", isAllDay: true, startLocalDate: "2026-08-09", endLocalDate: "2026-08-09", startAt: null, endAt: null });
   const cancelled = event({ id: "cancelled", status: "cancelled", startAt: new Date(2026, 7, 9, 7).toISOString(), endAt: new Date(2026, 7, 9, 8).toISOString() });
   assert.deepEqual(eventsForDay([timed, cancelled, allDay], day).map((item) => item.id), ["all", "timed"]);
+});
+
+
+test("drag minute snapping clamps and rounds to quarter hours", () => {
+  assert.equal(snapCalendarMinutes(-30), 0);
+  assert.equal(snapCalendarMinutes(67), 60);
+  assert.equal(snapCalendarMinutes(68), 75);
+  assert.equal(snapCalendarMinutes(2000), 1439);
+});
+
+test("dragging a timed event preserves duration and targets local wall-clock time", () => {
+  const source = event({
+    id: "drag-source",
+    timezone: "Asia/Shanghai",
+    startAt: new Date(2026, 7, 9, 9, 30).toISOString(),
+    endAt: new Date(2026, 7, 9, 10, 45).toISOString(),
+  });
+  const timing = moveTimedEventToSlot(source, new Date(2026, 7, 11, 12), 14 * 60 + 7);
+  assert.ok(timing?.startAt && timing.endAt);
+  const start = new Date(timing.startAt);
+  const end = new Date(timing.endAt);
+  assert.equal(start.getFullYear(), 2026);
+  assert.equal(start.getMonth(), 7);
+  assert.equal(start.getDate(), 11);
+  assert.equal(start.getHours(), 14);
+  assert.equal(start.getMinutes(), 0);
+  assert.equal(end.getTime() - start.getTime(), 75 * 60 * 1000);
+  assert.equal(timing.timezone, "Asia/Shanghai");
+});
+
+test("all-day events cannot be dragged into timed slots", () => {
+  const allDay = event({ isAllDay: true, startAt: null, endAt: null, startLocalDate: "2026-08-09", endLocalDate: "2026-08-09" });
+  assert.equal(moveTimedEventToSlot(allDay, new Date(2026, 7, 10), 600), null);
 });

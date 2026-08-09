@@ -274,6 +274,11 @@ export const executionApi = {
     move: (id: string, timing: CalendarTimingInput) => request<CalendarEvent>(`/api/execution/calendar-events/${encodeURIComponent(id)}/move`, json("PUT", timing)),
     conflicts: (timing: CalendarTimingInput, excludeEventId?: string) =>
       request<Array<{ eventId: string; occurrenceId?: string | null; title: string; isAllDay: boolean }>>("/api/execution/calendar-conflicts", json("POST", { timing, excludeEventId })),
+    recurrence: (id: string) => request<RecurrenceRule | null>(`/api/execution/calendar-events/${encodeURIComponent(id)}/recurrence`),
+    setRecurrence: (id: string, input: RecurrenceInput) =>
+      request<RecurrenceRule>(`/api/execution/calendar-events/${encodeURIComponent(id)}/recurrence`, json("PUT", input)),
+    clearRecurrence: (id: string) =>
+      request<{ ok: true }>(`/api/execution/calendar-events/${encodeURIComponent(id)}/recurrence`, { method: "DELETE" }),
   },
   waiting: {
     list: (options: { view?: string; now?: string } = {}) => request<WaitingItem[]>(query("/api/execution/waiting-items", options)),

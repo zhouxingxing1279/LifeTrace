@@ -452,3 +452,131 @@
     text-overflow: ellipsis;
   }
 }
+
+
+.lt-calendar-month-grid button strong,
+.lt-calendar-all-day button {
+  align-items: center;
+}
+
+.lt-calendar-month-grid button strong svg,
+.lt-calendar-all-day button svg,
+.lt-calendar-time-event strong svg {
+  width: 11px;
+  height: 11px;
+  flex: 0 0 auto;
+  color: var(--ui-primary);
+}
+
+.lt-calendar-month-grid button strong,
+.lt-calendar-time-event strong {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.lt-calendar-all-day button {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.lt-calendar-time-column.drag-target {
+  background: color-mix(in srgb, var(--ui-primary-soft) 58%, var(--ui-bg-surface));
+  box-shadow: inset 0 0 0 1px var(--ui-primary);
+}
+
+.lt-calendar-time-event[draggable="true"] {
+  cursor: grab;
+}
+
+.lt-calendar-time-event[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.lt-calendar-event-actions {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: flex;
+  gap: 1px;
+}
+
+.lt-calendar-time-event .lt-calendar-event-actions button {
+  position: static;
+}
+
+.lt-calendar-drag-hint {
+  padding: 5px 10px;
+  border-top: 1px solid var(--ui-border);
+  color: var(--ui-faint);
+  font-size: var(--ui-font-micro);
+  text-align: right;
+}
+
+.lt-calendar-conflict-body {
+  display: grid;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-4);
+}
+
+.lt-calendar-conflict-summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-sm);
+  background: color-mix(in srgb, var(--ui-warning) 10%, var(--ui-bg-surface));
+  font-size: var(--ui-font-caption);
+}
+
+.lt-calendar-conflict-summary svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  color: var(--ui-warning);
+}
+
+.lt-calendar-conflict-list {
+  display: grid;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid var(--ui-border);
+  border-radius: var(--ui-radius-sm);
+}
+
+.lt-calendar-conflict-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ui-space-3);
+  padding: var(--ui-space-2) var(--ui-space-3);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.lt-calendar-conflict-list > div:last-child {
+  border-bottom: 0;
+}
+
+.lt-calendar-conflict-list strong,
+.lt-calendar-conflict-list span {
+  font-size: var(--ui-font-caption);
+}
+
+.lt-calendar-conflict-list span {
+  color: var(--ui-muted);
+}
+
+.lt-exec-editor-secondary {
+  display: flex;
+  gap: var(--ui-space-2);
+}
+
+.lt-exec-editor-secondary button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.lt-exec-editor-secondary svg {
+  width: 14px;
+  height: 14px;
+}
