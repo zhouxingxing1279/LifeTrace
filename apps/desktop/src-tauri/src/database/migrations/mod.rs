@@ -12,6 +12,7 @@ mod m0006_workouts;
 mod m0007_sync_client;
 mod m0008_sync_triggers;
 mod m0009_execution;
+mod m0010_execution_sync;
 
 pub use m0001_framework::M0001Framework;
 pub use m0002_finance::M0002Finance;
@@ -22,6 +23,7 @@ pub use m0006_workouts::M0006Workouts;
 pub use m0007_sync_client::M0007SyncClient;
 pub use m0008_sync_triggers::M0008SyncTriggers;
 pub use m0009_execution::M0009Execution;
+pub use m0010_execution_sync::M0010ExecutionSync;
 
 use crate::database::migration_runner::Migration;
 
@@ -37,5 +39,6 @@ pub fn all() -> Vec<Box<dyn Migration>> {
         Box::new(M0007SyncClient),
         Box::new(M0008SyncTriggers),
         Box::new(M0009Execution),
+        Box::new(M0010ExecutionSync),
     ]
 }

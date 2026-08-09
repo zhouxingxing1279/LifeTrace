@@ -173,6 +173,11 @@ pub fn enqueue_existing_profile(
             }
         }
     }
+    for (entity_type, value) in super::execution::existing_entities(connection, profile_id)? {
+        if enqueue_upsert(connection, entity_type, &value, None, MutationOrigin::Local)?.is_some() {
+            total += 1;
+        }
+    }
     let mut ids = connection
         .prepare("SELECT id FROM notes WHERE user_id=?1 AND deleted_at IS NULL")
         .map_err(|error| error.to_string())?;

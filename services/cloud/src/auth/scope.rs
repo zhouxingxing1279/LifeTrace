@@ -30,6 +30,8 @@ pub const ALL_SCOPES: &[&str] = &[
     "reviews:write",
     "workouts:read",
     "workouts:write",
+    "execution:read",
+    "execution:write",
 ];
 
 pub fn supported_app(app_id: &str) -> bool {
@@ -126,6 +128,8 @@ pub fn required_entity_scope(entity_type: &str, write: bool) -> Option<&'static 
         "reviews"
     } else if entity_type.starts_with("workout.") || entity_type == "training.note" {
         "workouts"
+    } else if entity_type.starts_with("execution.") {
+        "execution"
     } else if entity_type == "file.metadata" {
         "files"
     } else if entity_type == "user.preference" || entity_type == "entity.link" {
@@ -146,6 +150,8 @@ pub fn required_entity_scope(entity_type: &str, write: bool) -> Option<&'static 
         ("reviews", _) => "reviews:write",
         ("workouts", "read") => "workouts:read",
         ("workouts", _) => "workouts:write",
+        ("execution", "read") => "execution:read",
+        ("execution", _) => "execution:write",
         ("files", "read") => "files:read",
         ("files", _) => "files:write",
         ("account", "read") => "account:read",
@@ -181,6 +187,21 @@ mod tests {
             &granted,
         );
         assert_eq!(issued, vec!["finance:read"]);
+    }
+
+    #[test]
+    fn desktop_execution_entities_have_read_and_write_scopes() {
+        let granted = allowed_scopes(AppId::DESKTOP);
+        assert!(granted.contains("execution:read"));
+        assert!(granted.contains("execution:write"));
+        assert_eq!(
+            required_entity_scope("execution.task", false),
+            Some("execution:read")
+        );
+        assert_eq!(
+            required_entity_scope("execution.memo", true),
+            Some("execution:write")
+        );
     }
 
     #[test]

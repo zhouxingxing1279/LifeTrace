@@ -51,6 +51,15 @@ impl SqliteSyncStore {
         entity_type: &str,
         entity_id: &str,
     ) -> Result<Option<Value>, SyncError> {
+        if super::execution::is_execution(entity_type) {
+            return super::execution::load_local_entity(
+                connection,
+                profile,
+                entity_type,
+                entity_id,
+            )
+            .map_err(Self::db_error);
+        }
         let value = match entity_type {
             "finance.account" => Self::list_find(finance::list_accounts(connection).map_err(Self::db_error)?, entity_id),
             "finance.transaction" => Self::list_find(finance::list_transactions(connection).map_err(Self::db_error)?, entity_id),
@@ -248,6 +257,10 @@ impl SqliteSyncStore {
         payload: &Value,
     ) -> Result<(), SyncError> {
         let legacy = Self::force_owner(wire_to_legacy(payload).map_err(Self::db_error)?, profile);
+        if super::execution::is_execution(entity_type) {
+            return super::execution::apply_upsert(connection, profile, entity_type, &legacy)
+                .map_err(Self::db_error);
+        }
         let result = match entity_type {
             "finance.account" => finance::save_account(connection, &legacy),
             "finance.transaction" => finance::save_transaction(connection, &legacy),
@@ -288,6 +301,10 @@ impl SqliteSyncStore {
         entity_type: &str,
         entity_id: &str,
     ) -> Result<(), SyncError> {
+        if super::execution::is_execution(entity_type) {
+            return super::execution::apply_delete(connection, profile, entity_type, entity_id)
+                .map_err(Self::db_error);
+        }
         let result = match entity_type {
             "finance.account" => finance::delete_account(connection, entity_id),
             "finance.transaction" => finance::delete_transaction(connection, entity_id),

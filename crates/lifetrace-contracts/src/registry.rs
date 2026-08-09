@@ -300,6 +300,118 @@ pub const REGISTRY: &[EntityDescriptor] = &[
         contains_file_references: false,
     },
     EntityDescriptor {
+        entity_type: EntityType::EXECUTION_PROJECT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_RECURRENCE_RULE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_TASK,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_TASK_DEPENDENCY,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_TASK_OCCURRENCE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_WAITING_ITEM,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_CALENDAR_EVENT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_CALENDAR_OCCURRENCE,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_MEMO,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_MEMO_TAG,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_MEMO_TAG_RELATION,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_REMINDER,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_COMPLETION_RESULT,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
+        entity_type: EntityType::EXECUTION_ENTITY_LINK,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references: false,
+    },
+    EntityDescriptor {
         entity_type: EntityType::FILE_METADATA,
         schema_version: 1,
         ownership: EntityOwnership::UserOwned,
@@ -369,6 +481,20 @@ impl EntityType {
     pub const WORKOUT_EXERCISE: &'static str = "workout.exercise";
     pub const WORKOUT_SET: &'static str = "workout.set";
     pub const WORKOUT_TRAINING_NOTE: &'static str = "workout.training_note";
+    pub const EXECUTION_PROJECT: &'static str = "execution.project";
+    pub const EXECUTION_RECURRENCE_RULE: &'static str = "execution.recurrence_rule";
+    pub const EXECUTION_TASK: &'static str = "execution.task";
+    pub const EXECUTION_TASK_DEPENDENCY: &'static str = "execution.task_dependency";
+    pub const EXECUTION_TASK_OCCURRENCE: &'static str = "execution.task_occurrence";
+    pub const EXECUTION_WAITING_ITEM: &'static str = "execution.waiting_item";
+    pub const EXECUTION_CALENDAR_EVENT: &'static str = "execution.calendar_event";
+    pub const EXECUTION_CALENDAR_OCCURRENCE: &'static str = "execution.calendar_occurrence";
+    pub const EXECUTION_MEMO: &'static str = "execution.memo";
+    pub const EXECUTION_MEMO_TAG: &'static str = "execution.memo_tag";
+    pub const EXECUTION_MEMO_TAG_RELATION: &'static str = "execution.memo_tag_relation";
+    pub const EXECUTION_REMINDER: &'static str = "execution.reminder";
+    pub const EXECUTION_COMPLETION_RESULT: &'static str = "execution.completion_result";
+    pub const EXECUTION_ENTITY_LINK: &'static str = "execution.entity_link";
     pub const FILE_METADATA: &'static str = "file.metadata";
     pub const ENTITY_LINK: &'static str = "entity.link";
     pub const USER_PREFERENCE: &'static str = "user.preference";
@@ -412,6 +538,20 @@ impl EntityType {
             Self::WORKOUT_EXERCISE,
             Self::WORKOUT_SET,
             Self::WORKOUT_TRAINING_NOTE,
+            Self::EXECUTION_PROJECT,
+            Self::EXECUTION_RECURRENCE_RULE,
+            Self::EXECUTION_TASK,
+            Self::EXECUTION_TASK_DEPENDENCY,
+            Self::EXECUTION_TASK_OCCURRENCE,
+            Self::EXECUTION_WAITING_ITEM,
+            Self::EXECUTION_CALENDAR_EVENT,
+            Self::EXECUTION_CALENDAR_OCCURRENCE,
+            Self::EXECUTION_MEMO,
+            Self::EXECUTION_MEMO_TAG,
+            Self::EXECUTION_MEMO_TAG_RELATION,
+            Self::EXECUTION_REMINDER,
+            Self::EXECUTION_COMPLETION_RESULT,
+            Self::EXECUTION_ENTITY_LINK,
             Self::FILE_METADATA,
             Self::ENTITY_LINK,
             Self::USER_PREFERENCE,

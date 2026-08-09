@@ -112,7 +112,7 @@ fn golden_capabilities_parses() {
     assert_eq!(capabilities.maximum_push_batch_size, 500);
     assert_eq!(capabilities.maximum_atomic_group_size, 50);
     assert_eq!(capabilities.tombstone_retention_days, 90);
-    assert_eq!(capabilities.supported_entity_types.len(), 30);
+    assert_eq!(capabilities.supported_entity_types.len(), 44);
 }
 
 #[test]
