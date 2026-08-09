@@ -2,6 +2,7 @@
 //!
 //! Handler 不直接承担转换逻辑；`state_compat` 负责 `/api/state` 兼容层。
 
+pub mod analytics;
 pub mod english;
 pub mod execution;
 pub mod execution_calendar;
