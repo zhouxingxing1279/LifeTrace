@@ -24,6 +24,6 @@ export function waitingToTaskInput(item: WaitingItem): TaskInput & { resolveSour
 
 export function normalizeWeekdays(values: number[]): number[] {
   return [...new Set(values)]
-    .filter((value) => Number.isInteger(value) && value >= 0 && value <= 6)
+    .filter((value) => Number.isInteger(value) && value >= 1 && value <= 7)
     .sort((a, b) => a - b);
 }

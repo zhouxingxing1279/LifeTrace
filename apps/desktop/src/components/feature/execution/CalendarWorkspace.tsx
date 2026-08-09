@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bell, CalendarDays, ChevronLeft, ChevronRight, LoaderCircle, Plus, RefreshCw } from "lucide-react";
+import { Bell, CalendarDays, ChevronLeft, ChevronRight, LoaderCircle, Plus, RefreshCw, Repeat2 } from "lucide-react";
 import {
   executionApi,
   type CalendarEvent,
+  type CalendarTimingInput,
   type Reminder,
 } from "@/src/services/executionApi";
 import {
@@ -11,7 +12,9 @@ import {
   enumerateCalendarDays,
   eventsForDay,
   localDateKey,
+  moveTimedEventToSlot,
   shiftCalendarAnchor,
+  snapCalendarMinutes,
   timedEventPlacement,
   type CalendarView,
 } from "@/src/components/feature/execution/calendarViewModel";
@@ -19,11 +22,14 @@ import {
 const weekdayLabels = ["一", "二", "三", "四", "五", "六", "日"];
 const hourLabels = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
 const minutePixel = 0.75;
+const draggedEventMime = "application/x-lifetrace-calendar-event";
 
 type Props = {
   refreshToken: number;
   onCreate: () => void;
   onEdit: (event: CalendarEvent) => void;
+  onMove: (event: CalendarEvent, timing: CalendarTimingInput) => Promise<void> | void;
+  onRecurrence: (event: CalendarEvent) => void;
   onReminder: (subject: { subjectType: Reminder["subjectType"]; subjectId: string; title: string }) => void;
 };
 
@@ -39,7 +45,7 @@ function eventTimeLabel(event: CalendarEvent) {
   return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date);
 }
 
-function EventBlock({ event, day, onEdit, onReminder }: { event: CalendarEvent; day: Date; onEdit: (event: CalendarEvent) => void; onReminder: Props["onReminder"] }) {
+function EventBlock({ event, day, onEdit, onReminder, onRecurrence }: { event: CalendarEvent; day: Date; onEdit: (event: CalendarEvent) => void; onReminder: Props["onReminder"]; onRecurrence: Props["onRecurrence"] }) {
   const placement = timedEventPlacement(event, day);
   if (!placement) return null;
   const style = {
@@ -47,34 +53,49 @@ function EventBlock({ event, day, onEdit, onReminder }: { event: CalendarEvent; 
     minHeight: `${placement.durationMinutes * minutePixel}px`,
   };
   return <div
-    className="lt-calendar-time-event"
+    className={`lt-calendar-time-event ${event.recurrenceRuleId ? "recurring" : ""}`}
     style={style}
     role="button"
     tabIndex={0}
-    aria-label={`${eventTimeLabel(event)} ${event.title}`}
+    draggable
+    aria-label={`${eventTimeLabel(event)} ${event.title}${event.recurrenceRuleId ? "，重复事件" : ""}`}
+    onDragStart={(dragEvent) => {
+      dragEvent.dataTransfer.effectAllowed = "move";
+      dragEvent.dataTransfer.setData(draggedEventMime, event.id);
+      dragEvent.dataTransfer.setData("text/plain", event.id);
+    }}
     onClick={() => onEdit(event)}
     onKeyDown={(keyEvent) => { if (keyEvent.key === "Enter" || keyEvent.key === " ") { keyEvent.preventDefault(); onEdit(event); } }}
   >
-    <strong>{event.title}</strong>
+    <strong>{event.recurrenceRuleId ? <Repeat2 aria-hidden="true"/> : null}{event.title}</strong>
     <span>{eventTimeLabel(event)}</span>
-    <button
-      type="button"
-      title="管理提醒"
-      aria-label={`管理 ${event.title} 的提醒`}
-      onClick={(clickEvent) => {
-        clickEvent.stopPropagation();
-        onReminder({ subjectType: "calendar_event", subjectId: event.id, title: event.title });
-      }}
-    ><Bell aria-hidden="true"/></button>
+    <div className="lt-calendar-event-actions">
+      {event.recurrenceRuleId ? <button
+        type="button"
+        title="管理重复规则"
+        aria-label={`管理 ${event.title} 的重复规则`}
+        onClick={(clickEvent) => { clickEvent.stopPropagation(); onRecurrence(event); }}
+      ><Repeat2 aria-hidden="true"/></button> : null}
+      <button
+        type="button"
+        title="管理提醒"
+        aria-label={`管理 ${event.title} 的提醒`}
+        onClick={(clickEvent) => {
+          clickEvent.stopPropagation();
+          onReminder({ subjectType: "calendar_event", subjectId: event.id, title: event.title });
+        }}
+      ><Bell aria-hidden="true"/></button>
+    </div>
   </div>;
 }
 
-export default function CalendarWorkspace({ refreshToken, onCreate, onEdit, onReminder }: Props) {
+export default function CalendarWorkspace({ refreshToken, onCreate, onEdit, onMove, onRecurrence, onReminder }: Props) {
   const [view, setView] = useState<CalendarView>("week");
   const [anchor, setAnchor] = useState(() => new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [dragTarget, setDragTarget] = useState<string | null>(null);
 
   const range = useMemo(() => calendarRange(view, anchor), [view, anchor]);
   const days = useMemo(() => enumerateCalendarDays(range), [range]);
@@ -110,8 +131,8 @@ export default function CalendarWorkspace({ refreshToken, onCreate, onEdit, onRe
       const isToday = sameLocalDay(day, today);
       return <section key={localDateKey(day)} className={`${inMonth ? "" : "outside"} ${isToday ? "today" : ""}`}>
         <header><span>{day.getDate()}</span>{isToday ? <small>今天</small> : null}</header>
-        <div>{dayEvents.slice(0, 4).map((event) => <button key={event.id} type="button" className={event.isAllDay ? "all-day" : "timed"} onClick={() => onEdit(event)} title={event.title}>
-          <time>{eventTimeLabel(event)}</time><strong>{event.title}</strong>
+        <div>{dayEvents.slice(0, 4).map((event) => <button key={event.id} type="button" className={`${event.isAllDay ? "all-day" : "timed"} ${event.recurrenceRuleId ? "recurring" : ""}`} onClick={() => onEdit(event)} title={event.title}>
+          <time>{eventTimeLabel(event)}</time><strong>{event.recurrenceRuleId ? <Repeat2 aria-hidden="true"/> : null}{event.title}</strong>
         </button>)}{dayEvents.length > 4 ? <span className="lt-calendar-more">还有 {dayEvents.length - 4} 项</span> : null}</div>
       </section>;
     })}</div>
@@ -125,7 +146,7 @@ export default function CalendarWorkspace({ refreshToken, onCreate, onEdit, onRe
     </div>
     <div className="lt-calendar-all-day">
       <span className="gutter">全天</span>
-      {timelineDays.map((day) => <div key={localDateKey(day)}>{eventsForDay(events, day).filter((event) => event.isAllDay).map((event) => <button key={event.id} type="button" onClick={() => onEdit(event)}>{event.title}</button>)}</div>)}
+      {timelineDays.map((day) => <div key={localDateKey(day)}>{eventsForDay(events, day).filter((event) => event.isAllDay).map((event) => <button key={event.id} type="button" className={event.recurrenceRuleId ? "recurring" : ""} onClick={() => onEdit(event)}>{event.recurrenceRuleId ? <Repeat2 aria-hidden="true"/> : null}{event.title}</button>)}</div>)}
     </div>
     <div className="lt-calendar-scroll">
       <div className="lt-calendar-hours">
@@ -135,14 +156,32 @@ export default function CalendarWorkspace({ refreshToken, onCreate, onEdit, onRe
         {timelineDays.map((day) => {
           const timed = eventsForDay(events, day).filter((event) => !event.isAllDay);
           const nowMinutes = today.getHours() * 60 + today.getMinutes();
-          return <div key={localDateKey(day)} className={`lt-calendar-time-column ${sameLocalDay(day, today) ? "today" : ""}`}>
+          const key = localDateKey(day);
+          return <div
+            key={key}
+            className={`lt-calendar-time-column ${sameLocalDay(day, today) ? "today" : ""} ${dragTarget === key ? "drag-target" : ""}`}
+            onDragOver={(dragEvent) => { dragEvent.preventDefault(); dragEvent.dataTransfer.dropEffect = "move"; setDragTarget(key); }}
+            onDragLeave={(dragEvent) => { if (!dragEvent.currentTarget.contains(dragEvent.relatedTarget as Node | null)) setDragTarget(null); }}
+            onDrop={(dropEvent) => {
+              dropEvent.preventDefault();
+              setDragTarget(null);
+              const eventId = dropEvent.dataTransfer.getData(draggedEventMime) || dropEvent.dataTransfer.getData("text/plain");
+              const source = events.find((item) => item.id === eventId);
+              if (!source) return;
+              const rect = dropEvent.currentTarget.getBoundingClientRect();
+              const minutes = snapCalendarMinutes((dropEvent.clientY - rect.top) / minutePixel);
+              const timing = moveTimedEventToSlot(source, day, minutes);
+              if (timing) void onMove(source, timing);
+            }}
+          >
             {hourLabels.map((_, hour) => <i key={hour} style={{ top: `${hour * 60 * minutePixel}px` }}/>) }
             {sameLocalDay(day, today) ? <span className="lt-calendar-now" style={{ top: `${nowMinutes * minutePixel}px` }}/>: null}
-            {timed.map((event) => <EventBlock key={event.id} event={event} day={day} onEdit={onEdit} onReminder={onReminder}/>) }
+            {timed.map((event) => <EventBlock key={event.id} event={event} day={day} onEdit={onEdit} onReminder={onReminder} onRecurrence={onRecurrence}/>) }
           </div>;
         })}
       </div>
     </div>
+    <div className="lt-calendar-drag-hint">拖动定时事件可按 15 分钟调整时间；键盘用户可继续通过编辑器修改。</div>
   </div>;
 
   return <div className="lt-exec-workspace lt-calendar-workspace">

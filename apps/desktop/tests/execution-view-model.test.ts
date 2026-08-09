@@ -43,5 +43,5 @@ test("waiting conversion resolves the source and carries expected time", () => {
 });
 
 test("weekday normalization removes duplicates and invalid values", () => {
-  assert.deepEqual(normalizeWeekdays([5, 1, 1, 9, -1, 0]), [0, 1, 5]);
+  assert.deepEqual(normalizeWeekdays([7, 5, 1, 1, 9, -1, 0]), [1, 5, 7]);
 });
