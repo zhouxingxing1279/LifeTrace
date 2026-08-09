@@ -253,17 +253,17 @@ Desktop 与 Cloud 独立发布。
 
 Windows Desktop 使用 Tauri 构建，仓库中已经包含 Windows Release / Updater 的自动化流程和版本一致性检查。安装包、签名及更新元数据的完整发布方式见：
 
-[`docs/releasing-windows.md`](docs/releasing-windows.md)
+[`docs/windows-release.md`](docs/windows-release.md)
 
 ## 主要文档
 
-- [完整 Roadmap](docs/LifeTrace_Complete_Roadmap_v2.md)
+- [完整 Roadmap](docs/roadmap.md)
 - [浏览器端架构与边界](docs/browser-web.md)
 - [UI 重构执行方案](docs/ui-redesign/EXECUTION_PLAN.md)
 - [UI 重构实施报告](docs/ui-redesign/IMPLEMENTATION_REPORT.md)
 - [本地加密相册设计](docs/local-encrypted-album/)
 - [成长树系统规划](docs/growth-tree-system/)
-- [Windows 发布与在线更新](docs/releasing-windows.md)
+- [Windows 发布与在线更新](docs/windows-release.md)
 
 ## Roadmap 与当前实现的关系
 
