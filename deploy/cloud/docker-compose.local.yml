@@ -61,6 +61,8 @@ services:
       context: ../..
       dockerfile: services/cloud/Dockerfile
     entrypoint: ["/app/mail_worker"]
+    healthcheck:
+      disable: true
     environment:
       <<: *cloud_environment
       MIGRATION_ON_STARTUP: "false"
