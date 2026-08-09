@@ -4,6 +4,7 @@ pub mod assistant;
 pub mod auth;
 pub mod finance;
 pub mod health;
+pub mod mail;
 pub mod meta;
 pub mod sync;
 pub mod web_auth;
@@ -21,5 +22,6 @@ pub fn router(_state: AppState) -> Router<AppState> {
         .merge(assistant::router())
         .merge(meta::router())
         .merge(finance::router())
+        .merge(mail::router())
         .merge(sync::router())
 }
