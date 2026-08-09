@@ -35,6 +35,7 @@ import EditorModal, {
   type EditorModalState,
 } from "@/src/components/feature/forms/EditorModal";
 import DailyEnglish from "@/src/components/english/DailyEnglish";
+import ExecutionModule from "@/src/components/feature/execution/ExecutionModule";
 import NotesModule from "@/src/components/NotesModule";
 import PhotoSyncModule from "@/src/components/PhotoSyncModule";
 import AIAssistantModule from "@/src/components/AIAssistantModule";
@@ -278,6 +279,7 @@ export default function HengXuShell() {
             }}
           />
         ) : null}
+        {view === "execution" ? <ExecutionModule /> : null}
         {view === "assistant" ? (
           <AIAssistantModule openSettings={() => setView("settings")} />
         ) : null}
