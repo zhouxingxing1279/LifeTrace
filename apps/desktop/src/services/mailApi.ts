@@ -140,6 +140,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return payload as T;
 }
 
+async function binaryRequest(path: string): Promise<Blob> {
+  const response = await cloudAuthClient.request(path);
+  if (!response.ok) {
+    let message = `附件下载失败（${response.status}）`;
+    try {
+      const payload = (await response.json()) as ErrorPayload;
+      message = payload.message || payload.error || payload.code || message;
+    } catch {
+      // Keep the status-only message; never expose raw binary/server diagnostics.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
 function json(method: string, body?: unknown): RequestInit {
   return {
     method,
@@ -175,6 +190,7 @@ export const mailApi = {
   messages: {
     get: (id: string) => request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(id)}`),
     attachments: async (id: string) => (await request<{ items: MailAttachment[] }>(`/api/v1/mail/messages/${encodeURIComponent(id)}/attachments`)).items,
+    downloadAttachment: (id: string) => binaryRequest(`/api/v1/mail/attachments/${encodeURIComponent(id)}/content`),
     setRead: (id: string, read: boolean) => request<{ ok: true; read: boolean }>(`/api/v1/mail/messages/${encodeURIComponent(id)}/read`, json("POST", { read })),
     archive: (id: string) => request<{ ok: true }>(`/api/v1/mail/messages/${encodeURIComponent(id)}/archive`, json("POST", {})),
   },
