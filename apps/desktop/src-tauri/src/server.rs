@@ -153,7 +153,10 @@ pub async fn serve(
         .route("/api/health", get(health))
         .route("/api/state", get(state::get).post(state::mutate))
         .route("/api/analytics/status", get(analytics::status))
-        .route("/api/analytics/rebuild", axum::routing::post(analytics::rebuild))
+        .route(
+            "/api/analytics/rebuild",
+            axum::routing::post(analytics::rebuild),
+        )
         .route("/api/analytics/timeline", get(analytics::timeline))
         .route("/api/analytics/search", get(analytics::search))
         .route("/api/analytics/report", get(analytics::report))

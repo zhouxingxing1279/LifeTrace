@@ -104,10 +104,7 @@ pub struct ReportQuery {
     timezone: Option<String>,
 }
 
-pub async fn report(
-    State(state): State<AppState>,
-    Query(query): Query<ReportQuery>,
-) -> Response {
+pub async fn report(State(state): State<AppState>, Query(query): Query<ReportQuery>) -> Response {
     let connection = match state.database.lock() {
         Ok(value) => value,
         Err(_) => return storage_error("SQLite 锁已损坏"),

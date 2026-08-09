@@ -117,7 +117,10 @@ fn json_or(raw: String, fallback: Value) -> Value {
     serde_json::from_str(&raw).unwrap_or(fallback)
 }
 
-pub fn projection_status(connection: &Connection, user_id: &str) -> Result<ProjectionStatus, String> {
+pub fn projection_status(
+    connection: &Connection,
+    user_id: &str,
+) -> Result<ProjectionStatus, String> {
     let state = connection
         .query_row(
             "SELECT dirty,projection_version,last_rebuilt_at,last_error
@@ -168,7 +171,10 @@ pub fn projection_status(connection: &Connection, user_id: &str) -> Result<Proje
     })
 }
 
-pub fn ensure_current(connection: &mut Connection, user_id: &str) -> Result<ProjectionStatus, String> {
+pub fn ensure_current(
+    connection: &mut Connection,
+    user_id: &str,
+) -> Result<ProjectionStatus, String> {
     let status = projection_status(connection, user_id)?;
     if status.dirty || status.projection_version != PROJECTION_VERSION {
         rebuild(connection, user_id)
@@ -179,7 +185,9 @@ pub fn ensure_current(connection: &mut Connection, user_id: &str) -> Result<Proj
 
 pub fn rebuild(connection: &mut Connection, user_id: &str) -> Result<ProjectionStatus, String> {
     let stamp = now();
-    let transaction = connection.transaction().map_err(|error| error.to_string())?;
+    let transaction = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
     let result = (|| -> Result<(), String> {
         transaction
             .execute("DELETE FROM analytics_events WHERE user_id=?1", [user_id])
@@ -495,18 +503,31 @@ pub fn timeline(
         sql.push_str(" AND domain=?");
         values.push(SqlValue::Text(domain.to_owned()));
     }
-    if let Some(event_type) = query.event_type.as_deref().filter(|value| !value.is_empty()) {
+    if let Some(event_type) = query
+        .event_type
+        .as_deref()
+        .filter(|value| !value.is_empty())
+    {
         sql.push_str(" AND event_type=?");
         values.push(SqlValue::Text(event_type.to_owned()));
     }
-    if let Some(keyword) = query.keyword.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(keyword) = query
+        .keyword
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         sql.push_str(" AND (title LIKE ? COLLATE NOCASE OR summary LIKE ? COLLATE NOCASE OR search_text LIKE ? COLLATE NOCASE)");
         let pattern = format!("%{keyword}%");
         values.push(SqlValue::Text(pattern.clone()));
         values.push(SqlValue::Text(pattern.clone()));
         values.push(SqlValue::Text(pattern));
     }
-    if let Some((occurred_at, id)) = query.cursor.as_deref().and_then(|value| value.rsplit_once('|')) {
+    if let Some((occurred_at, id)) = query
+        .cursor
+        .as_deref()
+        .and_then(|value| value.rsplit_once('|'))
+    {
         sql.push_str(" AND (occurred_at<? OR (occurred_at=? AND id<?))");
         values.push(SqlValue::Text(occurred_at.to_owned()));
         values.push(SqlValue::Text(occurred_at.to_owned()));
@@ -515,7 +536,9 @@ pub fn timeline(
     sql.push_str(" ORDER BY occurred_at DESC,id DESC LIMIT ?");
     values.push(SqlValue::Integer((limit + 1) as i64));
 
-    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(params_from_iter(values.iter()), |row| {
             let metrics_raw: String = row.get(11)?;
@@ -607,7 +630,9 @@ pub fn search(
     sql.push_str(" ORDER BY score DESC,updated_at DESC LIMIT ?");
     values.push(SqlValue::Integer(limit));
 
-    let mut statement = connection.prepare(&sql).map_err(|error| error.to_string())?;
+    let mut statement = connection
+        .prepare(&sql)
+        .map_err(|error| error.to_string())?;
     let rows = statement
         .query_map(params_from_iter(values.iter()), |row| {
             Ok(SearchHit {
@@ -627,7 +652,11 @@ pub fn search(
         .map_err(|error| error.to_string())
 }
 
-fn count(connection: &Connection, sql: &str, values: &[&dyn rusqlite::ToSql]) -> Result<i64, String> {
+fn count(
+    connection: &Connection,
+    sql: &str,
+    values: &[&dyn rusqlite::ToSql],
+) -> Result<i64, String> {
     connection
         .query_row(sql, values, |row| row.get::<_, i64>(0))
         .map_err(|error| error.to_string())
