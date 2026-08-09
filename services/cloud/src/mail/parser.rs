@@ -71,11 +71,9 @@ pub fn parse_message(raw: &[u8]) -> Result<ParsedMessage, &'static str> {
         .attachments()
         .enumerate()
         .map(|(index, part)| {
-            let mime_type = part.content_type().map(|content_type| {
-                match content_type.subtype() {
-                    Some(subtype) => format!("{}/{}", content_type.ctype(), subtype),
-                    None => content_type.ctype().to_owned(),
-                }
+            let mime_type = part.content_type().map(|content_type| match content_type.subtype() {
+                Some(subtype) => format!("{}/{}", content_type.ctype(), subtype),
+                None => content_type.ctype().to_owned(),
             });
             let disposition = part.content_disposition().map(|value| value.ctype().to_owned());
             let checksum = hex::encode(Sha256::digest(part.contents()));
@@ -93,7 +91,7 @@ pub fn parse_message(raw: &[u8]) -> Result<ParsedMessage, &'static str> {
 
     Ok(ParsedMessage {
         message_id: message.message_id().map(str::to_owned),
-        in_reply_to: message.in_reply_to().map(str::to_owned),
+        in_reply_to: message.in_reply_to().as_text().map(str::to_owned),
         normalized_subject: normalize_subject(message.thread_name().unwrap_or(&subject)),
         subject,
         from_json: address_json(message.from()),
@@ -127,9 +125,10 @@ mod tests {
 
     #[test]
     fn parses_realistic_multipart_message() {
-        let raw = b"From: Alice <alice@example.com>\r\nTo: Bob <bob@example.com>\r\nMessage-ID: <m1@example.com>\r\nSubject: Re: Project Update\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nStatus is green.";
+        let raw = b"From: Alice <alice@example.com>\r\nTo: Bob <bob@example.com>\r\nMessage-ID: <m1@example.com>\r\nIn-Reply-To: <parent@example.com>\r\nSubject: Re: Project Update\r\nContent-Type: text/plain; charset=utf-8\r\n\r\nStatus is green.";
         let parsed = parse_message(raw).expect("parse");
         assert_eq!(parsed.message_id.as_deref(), Some("m1@example.com"));
+        assert_eq!(parsed.in_reply_to.as_deref(), Some("parent@example.com"));
         assert_eq!(parsed.normalized_subject, "project update");
         assert!(parsed.body_text.contains("Status is green"));
     }
