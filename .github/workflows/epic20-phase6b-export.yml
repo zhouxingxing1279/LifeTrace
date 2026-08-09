@@ -1,0 +1,129 @@
+name: EPIC20 Phase6B Clean Export
+
+on:
+  push:
+    branches:
+      - agent/epic20-phase6b-memo
+
+permissions:
+  contents: write
+
+jobs:
+  export-clean-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic20-phase6b-memo
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Register Memo modules and routes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          repo_mod = Path("apps/desktop/src-tauri/src/database/repositories/mod.rs")
+          text = repo_mod.read_text(encoding="utf-8")
+          needle = "pub mod execution_calendar;\n"
+          addition = needle + "pub mod execution_memo;\n"
+          if "pub mod execution_memo;" not in text:
+              if needle not in text:
+                  raise SystemExit("repository module anchor not found")
+              text = text.replace(needle, addition, 1)
+          repo_mod.write_text(text, encoding="utf-8")
+
+          lib = Path("apps/desktop/src-tauri/src/lib.rs")
+          text = lib.read_text(encoding="utf-8")
+          needle = "mod execution_calendar;\n"
+          addition = needle + "mod execution_memo;\n"
+          if "mod execution_memo;" not in text:
+              if needle not in text:
+                  raise SystemExit("domain module anchor not found")
+              text = text.replace(needle, addition, 1)
+          lib.write_text(text, encoding="utf-8")
+
+          server = Path("apps/desktop/src-tauri/src/server.rs")
+          text = server.read_text(encoding="utf-8")
+          needle = "mod execution_calendar;\n"
+          addition = needle + "mod execution_memo;\n"
+          if "mod execution_memo;" not in text:
+              if needle not in text:
+                  raise SystemExit("server module anchor not found")
+              text = text.replace(needle, addition, 1)
+
+          anchor_lines = [
+              "        .route(",
+              "            \"/api/execution/reminders/{id}/cancel\",",
+              "            axum::routing::post(execution_reminder::cancel),",
+              "        )",
+          ]
+          anchor = "\n".join(anchor_lines) + "\n"
+          route_lines = [
+              "        .route(",
+              "            \"/api/execution/memos\",",
+              "            get(execution_memo::list).post(execution_memo::create),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}\",",
+              "            get(execution_memo::get)",
+              "                .put(execution_memo::update)",
+              "                .delete(execution_memo::delete),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/pin\",",
+              "            axum::routing::put(execution_memo::pin),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/archive\",",
+              "            axum::routing::post(execution_memo::archive),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/restore\",",
+              "            axum::routing::post(execution_memo::restore),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/convert-to-task\",",
+              "            axum::routing::post(execution_memo::convert_to_task),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/convert-to-calendar\",",
+              "            axum::routing::post(execution_memo::convert_to_calendar),",
+              "        )",
+              "        .route(",
+              "            \"/api/execution/memos/{id}/convert-to-waiting\",",
+              "            axum::routing::post(execution_memo::convert_to_waiting),",
+              "        )",
+          ]
+          memo_routes = "\n".join(route_lines) + "\n"
+          if '"/api/execution/memos"' not in text:
+              if anchor not in text:
+                  raise SystemExit("reminder cancel route anchor not found")
+              text = text.replace(anchor, anchor + memo_routes, 1)
+          server.write_text(text, encoding="utf-8")
+          PY
+      - name: Format Phase 6B sources
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Export formatted sources from clean main
+        shell: bash
+        run: |
+          git fetch origin main
+          git diff --binary origin/main -- \
+            apps/desktop/src-tauri/src/database/repositories/execution_memo.rs \
+            apps/desktop/src-tauri/src/database/repositories/mod.rs \
+            apps/desktop/src-tauri/src/execution_memo.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/server.rs \
+            apps/desktop/src-tauri/src/server/execution_memo.rs \
+            > /tmp/phase6b.patch
+          git reset --hard HEAD
+          git clean -fd
+          git checkout -B agent/epic20-phase6b-memo-clean origin/main
+          git apply --index /tmp/phase6b.patch
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "feat(epic20): add memo execution flow"
+          git push --force origin HEAD:agent/epic20-phase6b-memo-clean
