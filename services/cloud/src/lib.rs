@@ -10,6 +10,7 @@ pub mod mail;
 pub mod postgres_repository;
 pub mod repository;
 pub mod routes;
+pub mod security;
 pub mod state;
 pub mod store;
 pub mod sync;
@@ -57,9 +58,19 @@ pub fn app(state: AppState) -> Router {
                 HeaderName::from_static("x-request-id"),
             ])
     };
-    routes::router(state.clone())
+
+    let production = state.config.is_production();
+    let mut router = routes::router(state.clone())
         .with_state(state)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .layer(cors)
+        .layer(cors);
+
+    for layer in security::response_security_layers() {
+        router = router.layer(layer);
+    }
+    if production {
+        router = router.layer(security::hsts_layer());
+    }
+    router
 }
