@@ -33,4 +33,4 @@
 
 实现已完成并与当前 `main` 基线同步。网易 IMAP 兼容实现保持不变，仅将对应 Rust 测试模块移动到生产项之后以满足 `clippy --all-targets -D warnings`；该 clippy 修复已单独验证通过。
 
-最终仍以当前 HEAD 的 Browser Web、EPIC-05 Windows Sync、EPIC-03 PostgreSQL 三套正式工作流全部成功作为合并门禁。
+最终范围审计已完成，PR 仅包含 6 个目标文件，不包含临时 CI helper 或无关格式化改动。本提交用于触发最终正式 CI；只有同一最终 HEAD 的 Browser Web、EPIC-05 Windows Sync、EPIC-03 PostgreSQL 三套工作流全部成功后才合并 `main`。
