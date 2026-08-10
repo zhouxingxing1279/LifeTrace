@@ -475,9 +475,10 @@ impl MailService {
                     .execute(&self.pool)
                     .await?;
                 }
-                Err(_) => {
-                    sqlx::query("UPDATE mail_sync_jobs SET state='retry_wait',attempt=attempt+1,finished_at=now(),next_retry_at=now()+interval '3 minutes',error_code='MAIL_SYNC_FAILED',error_detail_redacted='protocol operation failed' WHERE id=$1")
+                Err(error) => {
+                    sqlx::query("UPDATE mail_sync_jobs SET state='retry_wait',attempt=attempt+1,finished_at=now(),next_retry_at=now()+interval '3 minutes',error_code='MAIL_SYNC_FAILED',error_detail_redacted=$2 WHERE id=$1")
                         .bind(job_id)
+                        .bind(error.to_string())
                         .execute(&self.pool)
                         .await?;
                 }
