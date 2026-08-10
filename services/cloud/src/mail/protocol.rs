@@ -351,37 +351,7 @@ pub async fn wait_for_inbox_change(
     .map_err(|_| MailProtocolError::Task)?
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
 
-    fn account(provider: &str, host: &str) -> MailAccountSecret {
-        MailAccountSecret {
-            id: uuid::Uuid::nil(),
-            user_id: uuid::Uuid::nil(),
-            provider: provider.to_owned(),
-            email_address: "test@example.com".to_owned(),
-            display_name: None,
-            imap_host: host.to_owned(),
-            imap_port: 993,
-            imap_security: "tls".to_owned(),
-            smtp_host: "smtp.example.com".to_owned(),
-            smtp_port: 465,
-            smtp_security: "tls".to_owned(),
-            username: "test@example.com".to_owned(),
-            credential_ciphertext: Vec::new(),
-            credential_nonce: Vec::new(),
-            status: "active".to_owned(),
-        }
-    }
-
-    #[test]
-    fn netease_accounts_require_imap_client_identity() {
-        assert!(requires_imap_client_id(&account("126", "imap.126.com")));
-        assert!(requires_imap_client_id(&account("generic", "imap.163.com")));
-        assert!(!requires_imap_client_id(&account("qq", "imap.qq.com")));
-    }
-}
 
 fn smtp_transport(
     account: &MailAccountSecret,
@@ -454,4 +424,36 @@ pub async fn send_mail(
         .map_err(|_| MailProtocolError::Send)?
         .map_err(|_| MailProtocolError::Send)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account(provider: &str, host: &str) -> MailAccountSecret {
+        MailAccountSecret {
+            id: uuid::Uuid::nil(),
+            user_id: uuid::Uuid::nil(),
+            provider: provider.to_owned(),
+            email_address: "test@example.com".to_owned(),
+            display_name: None,
+            imap_host: host.to_owned(),
+            imap_port: 993,
+            imap_security: "tls".to_owned(),
+            smtp_host: "smtp.example.com".to_owned(),
+            smtp_port: 465,
+            smtp_security: "tls".to_owned(),
+            username: "test@example.com".to_owned(),
+            credential_ciphertext: Vec::new(),
+            credential_nonce: Vec::new(),
+            status: "active".to_owned(),
+        }
+    }
+
+    #[test]
+    fn netease_accounts_require_imap_client_identity() {
+        assert!(requires_imap_client_id(&account("126", "imap.126.com")));
+        assert!(requires_imap_client_id(&account("generic", "imap.163.com")));
+        assert!(!requires_imap_client_id(&account("qq", "imap.qq.com")));
+    }
 }
