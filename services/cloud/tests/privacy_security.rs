@@ -110,3 +110,50 @@ async fn policy_is_authenticated_and_export_fails_closed_without_cloud_database(
         .unwrap();
     assert_eq!(export.status(), StatusCode::SERVICE_UNAVAILABLE);
 }
+
+#[tokio::test]
+async fn api_rate_limit_returns_429_with_retry_after() {
+    let router = app(AppState::new(Config {
+        dev_auth_token: TOKEN.to_owned(),
+        dev_auth_user_id: "00000000-0000-0000-0000-000000000017".to_owned(),
+        dev_auth_device_id: "epic17-rate-device".to_owned(),
+        api_rate_limit_requests: 2,
+        api_rate_limit_window_seconds: 60,
+        ..Config::default()
+    }));
+
+    for _ in 0..2 {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method(Method::GET)
+                    .uri("/api/v1/privacy/policy")
+                    .header("authorization", format!("Bearer {TOKEN}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let response = router
+        .oneshot(
+            Request::builder()
+                .method(Method::GET)
+                .uri("/api/v1/privacy/policy")
+                .header("authorization", format!("Bearer {TOKEN}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(response.headers()["retry-after"], "60");
+    assert_eq!(response.headers()["x-content-type-options"], "nosniff");
+
+    let bytes = to_bytes(response.into_body(), 128 * 1024).await.unwrap();
+    let body: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(body["code"], "LIFETRACE_RATE_LIMITED");
+}
