@@ -10,10 +10,11 @@ EPIC-17 不替换 EPIC-04 已完成的认证系统，而是在它之上建立统
 
 - 网络入口只允许可信 HTTPS 部署；
 - 浏览器 Session 使用 HttpOnly Cookie，写操作执行 CSRF 校验；
-- 原生客户端使用短期 Access Token，并把长期凭据隔离到原生凭据桥接层；
+- 原生客户端使用短期 Access Token，并把长期凭据隔离到系统安全凭据存储；
 - CORS、CSP、安全响应头和生产配置采用 fail-closed；
+- `/api/*` 建立通用滥用限流，登录等高风险端点继续使用更严格的认证限流；
 - 业务访问继续服从 App Scope 和用户所有权；
-- Secret、Token、Cookie、密码等敏感值不能进入普通诊断日志；
+- Secret、Token、Cookie、密码和完整敏感正文不能进入普通诊断日志；
 - 数据库运行身份与 migration 身份分离，降低运行时数据库权限；
 - 数据导出和账号删除是认证后的显式用户操作。
 
@@ -25,6 +26,7 @@ Browser / PWA
                     │
 Windows / Tauri     │
   └─ Access Token ──┼────> LifeTrace Cloud / Axum
+                    │        ├─ API rate limit
                     │        ├─ Auth / Scope
                     │        ├─ Security headers
                     │        ├─ Privacy API
@@ -76,7 +78,21 @@ default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
 
 这是针对 API 服务而不是静态站点的策略，因此可以比普通前端页面更严格。
 
-## 5. HTTPS 与 CORS
+## 5. API 与登录限流
+
+`services/cloud/src/api_rate_limit.rs` 为 `/api/*` 增加应用级固定窗口限流：
+
+- 默认每个传输层客户端 IP 600 请求/分钟；
+- 真实服务从 Axum `ConnectInfo<SocketAddr>` 读取 peer IP，不信任客户端可伪造的 forwarded-IP 请求头；
+- 超限返回 HTTP `429`、`LIFETRACE_RATE_LIMITED` 和 `Retry-After`；
+- `/health/*` 不进入通用 API 配额，避免健康探针与业务流量互相影响；
+- 内部计数表会做过期清理，避免长期无界增长。
+
+这一层是通用滥用保护，不替代登录防爆破。认证端点继续使用 EPIC-04 的 credential-aware 登录限流，因此形成“全 API 基线 + 高风险端点更严格规则”的两层模型。
+
+生产环境仍建议在公网边缘增加 WAF/反向代理限流和连接保护；应用级限流是纵深防御，不应作为唯一抗 DDoS 手段。
+
+## 6. HTTPS 与 CORS
 
 ### 生产 HTTPS
 
@@ -96,7 +112,7 @@ default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'
 
 CORS 不是认证机制。即使 Origin 被允许，API 仍需正常认证、Scope 和 CSRF 校验。
 
-## 6. CSRF 与 XSS
+## 7. CSRF 与 XSS
 
 ### CSRF
 
@@ -113,7 +129,7 @@ EPIC-17 的账号删除接口同样复用这一边界，不能因为它是“隐
 
 云端 API 不直接执行用户 HTML，并使用严格 CSP 降低错误内容类型下的执行风险。对于邮件等允许富文本的领域，服务端已有内容清洗依赖，前端仍必须使用结构化渲染或经过 sanitizer 的 HTML，禁止把未清洗外部文本直接传给危险 HTML 注入入口。
 
-## 7. Token 与客户端安全
+## 8. Token 与客户端安全
 
 ### Browser / PWA
 
@@ -121,16 +137,18 @@ EPIC-17 的账号删除接口同样复用这一边界，不能因为它是“隐
 
 ### Windows / Tauri
 
-当前 `apps/desktop/src/services/cloudAuth.ts` 的安全边界是：
+当前 `apps/desktop/src/services/cloudAuth.ts` 与 `apps/desktop/src-tauri/src/cloud_auth.rs` 的安全边界是：
 
 - Access Token 只保存在运行时内存中；
-- Refresh Token 通过 `cloudCredentialApi` 原生凭据桥接保存/读取/删除；
+- Refresh Token 通过 `cloudCredentialApi` 桥接到 **Windows Credential Manager**；
+- Windows 原生层使用 `CredWriteW` / `CredReadW` / `CredDeleteW`，写入后的临时字节缓冲会清零；
 - Web Storage 只保存服务 Origin 和随机 Device ID，这两项不是认证 Secret；
-- 登出时删除长期凭据并清空内存 Access Token。
+- 登出时删除 Windows Credential Manager 中的长期凭据并清空内存 Access Token；
+- 非 Windows 构建若没有可用安全凭据存储，不退化为明文文件、Web Storage 或普通 SQLite 持久化。
 
-原生凭据桥接层必须以平台安全凭据存储为最终落点；不得退化成明文文件、Web Storage 或普通 SQLite 字段。若某平台没有可用安全存储，应关闭长期登录而不是自制弱加密方案。
+因此长期 Refresh Token 的最终落点是操作系统凭据库，而不是“自制加密”文件。
 
-## 8. App 权限最小化
+## 9. App 权限最小化
 
 授权继续使用 EPIC-04 Scope 模型。EPIC-17 新增隐私导出同样按 Scope 裁剪：
 
@@ -139,9 +157,9 @@ EPIC-17 的账号删除接口同样复用这一边界，不能因为它是“隐
 - 账号删除必须拥有 `account:write`；
 - 一个单领域 App 不会因为“导出”接口而获得其他领域数据。
 
-这避免隐私功能成为跨 Scope 的旁路。
+桌面端 Tauri capability 同样采用最小权限：默认 capability 只对主窗口开放核心窗口几何、打开/保存对话框、更新器和进程重启等当前功能所需权限，不开放未使用的通用系统能力。
 
-## 9. 数据库最小权限
+## 10. 数据库最小权限
 
 生产环境新增约束：
 
@@ -157,7 +175,7 @@ MIGRATION_ON_STARTUP=false
 4. 密码/连接串通过部署 Secret 管理注入，不写入仓库；
 5. 定期轮换生产数据库凭据。
 
-## 10. Secret 管理与日志脱敏
+## 11. Secret 管理与日志脱敏
 
 禁止进入普通日志的内容包括：
 
@@ -168,22 +186,23 @@ MIGRATION_ON_STARTUP=false
 - Token hash；
 - API Key / Secret；
 - 邮件账号 credential ciphertext；
-- 无排障必要的完整邮件、通知或导入原文。
+- 完整邮件正文、通知原文、请求 raw body 等高敏内容。
 
-`security::redact_sensitive_json` 为结构化诊断元数据提供统一递归脱敏。新增日志字段应先经过这一层，不能依赖开发者手工“记得隐藏”。
+云端 `security::redact_sensitive_json` 为结构化诊断元数据提供统一递归脱敏。桌面端已有 `sanitizeLogValue`，EPIC-17 进一步把 `bodyText`、`bodyHtml`、`rawBody`、`notificationContent` 等正文键加入强制脱敏规则；URL 日志继续移除 query string 和 fragment。
 
-生产日志应以请求 ID、错误码、模块、耗时、对象 ID 等最小必要元数据为主，关闭会打印请求体/Token 的 debug tracing。
+生产构建中的客户端 `debug` 事件会在日志创建前直接丢弃，不写控制台、本地日志存储或 Tauri 日志文件。生产日志应以请求 ID、错误码、模块、耗时、对象 ID 等最小必要元数据为主。
 
-## 11. 公共设备与本地数据
+## 12. 公共设备与本地数据
 
 公共设备模式沿用短 Session，并且不创建长期客户端凭据。退出后必须撤销服务端 Session；浏览器缓存策略为 `no-store`。
 
 Windows SQLite 属于敏感的本地完整副本，应依赖 OS 用户 ACL、设备磁盘加密与应用权限隔离。当前 Epic 不宣称已经实现 SQLCipher 等数据库级透明加密；在没有成熟平台密钥管理前，不使用硬编码密钥或“自制加密”制造错误安全感。
 
-## 12. 验证
+## 13. 验证
 
 EPIC-17 测试覆盖：
 
+- 通用 API limiter 的配额、客户端隔离和窗口重置；
 - 所有 API 响应安全 Header；
 - production HSTS；
 - production HTTP / wildcard CORS 拒绝；
@@ -191,6 +210,9 @@ EPIC-17 测试覆盖：
 - 匿名隐私 API 拒绝；
 - 导出不包含 Password/Token/Credential Secret；
 - 数据删除后用户、Session、Token 不再存在；
-- 结构化日志 Secret 递归脱敏。
+- 云端结构化日志 Secret 递归脱敏；
+- 客户端认证 Secret 与完整敏感正文脱敏；
+- 生产客户端 debug 日志关闭策略；
+- Access/Refresh Token 不进入 Web Storage 的既有回归测试。
 
 同时保留现有 Browser、Desktop、PostgreSQL、Clippy 等主线回归门禁。
