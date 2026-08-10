@@ -4,10 +4,37 @@ use axum::http::{header::HeaderName, HeaderValue};
 use serde_json::Value;
 use tower_http::set_header::SetResponseHeaderLayer;
 
+use crate::Config;
+
 pub const CONTENT_SECURITY_POLICY: &str =
     "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
 pub const PERMISSIONS_POLICY: &str = "camera=(), microphone=(), geolocation=()";
 pub const STRICT_TRANSPORT_SECURITY: &str = "max-age=63072000; includeSubDomains";
+
+/// EPIC-17 constraints that are intentionally stricter than the generic cloud
+/// configuration validator. Production is expected to terminate TLS at the
+/// deployment edge and use a separate migration identity from the runtime DB
+/// identity.
+pub fn validate_config(config: &Config) -> Result<(), String> {
+    if !config.is_production() {
+        return Ok(());
+    }
+    for origin in &config.cors_allowed_origins {
+        let normalized = origin.trim().to_ascii_lowercase();
+        if normalized == "*" || normalized == "null" || !normalized.starts_with("https://") {
+            return Err(format!(
+                "production CORS origin must be an explicit HTTPS origin: {origin}"
+            ));
+        }
+    }
+    if config.migration_on_startup {
+        return Err(
+            "production requires MIGRATION_ON_STARTUP=false so the runtime database role can be least-privileged"
+                .to_owned(),
+        );
+    }
+    Ok(())
+}
 
 /// Apply headers that are safe for every API response. LifeTrace Cloud is an
 /// API service; it does not serve arbitrary script content, so the CSP can be
@@ -89,6 +116,43 @@ pub fn redact_sensitive_json(value: &Value) -> Value {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn production_config() -> Config {
+        Config {
+            environment: "production".to_owned(),
+            migration_on_startup: false,
+            cors_allowed_origins: vec!["https://app.example.com".to_owned()],
+            ..Config::default()
+        }
+    }
+
+    #[test]
+    fn production_security_config_accepts_https_allowlist() {
+        assert!(validate_config(&production_config()).is_ok());
+    }
+
+    #[test]
+    fn production_security_config_rejects_insecure_cors_origin() {
+        let mut config = production_config();
+        config.cors_allowed_origins = vec!["http://app.example.com".to_owned()];
+        assert!(validate_config(&config).unwrap_err().contains("HTTPS origin"));
+    }
+
+    #[test]
+    fn production_security_config_rejects_wildcard_cors() {
+        let mut config = production_config();
+        config.cors_allowed_origins = vec!["*".to_owned()];
+        assert!(validate_config(&config).is_err());
+    }
+
+    #[test]
+    fn production_runtime_must_not_run_migrations() {
+        let mut config = production_config();
+        config.migration_on_startup = true;
+        assert!(validate_config(&config)
+            .unwrap_err()
+            .contains("MIGRATION_ON_STARTUP=false"));
+    }
 
     #[test]
     fn redacts_nested_authentication_secrets() {
