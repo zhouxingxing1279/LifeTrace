@@ -37,9 +37,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/privacy/account", delete(delete_account))
 }
 
-async fn policy(
-    principal: AuthenticatedPrincipal,
-) -> Result<Json<Value>, ApiError> {
+async fn policy(principal: AuthenticatedPrincipal) -> Result<Json<Value>, ApiError> {
     // Authentication is intentionally required even though the policy itself
     // is non-secret. This keeps the whole privacy surface consistently
     // protected and covered by the anonymous-access regression matrix.
@@ -431,7 +429,11 @@ async fn delete_account(
 }
 
 fn parse_modules(raw: Option<&str>) -> Result<BTreeSet<&'static str>, ApiError> {
-    if raw.map(str::trim).filter(|value| !value.is_empty()).is_none() {
+    if raw
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .is_none()
+    {
         return Ok(ALL_MODULES.into_iter().collect());
     }
 
@@ -486,7 +488,10 @@ fn require_database(state: &AppState) -> Result<(), ApiError> {
 
 fn db_error(error: sqlx::Error) -> ApiError {
     // Never echo SQL text, credentials or row contents to the client.
-    eprintln!("privacy database operation failed: {}", database_error_kind(&error));
+    eprintln!(
+        "privacy database operation failed: {}",
+        database_error_kind(&error)
+    );
     ApiError::new(
         ErrorCode::InternalError,
         "privacy database operation failed",
