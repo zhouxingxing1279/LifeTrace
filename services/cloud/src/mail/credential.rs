@@ -25,8 +25,7 @@ pub struct CredentialCipher {
 
 impl CredentialCipher {
     pub fn from_env() -> Result<Self, CredentialError> {
-        let encoded =
-            std::env::var("MAIL_CREDENTIAL_KEY").map_err(|_| CredentialError::MissingKey)?;
+        let encoded = secret_env_or_file("MAIL_CREDENTIAL_KEY").ok_or(CredentialError::MissingKey)?;
         Self::from_base64(&encoded)
     }
 
@@ -62,6 +61,22 @@ impl CredentialCipher {
             .map_err(|_| CredentialError::Decrypt)?;
         String::from_utf8(plaintext).map_err(|_| CredentialError::Decrypt)
     }
+}
+
+fn secret_env_or_file(name: &str) -> Option<String> {
+    if let Ok(value) = std::env::var(name) {
+        let value = value.trim();
+        if !value.is_empty() {
+            return Some(value.to_owned());
+        }
+    }
+    let path = std::env::var(format!("{name}_FILE"))
+        .ok()
+        .filter(|value| !value.is_empty())?;
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
 
 #[cfg(test)]
