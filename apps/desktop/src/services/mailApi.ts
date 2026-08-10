@@ -88,6 +88,28 @@ export type MailMessage = {
   hasAttachments: boolean;
 };
 
+export type MailMessageSummary = {
+  id: string;
+  accountId: string;
+  folderId: string;
+  threadId: string;
+  subject: string;
+  fromJson: unknown;
+  toJson: unknown;
+  sentAt?: string | null;
+  receivedAt: string;
+  isRead: boolean;
+  isArchived: boolean;
+  snippet?: string | null;
+  hasAttachments: boolean;
+};
+
+export type MailMessagePage = {
+  items: MailMessageSummary[];
+  hasMore: boolean;
+  nextOffset: number;
+};
+
 export type MailAttachment = {
   id: string;
   messageId: string;
@@ -188,6 +210,8 @@ export const mailApi = {
     messages: async (threadId: string) => (await request<{ items: MailMessage[] }>(`/api/v1/mail/threads/${encodeURIComponent(threadId)}/messages`)).items,
   },
   messages: {
+    list: (options: { accountId?: string; folderId?: string; q?: string; unreadOnly?: boolean; limit?: number; offset?: number } = {}) =>
+      request<MailMessagePage>(query("/api/v1/mail/messages", options)),
     get: (id: string) => request<MailMessage>(`/api/v1/mail/messages/${encodeURIComponent(id)}`),
     attachments: async (id: string) => (await request<{ items: MailAttachment[] }>(`/api/v1/mail/messages/${encodeURIComponent(id)}/attachments`)).items,
     downloadAttachment: (id: string) => binaryRequest(`/api/v1/mail/attachments/${encodeURIComponent(id)}/content`),

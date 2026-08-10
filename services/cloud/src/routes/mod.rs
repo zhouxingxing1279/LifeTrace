@@ -6,6 +6,7 @@ pub mod finance;
 pub mod health;
 pub mod mail;
 pub mod mail_attachment;
+pub mod mail_list;
 pub mod meta;
 pub mod privacy;
 pub mod sync;
@@ -26,6 +27,7 @@ pub fn router(_state: AppState) -> Router<AppState> {
         .merge(finance::router())
         .merge(mail::router())
         .merge(mail_attachment::router())
+        .merge(mail_list::router())
         .merge(privacy::router())
         .merge(sync::router())
 }
