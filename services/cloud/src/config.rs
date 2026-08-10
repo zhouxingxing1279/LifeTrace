@@ -266,6 +266,17 @@ impl Config {
             if self.dev_auth_enabled {
                 return Err("production must not enable DEV_AUTH".to_owned());
             }
+            if self
+                .database_url
+                .as_deref()
+                .and_then(database_username)
+                .is_some_and(is_common_database_superuser)
+            {
+                return Err(
+                    "production DATABASE_URL must use a dedicated least-privilege application role, not a database superuser"
+                        .to_owned(),
+                );
+            }
             if self.cursor_signing_key.is_none() || self.page_token_signing_key.is_none() {
                 return Err(
                     "production requires CURSOR_SIGNING_KEY and PAGE_TOKEN_SIGNING_KEY".to_owned(),
@@ -301,8 +312,34 @@ impl Config {
 }
 
 fn env_var(name: &str) -> Option<String> {
-    std::env::var(name).ok().filter(|value| !value.is_empty())
+    if let Ok(value) = std::env::var(name) {
+        if !value.is_empty() {
+            return Some(value);
+        }
+    }
+
+    let path = std::env::var(format!("{name}_FILE"))
+        .ok()
+        .filter(|value| !value.is_empty())?;
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
 }
+
+fn database_username(url: &str) -> Option<&str> {
+    let authority = url.split_once("://")?.1.split('/').next()?;
+    let userinfo = authority.rsplit_once('@')?.0;
+    Some(userinfo.split(':').next().unwrap_or(userinfo))
+}
+
+fn is_common_database_superuser(username: &str) -> bool {
+    matches!(
+        username.to_ascii_lowercase().as_str(),
+        "postgres" | "root" | "rds_superuser" | "lifetrace_admin"
+    )
+}
+
 fn env_string(name: &str, default: &str) -> String {
     env_var(name).unwrap_or_else(|| default.to_owned())
 }
@@ -381,6 +418,28 @@ mod tests {
             ..Config::default()
         };
         assert!(config.validate().unwrap_err().contains("API_RATE_LIMIT"));
+    }
+
+    #[test]
+    fn production_rejects_common_database_superuser() {
+        let config = Config {
+            environment: "production".to_owned(),
+            database_url: Some("postgres://postgres:password@localhost/lifetrace".to_owned()),
+            dev_auth_enabled: false,
+            ..Config::default()
+        };
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("least-privilege application role"));
+    }
+
+    #[test]
+    fn database_username_parses_connection_url() {
+        assert_eq!(
+            database_username("postgres://lifetrace_app:password@localhost/lifetrace"),
+            Some("lifetrace_app")
+        );
     }
 
     #[test]
