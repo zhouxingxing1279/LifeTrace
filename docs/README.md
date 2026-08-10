@@ -48,9 +48,10 @@ epic-xx/
 
 安全、隐私与数据生命周期的权威文档位于 `docs/epic-17/`：
 
-- `execution-plan.md`：执行顺序、实现范围、测试与合并门禁；
-- `security-architecture.md`：HTTPS/CORS/CSP/CSRF、安全响应头、Token、Scope、日志脱敏与数据库最小权限；
-- `data-lifecycle.md`：全量/分模块导出、账号注销、Session/Token 清理、文件对象删除和备份/原文/导入文件保留策略。
+- `execution-plan.md`：执行顺序、实现范围、测试与合并门禁，以及最终完成状态；
+- `security-architecture.md`：HTTPS/CORS/CSP/CSRF、安全响应头、API/登录限流、Token、Scope、日志脱敏与数据库最小权限；
+- `data-lifecycle.md`：全量/分模块导出、账号注销、Session/Token 清理、文件对象删除和备份/原文/导入文件保留策略；
+- `completion-report.md`：最终实现范围、CI 结果、合并提交和已知边界。
 
 ## 命名选择原则
 
