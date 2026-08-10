@@ -55,12 +55,13 @@ impl Migration for M0013NoteLinks {
                 message: format!("create note link index: {error}"),
             })?;
 
-        let link_count = crate::database::note_links::rebuild_all(transaction).map_err(|error| {
-            MigrationError {
-                version: 13,
-                message: format!("backfill note link index: {error}"),
-            }
-        })?;
+        let link_count =
+            crate::database::note_links::rebuild_all(transaction).map_err(|error| {
+                MigrationError {
+                    version: 13,
+                    message: format!("backfill note link index: {error}"),
+                }
+            })?;
 
         let mut report = MigrationReport::default();
         report.migrated = link_count;
