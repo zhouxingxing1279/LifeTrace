@@ -31,4 +31,6 @@
 
 ## 执行状态
 
-实现已完成并进入正式 CI 门禁；只有当前最终 HEAD 的 Browser Web、EPIC-05 Windows Sync、EPIC-03 PostgreSQL 全部通过后才允许合并 `main`。
+实现已完成并与当前 `main` 基线同步。网易 IMAP 兼容实现保持不变，仅将对应 Rust 测试模块移动到生产项之后以满足 `clippy --all-targets -D warnings`；该 clippy 修复已单独验证通过。
+
+最终仍以当前 HEAD 的 Browser Web、EPIC-05 Windows Sync、EPIC-03 PostgreSQL 三套正式工作流全部成功作为合并门禁。
