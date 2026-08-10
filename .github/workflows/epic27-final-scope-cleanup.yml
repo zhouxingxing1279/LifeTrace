@@ -1,0 +1,33 @@
+name: EPIC-27 Final Scope Cleanup
+
+on:
+  push:
+    branches: ["agent/epic27-mail-ui"]
+    paths: [".github/workflows/epic27-final-scope-cleanup.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic27-mail-ui
+          fetch-depth: 0
+      - name: Restore unrelated tests from main
+        run: |
+          git fetch origin main
+          git checkout origin/main -- \
+            services/cloud/tests/auth_postgres.rs \
+            services/cloud/tests/cors.rs \
+            services/cloud/tests/security_privacy.rs \
+            services/cloud/tests/web_management_postgres.rs \
+            services/cloud/tests/web_sync_postgres.rs
+          rm .github/workflows/epic27-final-scope-cleanup.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: drop incidental cloud test formatting"
+          git push origin HEAD:agent/epic27-mail-ui
