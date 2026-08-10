@@ -12,6 +12,8 @@ pub struct Config {
     pub migration_on_startup: bool,
 
     pub request_body_limit_bytes: usize,
+    pub api_rate_limit_requests: usize,
+    pub api_rate_limit_window_seconds: u64,
     pub push_max_changes: usize,
     pub pull_max_changes: usize,
     pub snapshot_max_page_size: usize,
@@ -69,6 +71,8 @@ impl Default for Config {
             database_max_connections: 10,
             migration_on_startup: true,
             request_body_limit_bytes: 4 * 1024 * 1024,
+            api_rate_limit_requests: 600,
+            api_rate_limit_window_seconds: 60,
             push_max_changes: 500,
             pull_max_changes: 200,
             snapshot_max_page_size: 200,
@@ -135,6 +139,12 @@ impl Config {
         c.migration_on_startup = env_bool("MIGRATION_ON_STARTUP", c.migration_on_startup);
         c.request_body_limit_bytes =
             env_usize("REQUEST_BODY_LIMIT_BYTES", c.request_body_limit_bytes);
+        c.api_rate_limit_requests =
+            env_usize("API_RATE_LIMIT_REQUESTS", c.api_rate_limit_requests);
+        c.api_rate_limit_window_seconds = env_u64(
+            "API_RATE_LIMIT_WINDOW_SECONDS",
+            c.api_rate_limit_window_seconds,
+        );
         c.push_max_changes = env_usize("PUSH_MAX_CHANGES", c.push_max_changes);
         c.pull_max_changes = env_usize("PULL_MAX_CHANGES", c.pull_max_changes);
         c.snapshot_max_page_size = env_usize("SNAPSHOT_MAX_PAGE_SIZE", c.snapshot_max_page_size);
@@ -231,6 +241,12 @@ impl Config {
         }
         if self.database_max_connections == 0 {
             return Err("DATABASE_MAX_CONNECTIONS must be greater than zero".to_owned());
+        }
+        if self.api_rate_limit_requests == 0 || self.api_rate_limit_window_seconds == 0 {
+            return Err(
+                "API_RATE_LIMIT_REQUESTS and API_RATE_LIMIT_WINDOW_SECONDS must be greater than zero"
+                    .to_owned(),
+            );
         }
         if !matches!(
             self.auth_registration_mode.as_str(),
@@ -355,6 +371,16 @@ mod tests {
             .validate()
             .unwrap_err()
             .contains("at least 9 Unicode characters"));
+    }
+
+    #[test]
+    fn api_rate_limit_must_be_positive() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            api_rate_limit_requests: 0,
+            ..Config::default()
+        };
+        assert!(config.validate().unwrap_err().contains("API_RATE_LIMIT"));
     }
 
     #[test]
