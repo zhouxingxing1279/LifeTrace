@@ -18,10 +18,13 @@ pub use config::Config;
 pub use error::ApiError;
 pub use state::{AppState, StartupError};
 
+use axum::extract::Request;
 use axum::http::{
-    header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
-    HeaderName, Method,
+    header::{ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE},
+    HeaderName, HeaderValue, Method,
 };
+use axum::middleware::{from_fn, Next};
+use axum::response::Response;
 use axum::Router;
 use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
@@ -62,4 +65,45 @@ pub fn app(state: AppState) -> Router {
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
+        .layer(from_fn(security_headers))
+}
+
+async fn security_headers(request: Request, next: Next) -> Response {
+    let mut response = next.run(request).await;
+    let headers = response.headers_mut();
+
+    // Cloud serves an API surface, not arbitrary active content. Keep a strict
+    // baseline here and let a future separately hosted Web shell define its
+    // own CSP if it starts serving HTML from this origin.
+    headers.insert(
+        HeaderName::from_static("content-security-policy"),
+        HeaderValue::from_static("default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-content-type-options"),
+        HeaderValue::from_static("nosniff"),
+    );
+    headers.insert(
+        HeaderName::from_static("x-frame-options"),
+        HeaderValue::from_static("DENY"),
+    );
+    headers.insert(
+        HeaderName::from_static("referrer-policy"),
+        HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        HeaderName::from_static("permissions-policy"),
+        HeaderValue::from_static("camera=(), microphone=(), geolocation=(), payment=(), usb=()"),
+    );
+    headers.insert(
+        HeaderName::from_static("cross-origin-resource-policy"),
+        HeaderValue::from_static("same-site"),
+    );
+    headers.insert(
+        HeaderName::from_static("strict-transport-security"),
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
+    );
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
+
+    response
 }
