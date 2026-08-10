@@ -70,12 +70,6 @@ pub trait SyncRepository: Send + Sync {
     ) -> Result<Option<u64>, ApiError>;
 
     async fn change_count(&self, user_id: &UserId) -> Result<usize, ApiError>;
-
-    /// Remove all server-side sync state for a user. PostgreSQL implements
-    /// this by deleting the `cloud_users` ownership root so all authenticated
-    /// sessions, tokens, mail data and sync rows are removed by foreign-key
-    /// cascades. The memory adapter removes the complete per-user state.
-    async fn purge_user(&self, user_id: &UserId) -> Result<(), ApiError>;
 }
 
 pub struct MemoryRepository {
@@ -167,11 +161,6 @@ impl SyncRepository for MemoryRepository {
 
     async fn change_count(&self, user_id: &UserId) -> Result<usize, ApiError> {
         Ok(self.store.read().await.change_count(user_id))
-    }
-
-    async fn purge_user(&self, user_id: &UserId) -> Result<(), ApiError> {
-        self.store.write().await.purge_user(user_id);
-        Ok(())
     }
 }
 
