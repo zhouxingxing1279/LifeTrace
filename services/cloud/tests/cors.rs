@@ -2,8 +2,8 @@ use axum::body::Body;
 use axum::http::{
     header::{
         ACCESS_CONTROL_ALLOW_CREDENTIALS, ACCESS_CONTROL_ALLOW_HEADERS,
-        ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN,
-        ACCESS_CONTROL_REQUEST_HEADERS, ACCESS_CONTROL_REQUEST_METHOD, ORIGIN,
+        ACCESS_CONTROL_ALLOW_METHODS, ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS,
+        ACCESS_CONTROL_REQUEST_METHOD, ORIGIN,
     },
     Method, Request,
 };
@@ -92,6 +92,10 @@ async fn registration_preflight_allows_json_and_csrf_headers() {
         .to_str()
         .unwrap()
         .to_ascii_lowercase();
-    assert!(headers.split(',').any(|value| value.trim() == "content-type"));
-    assert!(headers.split(',').any(|value| value.trim() == "x-csrf-token"));
+    assert!(headers
+        .split(',')
+        .any(|value| value.trim() == "content-type"));
+    assert!(headers
+        .split(',')
+        .any(|value| value.trim() == "x-csrf-token"));
 }

@@ -351,8 +351,6 @@ pub async fn wait_for_inbox_change(
     .map_err(|_| MailProtocolError::Task)?
 }
 
-
-
 fn smtp_transport(
     account: &MailAccountSecret,
     secret: &str,
