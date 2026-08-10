@@ -6,6 +6,7 @@ use std::time::Duration;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
 
+use crate::api_rate_limit::ApiRateLimiter;
 use crate::auth::{AuthProvider, AuthService, DatabaseAuthProvider, DevelopmentAuthProvider};
 use crate::config::Config;
 use crate::postgres_repository::PostgresRepository;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub config: Arc<Config>,
     pub auth: Arc<dyn AuthProvider>,
     pub auth_service: Arc<AuthService>,
+    pub api_rate_limiter: ApiRateLimiter,
     pub cursor_codec: Arc<CursorCodec>,
     pub page_token_codec: Arc<PageTokenCodec>,
 }
@@ -104,6 +106,7 @@ impl AppState {
             config: Arc::new(config),
             auth,
             auth_service,
+            api_rate_limiter: ApiRateLimiter::default(),
             cursor_codec: Arc::new(cursor_codec),
             page_token_codec: Arc::new(page_token_codec),
         }
