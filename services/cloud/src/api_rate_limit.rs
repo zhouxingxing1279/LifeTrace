@@ -16,7 +16,8 @@ use axum::response::{IntoResponse, Response};
 use lifetrace_contracts::ErrorCode;
 use tokio::sync::Mutex;
 
-use crate::ApiError;
+use crate::auth::security::client_ip as resolve_client_ip;
+use crate::{ApiError, Config};
 
 const DEFAULT_REQUESTS_PER_MINUTE: u32 = 600;
 const DEFAULT_WINDOW: Duration = Duration::from_secs(60);
@@ -26,6 +27,7 @@ pub struct ApiRateLimiter {
     inner: Arc<Mutex<HashMap<IpAddr, WindowCounter>>>,
     limit: u32,
     window: Duration,
+    trusted_proxy_cidrs: Arc<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -42,10 +44,27 @@ impl Default for ApiRateLimiter {
 
 impl ApiRateLimiter {
     pub fn new(limit: u32, window: Duration) -> Self {
+        Self::with_trusted_proxies(limit, window, Vec::new())
+    }
+
+    pub fn from_config(config: &Config) -> Self {
+        Self::with_trusted_proxies(
+            DEFAULT_REQUESTS_PER_MINUTE,
+            DEFAULT_WINDOW,
+            config.auth_trusted_proxy_cidrs.clone(),
+        )
+    }
+
+    fn with_trusted_proxies(
+        limit: u32,
+        window: Duration,
+        trusted_proxy_cidrs: Vec<String>,
+    ) -> Self {
         Self {
             inner: Arc::new(Mutex::new(HashMap::new())),
             limit: limit.max(1),
             window,
+            trusted_proxy_cidrs: Arc::new(trusted_proxy_cidrs),
         }
     }
 
@@ -71,20 +90,20 @@ impl ApiRateLimiter {
         true
     }
 
+    fn request_client_ip(&self, request: &Request) -> IpAddr {
+        let peer = request
+            .extensions()
+            .get::<ConnectInfo<SocketAddr>>()
+            .map(|ConnectInfo(address)| *address);
+        resolve_client_ip(peer, request.headers(), self.trusted_proxy_cidrs.as_ref())
+            // `oneshot` integration tests do not have a transport peer. A
+            // stable loopback fallback keeps the middleware deterministic.
+            .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
+    }
+
     fn retry_after_seconds(&self) -> u64 {
         self.window.as_secs().max(1)
     }
-}
-
-fn client_ip(request: &Request) -> IpAddr {
-    request
-        .extensions()
-        .get::<ConnectInfo<SocketAddr>>()
-        .map(|ConnectInfo(address)| address.ip())
-        // `oneshot` integration tests do not have a transport peer. A stable
-        // loopback fallback keeps the middleware testable without trusting a
-        // spoofable forwarded-IP header in production.
-        .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST))
 }
 
 pub async fn middleware(
@@ -96,7 +115,7 @@ pub async fn middleware(
         return next.run(request).await;
     }
 
-    let client = client_ip(&request);
+    let client = limiter.request_client_ip(&request);
     if limiter.allow(client, Instant::now()).await {
         return next.run(request).await;
     }
@@ -116,6 +135,7 @@ pub async fn middleware(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::HeaderMap;
 
     #[tokio::test]
     async fn limiter_blocks_after_window_quota() {
@@ -147,5 +167,21 @@ mod tests {
         assert!(limiter.allow(client, now).await);
         assert!(!limiter.allow(client, now).await);
         assert!(limiter.allow(client, now + window).await);
+    }
+
+    #[test]
+    fn trusted_proxy_resolution_reuses_auth_security_boundary() {
+        let headers = {
+            let mut headers = HeaderMap::new();
+            headers.insert("x-forwarded-for", "203.0.113.9".parse().unwrap());
+            headers
+        };
+        let peer: SocketAddr = "10.0.0.2:1234".parse().unwrap();
+        let resolved = resolve_client_ip(
+            Some(peer),
+            &headers,
+            &["10.0.0.0/8".to_owned()],
+        );
+        assert_eq!(resolved, Some("203.0.113.9".parse().unwrap()));
     }
 }
