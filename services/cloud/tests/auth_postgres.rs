@@ -9,9 +9,7 @@ use lifetrace_contracts::auth::v1::*;
 use lifetrace_contracts::sync::v1::{
     AppId, ChangeOperation, ClientPlatform, PushRequestV1, SyncChangeV1, SyncClientInfo,
 };
-use lifetrace_contracts::{
-    ChangeId, DeviceId, EntityId, EntityType, RequestId, ServerVersion,
-};
+use lifetrace_contracts::{ChangeId, DeviceId, EntityId, EntityType, RequestId, ServerVersion};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;

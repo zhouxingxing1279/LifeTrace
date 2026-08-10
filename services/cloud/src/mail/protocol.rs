@@ -77,6 +77,30 @@ fn imap_client(
         .map_err(|_| MailProtocolError::Connect)
 }
 
+fn requires_imap_client_id(account: &MailAccountSecret) -> bool {
+    matches!(account.provider.as_str(), "126" | "163" | "yeah")
+        || matches!(
+            account.imap_host.to_ascii_lowercase().as_str(),
+            "imap.126.com" | "imap.163.com" | "imap.yeah.net"
+        )
+}
+
+fn identify_imap_session(
+    session: &mut imap::Session<imap::Connection>,
+    account: &MailAccountSecret,
+) -> Result<(), MailProtocolError> {
+    if !requires_imap_client_id(account) {
+        return Ok(());
+    }
+    let command = format!(
+        "ID (\"name\" \"LifeTrace\" \"version\" \"{}\" \"vendor\" \"LifeTrace\")",
+        env!("CARGO_PKG_VERSION")
+    );
+    session
+        .run_command_and_check_ok(command)
+        .map_err(|_| MailProtocolError::Capability)
+}
+
 pub async fn probe_imap(
     account: MailAccountSecret,
     secret: String,
@@ -86,6 +110,7 @@ pub async fn probe_imap(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         let capabilities = session
             .capabilities()
             .map_err(|_| MailProtocolError::Capability)?;
@@ -97,6 +122,9 @@ pub async fn probe_imap(
             .iter()
             .map(|name| name.name().to_owned())
             .collect();
+        session
+            .examine("INBOX")
+            .map_err(|_| MailProtocolError::Folder)?;
         let _ = session.logout();
         Ok(ImapProbe {
             idle_supported,
@@ -121,6 +149,7 @@ pub async fn fetch_folder(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         let mailbox = session
             .select(&folder)
             .map_err(|_| MailProtocolError::Folder)?;
@@ -198,6 +227,7 @@ pub async fn fetch_raw_message(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         session
             .select(&folder)
             .map_err(|_| MailProtocolError::Folder)?;
@@ -229,6 +259,7 @@ pub async fn set_seen(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         session
             .select(&folder)
             .map_err(|_| MailProtocolError::Folder)?;
@@ -259,6 +290,7 @@ pub async fn archive_message(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         session
             .select(&folder)
             .map_err(|_| MailProtocolError::Folder)?;
@@ -295,6 +327,7 @@ pub async fn wait_for_inbox_change(
         let mut session = client
             .login(&account.username, &secret)
             .map_err(|_| MailProtocolError::Authentication)?;
+        identify_imap_session(&mut session, &account)?;
         let capabilities = session
             .capabilities()
             .map_err(|_| MailProtocolError::Capability)?;
@@ -389,4 +422,36 @@ pub async fn send_mail(
         .map_err(|_| MailProtocolError::Send)?
         .map_err(|_| MailProtocolError::Send)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn account(provider: &str, host: &str) -> MailAccountSecret {
+        MailAccountSecret {
+            id: uuid::Uuid::nil(),
+            user_id: uuid::Uuid::nil(),
+            provider: provider.to_owned(),
+            email_address: "test@example.com".to_owned(),
+            display_name: None,
+            imap_host: host.to_owned(),
+            imap_port: 993,
+            imap_security: "tls".to_owned(),
+            smtp_host: "smtp.example.com".to_owned(),
+            smtp_port: 465,
+            smtp_security: "tls".to_owned(),
+            username: "test@example.com".to_owned(),
+            credential_ciphertext: Vec::new(),
+            credential_nonce: Vec::new(),
+            status: "active".to_owned(),
+        }
+    }
+
+    #[test]
+    fn netease_accounts_require_imap_client_identity() {
+        assert!(requires_imap_client_id(&account("126", "imap.126.com")));
+        assert!(requires_imap_client_id(&account("generic", "imap.163.com")));
+        assert!(!requires_imap_client_id(&account("qq", "imap.qq.com")));
+    }
 }
