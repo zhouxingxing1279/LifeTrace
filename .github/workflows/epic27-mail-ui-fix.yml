@@ -1,0 +1,60 @@
+name: EPIC-27 Mail UI Fix
+
+on:
+  push:
+    branches: ["agent/epic27-mail-ui"]
+    paths: [".github/workflows/epic27-mail-ui-fix.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic27-mail-ui
+          fetch-depth: 0
+      - name: Apply TypeScript narrowing fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('apps/desktop/src/components/feature/mail/MailActionCenter.tsx')
+          text = path.read_text()
+          old = '''  const activeSenderGroup = screen.kind === "sender"
+            ? senderGroups.find((group) => group.key === screen.senderKey) || null
+            : screen.kind === "detail" && screen.back.kind === "sender"
+              ? senderGroups.find((group) => group.key === screen.back.senderKey) || null
+              : null;'''
+          new = '''  const activeSenderKey = screen.kind === "sender"
+            ? screen.senderKey
+            : screen.kind === "detail" && screen.back.kind === "sender"
+              ? screen.back.senderKey
+              : null;
+          const activeSenderGroup = activeSenderKey
+            ? senderGroups.find((group) => group.key === activeSenderKey) || null
+            : null;'''
+          if old not in text:
+              raise SystemExit('target TypeScript block not found')
+          path.write_text(text.replace(old, new))
+          PY
+      - name: Remove helper workflow and commit fix
+        run: |
+          rm .github/workflows/epic27-mail-ui-fix.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/src/components/feature/mail/MailActionCenter.tsx .github/workflows/epic27-mail-ui-fix.yml
+          git commit -m "fix(mail): narrow sender navigation state"
+          git push origin HEAD:agent/epic27-mail-ui
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Verify frontend typecheck
+        working-directory: apps/desktop
+        run: |
+          npm ci
+          npm run lint
