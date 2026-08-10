@@ -190,8 +190,5 @@ async fn web_cookie_can_list_and_csrf_protect_device_management() {
         .await
         .unwrap();
     assert_eq!(sessions.status(), StatusCode::OK);
-    assert!(!json_body(sessions).await["sessions"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(!json_body(sessions).await["sessions"].as_array().unwrap().is_empty());
 }
