@@ -135,7 +135,9 @@ mod tests {
     fn production_security_config_rejects_insecure_cors_origin() {
         let mut config = production_config();
         config.cors_allowed_origins = vec!["http://app.example.com".to_owned()];
-        assert!(validate_config(&config).unwrap_err().contains("HTTPS origin"));
+        assert!(validate_config(&config)
+            .unwrap_err()
+            .contains("HTTPS origin"));
     }
 
     #[test]
