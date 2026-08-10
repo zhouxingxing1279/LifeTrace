@@ -431,11 +431,14 @@ export default function MailActionCenter() {
 
   const selectedAccount = useMemo(() => accounts.find((item) => item.id === selectedAccountId) || null, [accounts, selectedAccountId]);
   const senderGroups = useMemo(() => groupBySender(messages), [messages]);
-  const activeSenderGroup = screen.kind === "sender"
-    ? senderGroups.find((group) => group.key === screen.senderKey) || null
-    : screen.kind === "detail" && screen.back.kind === "sender"
-      ? senderGroups.find((group) => group.key === screen.back.senderKey) || null
-      : null;
+  const activeSenderKey = screen.kind === "sender"
+  ? screen.senderKey
+  : screen.kind === "detail" && screen.back.kind === "sender"
+    ? screen.back.senderKey
+    : null;
+const activeSenderGroup = activeSenderKey
+  ? senderGroups.find((group) => group.key === activeSenderKey) || null
+  : null;
 
   const loadAccounts = useCallback(async () => {
     const next = await mailApi.accounts.list();
