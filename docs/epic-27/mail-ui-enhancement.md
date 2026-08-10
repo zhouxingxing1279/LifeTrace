@@ -28,3 +28,7 @@
 - 详情正文链接可以安全点击。
 - 30 天内邮件数量超过单页限制时仍能完整纳入首页聚合结果。
 - `npm run lint`、相关前端构建/单测、Cloud Rust tests/clippy 及现有正式 CI 全部通过后方可合并 `main`。
+
+## 执行状态
+
+实现已完成并进入正式 CI 门禁；只有当前最终 HEAD 的 Browser Web、EPIC-05 Windows Sync、EPIC-03 PostgreSQL 全部通过后才允许合并 `main`。
