@@ -62,12 +62,14 @@ jobs:
           cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1 2>&1 | tee /tmp/cloud-tests.log
           status=${PIPESTATUS[0]}
           if [ "$status" -ne 0 ]; then
-            tail -n 40 /tmp/cloud-tests.log | while IFS= read -r line; do
-              line="${line//'%'/'%25'}"
-              line="${line//$'\r'/'%0D'}"
-              line="${line//$'\n'/'%0A'}"
-              echo "::error title=Cloud test output::$line"
-            done
+            diagnostic="$(grep -E 'panicked|FAILED|failures:|assertion|error:|privacy_|test result:' /tmp/cloud-tests.log | tail -n 30 || true)"
+            if [ -z "$diagnostic" ]; then
+              diagnostic="$(tail -n 30 /tmp/cloud-tests.log)"
+            fi
+            diagnostic="${diagnostic//'%'/'%25'}"
+            diagnostic="${diagnostic//$'\r'/'%0D'}"
+            diagnostic="${diagnostic//$'\n'/'%0A'}"
+            echo "::error title=Cloud test root cause::$diagnostic"
           fi
           exit "$status"
       - name: Clippy production targets
