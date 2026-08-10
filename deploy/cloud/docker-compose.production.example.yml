@@ -1,21 +1,35 @@
-# 生产示例：EPIC-04 完成前不得公网部署。
+# Production example. Terminate TLS in Caddy/reverse proxy and expose only that
+# endpoint publicly. Cloud itself remains on the private application network.
 services:
   lifetrace-cloud:
     image: lifetrace-cloud:${TAG:-latest}
     environment: &cloud_environment
       LIFETRACE_ENV: production
-      DATABASE_URL: ${DATABASE_URL}
-      CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
-      PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY}
-      MAIL_CREDENTIAL_KEY: ${MAIL_CREDENTIAL_KEY}
+      DATABASE_URL_FILE: /run/secrets/database_url
+      CURSOR_SIGNING_KEY_FILE: /run/secrets/cursor_signing_key
+      PAGE_TOKEN_SIGNING_KEY_FILE: /run/secrets/page_token_signing_key
+      AUTH_PASSWORD_PEPPER_FILE: /run/secrets/auth_password_pepper
+      AUTH_TOKEN_HASH_PEPPER_FILE: /run/secrets/auth_token_hash_pepper
+      MAIL_CREDENTIAL_KEY_FILE: /run/secrets/mail_credential_key
       DEV_AUTH_ENABLED: "false"
+      MIGRATION_ON_STARTUP: "false"
+      AUTH_COOKIE_SECURE: "true"
       AUTH_PASSWORD_MIN_LENGTH: "${AUTH_PASSWORD_MIN_LENGTH:-9}"
-      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
-      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
-      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
-      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      AUTH_RESET_NOTIFIER: "${AUTH_RESET_NOTIFIER:-smtp}"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS}"
+      API_RATE_LIMIT_REQUESTS: "${API_RATE_LIMIT_REQUESTS:-600}"
+      API_RATE_LIMIT_WINDOW_SECONDS: "${API_RATE_LIMIT_WINDOW_SECONDS:-60}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      DEEPSEEK_BASE_URL: "${DEEPSEEK_BASE_URL:-https://api.deepseek.com}"
+      DEEPSEEK_MODEL: "${DEEPSEEK_MODEL:-deepseek-chat}"
     secrets:
       - database_url
+      - cursor_signing_key
+      - page_token_signing_key
+      - auth_password_pepper
+      - auth_token_hash_pepper
+      - mail_credential_key
     restart: unless-stopped
 
   lifetrace-mail-worker:
@@ -29,13 +43,29 @@ services:
       start_period: 5s
     environment:
       <<: *cloud_environment
-      MIGRATION_ON_STARTUP: "false"
     secrets:
       - database_url
+      - cursor_signing_key
+      - page_token_signing_key
+      - auth_password_pepper
+      - auth_token_hash_pepper
+      - mail_credential_key
     depends_on:
       - lifetrace-cloud
     restart: unless-stopped
 
+# The host/CI injects the secret values. They are mounted as files instead of
+# copied into the container environment or committed to this repository.
 secrets:
   database_url:
     environment: DATABASE_URL
+  cursor_signing_key:
+    environment: CURSOR_SIGNING_KEY
+  page_token_signing_key:
+    environment: PAGE_TOKEN_SIGNING_KEY
+  auth_password_pepper:
+    environment: AUTH_PASSWORD_PEPPER
+  auth_token_hash_pepper:
+    environment: AUTH_TOKEN_HASH_PEPPER
+  mail_credential_key:
+    environment: MAIL_CREDENTIAL_KEY
