@@ -35,6 +35,10 @@ const titleOf=(note:Pick<Note,"title"|"summary">)=>note.title?.trim()||note.summ
 const formatTime=(value:string)=>new Intl.DateTimeFormat("zh-CN",{month:"short",day:"numeric",hour:"2-digit",minute:"2-digit"}).format(new Date(value));
 const notify=(message:string)=>window.dispatchEvent(new CustomEvent("hengxu-toast",{detail:message}));
 
+type NoteWikiLink={id:string;targetNoteId:string|null;targetTitle:string;displayTitle:string;alias:string|null;resolved:boolean;createdAt:string};
+type NoteBacklink={id:string;sourceNoteId:string;sourceTitle:string;sourceSummary:string;alias:string|null;createdAt:string};
+type KnowledgeNote=Note&{wikiLinks?:NoteWikiLink[];backlinks?:NoteBacklink[]};
+
 function useDebounced<T>(value:T,delay:number){
   const [result,setResult]=useState(value);
   useEffect(()=>{const timer=window.setTimeout(()=>setResult(value),delay);return()=>window.clearTimeout(timer)},[value,delay]);
@@ -45,7 +49,7 @@ function EditorButton({title,active,onClick,children}:{title:string;active?:bool
   return <button type="button" title={title} aria-label={title} className={active?"active":""} onMouseDown={event=>{event.preventDefault();onClick()}}>{children}</button>;
 }
 
-function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerSave}:{note:Note;folders:NoteFolder[];tags:NoteTag[];onSaved:(note:Note)=>void;onListChanged:()=>void;trashMode:boolean;registerSave:(save:(revision?:boolean)=>Promise<Note|null>)=>()=>void}){
+function NoteEditor({note,folders,tags,onSaved,onListChanged,onOpenNote,trashMode,registerSave}:{note:Note;folders:NoteFolder[];tags:NoteTag[];onSaved:(note:Note)=>void;onListChanged:()=>void;onOpenNote:(id:string)=>Promise<void>;trashMode:boolean;registerSave:(save:(revision?:boolean)=>Promise<Note|null>)=>()=>void}){
   const store=useLifeStore();
   const [draft,setDraft]=useState(note);
   const [dirty,setDirty]=useState(false);
@@ -53,6 +57,7 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
   const [revisions,setRevisions]=useState<NoteRevision[]>([]);
   const [historyOpen,setHistoryOpen]=useState(false);
   const [menuOpen,setMenuOpen]=useState(false);
+  const [linkCandidates,setLinkCandidates]=useState<Note[]>([]);
   const saveLock=useRef(false);
   const editor=useEditor({
     immediatelyRender:false,
@@ -97,6 +102,11 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
     const beforeUnload=()=>{if(!dirty)return;const payload={action:"update",note:{...draft,tagIds:draft.tags.map(x=>x.id),createRevision:false}};navigator.sendBeacon?.("/api/notes",new Blob([JSON.stringify(payload)],{type:"application/json"}))};
     window.addEventListener("beforeunload",beforeUnload);return()=>window.removeEventListener("beforeunload",beforeUnload);
   },[dirty,draft]);
+  useEffect(()=>{
+    let active=true;
+    noteApi.list({scope:"all",sort:"title_asc",limit:250}).then(items=>{if(active)setLinkCandidates(items.filter(item=>item.id!==note.id))}).catch(()=>{if(active)setLinkCandidates([])});
+    return()=>{active=false};
+  },[note.id]);
 
   const patch=(value:Partial<Note>)=>{setDraft(current=>({...current,...value}));setDirty(true);setStatus("dirty")};
   const toggleTag=(tag:NoteTag)=>patch({tags:draft.tags.some(x=>x.id===tag.id)?draft.tags.filter(x=>x.id!==tag.id):[...draft.tags,tag]});
@@ -128,12 +138,20 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
     const result=await window.noteApi.selectAttachment(note.id);if(!result.ok||!result.file){if(result.error)notify(result.error);return}
     await noteApi.recordAttachment(result.file);notify("附件已添加");onSaved(await noteApi.get(note.id));
   };
+  const insertWikiLink=(value:string)=>{
+    const target=linkCandidates.find(item=>item.id===value);if(!target||!editor)return;
+    const safeTitle=titleOf(target).replace(/\|/g,"／").replace(/\]\]/g,"］］");
+    editor.chain().focus().insertContent(`[[${safeTitle}]]`).run();
+  };
   const relationOptions=[
     ...store.activities.map(x=>({type:"habit",id:x.id,label:`习惯 · ${x.name}`})),
     ...store.workoutHistory.slice(0,20).map(x=>({type:"workout",id:x.id,label:`训练 · ${x.name}`})),
     ...store.transactions.slice(0,30).map(x=>({type:"transaction",id:x.id,label:`账单 · ${x.counterparty||x.category} · ¥${x.amount}`})),
   ];
   const addRelation=(value:string)=>{if(!value)return;const [entityType,entityId]=value.split(":");if(draft.relations.some(x=>x.entityType===entityType&&x.entityId===entityId))return;patch({relations:[...draft.relations,{id:crypto.randomUUID(),noteId:note.id,entityType:entityType as NoteRelation["entityType"],entityId,relationType:"reference",createdAt:new Date().toISOString()}]})};
+  const knowledge=draft as KnowledgeNote;
+  const wikiLinks=knowledge.wikiLinks??[];
+  const backlinks=knowledge.backlinks??[];
   const editorActions:AppAction<Note>[]=[
     {id:"duplicate",label:"复制笔记",icon:Copy,group:"primary",execute:()=>action("duplicate")},
     {id:"export-md",label:"导出 Markdown",icon:FileText,group:"related",execute:()=>exportNote("md")},
@@ -180,6 +198,9 @@ function NoteEditor({note,folders,tags,onSaved,onListChanged,trashMode,registerS
         <label><Folder/>文件夹<select value={draft.folderId??""} onChange={e=>patch({folderId:e.target.value||null})}><option value="">未分类</option>{folders.map(folder=><option key={folder.id} value={folder.id}>{folder.name}</option>)}</select></label>
         <label><FileText/>类型<select value={draft.noteType} onChange={e=>patch({noteType:e.target.value as NoteType})}>{Object.entries(labels).map(([id,label])=><option key={id} value={id}>{label}</option>)}</select></label>
         <div className="nt-tag-field"><span><Tag/>标签</span><div>{tags.map(tag=><button key={tag.id} className={draft.tags.some(x=>x.id===tag.id)?"active":""} style={{"--tag-color":tag.color} as React.CSSProperties} onClick={()=>toggleTag(tag)}>{tag.name}</button>)}</div></div>
+        <label><LinkIcon/>链接笔记<select value="" onChange={e=>insertWikiLink(e.target.value)}><option value="">插入 [[笔记标题]]…</option>{linkCandidates.map(item=><option key={item.id} value={item.id}>{titleOf(item)}</option>)}</select></label>
+        <div className="nt-tag-field"><span><LinkIcon/>引用的笔记</span><div>{wikiLinks.length===0?<small>在正文输入 [[笔记标题]] 即可建立双链。</small>:wikiLinks.map(link=><button key={link.id} disabled={!link.targetNoteId} title={link.resolved?`打开 ${link.displayTitle}`:`未找到“${link.targetTitle}”对应的笔记`} onClick={()=>{if(link.targetNoteId)void onOpenNote(link.targetNoteId)}}>{link.alias?`${link.alias} → ${link.displayTitle}`:link.displayTitle}{!link.resolved?" · 未找到":""}</button>)}</div></div>
+        <div className="nt-tag-field"><span><LinkIcon/>反向链接</span><div>{backlinks.length===0?<small>暂时没有其他笔记引用这里。</small>:backlinks.map(link=><button key={link.id} title={link.sourceSummary||link.sourceTitle} onClick={()=>void onOpenNote(link.sourceNoteId)}>{link.sourceTitle}</button>)}</div></div>
         <label><LinkIcon/>关联数据<select value="" onChange={e=>addRelation(e.target.value)}><option value="">添加习惯、训练或账单…</option>{relationOptions.map(x=><option key={`${x.type}:${x.id}`} value={`${x.type}:${x.id}`}>{x.label}</option>)}</select></label>
         {draft.relations.length>0&&<div className="nt-relations">{draft.relations.map(rel=><span key={rel.id}>{rel.entityType} · {rel.entityId.slice(0,8)}<button onClick={()=>patch({relations:draft.relations.filter(x=>x.id!==rel.id)})}><X/></button></span>)}</div>}
         <div className="nt-attachments"><header><span><Paperclip/>附件</span><button onClick={()=>void attach()}><Plus/>添加附件</button></header>{draft.attachments?.map(file=><article key={file.id}><File/><div><strong>{file.originalName}</strong><small>{(file.fileSize/1024).toFixed(1)} KB</small></div><button onClick={()=>void window.noteApi?.openAttachment(note.id,file.fileName)}>打开</button><button onClick={()=>void window.noteApi?.showAttachment(note.id,file.fileName)}>位置</button><button className="danger" onClick={async()=>{if(!confirm("删除这个附件吗？"))return;await window.noteApi?.deleteAttachment(note.id,file.fileName);await noteApi.deleteAttachment(file.id);onSaved(await noteApi.get(note.id))}}><Trash2/></button></article>)}</div>
@@ -293,7 +314,7 @@ export default function NotesModule(){
     </section>
     {!listCollapsed&&<i className="nt-resizer list" style={{left:(leftCollapsed?0:leftWidth)+listWidth-3}} onPointerDown={event=>resize("list",event)}/>}
     {listCollapsed&&<button className="nt-expand list" onClick={()=>setListCollapsed(false)} title="展开列表"><ChevronRight/></button>}
-    {selected?<NoteEditor key={selected.id} note={selected} folders={folders} tags={tags} trashMode={scope==="trash"} registerSave={save=>{saveBeforeSwitch.current=save;return()=>{if(saveBeforeSwitch.current===save)saveBeforeSwitch.current=null}}} onSaved={saved=>{setSelected(saved);setNotes(current=>current.map(item=>item.id===saved.id?{...item,...saved}:item))}} onListChanged={refresh}/>:<section className="nt-editor nt-empty-editor"><div><FileText/><h2>选择或创建一篇笔记</h2><p>内容会自动保存到本机 SQLite 数据库。</p><button className="hx-btn primary" onClick={()=>void create("document")}><Plus/>新建笔记</button></div></section>}
+    {selected?<NoteEditor key={selected.id} note={selected} folders={folders} tags={tags} trashMode={scope==="trash"} onOpenNote={open} registerSave={save=>{saveBeforeSwitch.current=save;return()=>{if(saveBeforeSwitch.current===save)saveBeforeSwitch.current=null}}} onSaved={saved=>{setSelected(saved);setNotes(current=>current.map(item=>item.id===saved.id?{...item,...saved}:item))}} onListChanged={refresh}/>:<section className="nt-editor nt-empty-editor"><div><FileText/><h2>选择或创建一篇笔记</h2><p>内容会自动保存到本机 SQLite 数据库。</p><button className="hx-btn primary" onClick={()=>void create("document")}><Plus/>新建笔记</button></div></section>}
   </div>{commandOpen&&<div className="nt-command-backdrop" onMouseDown={event=>{if(event.target===event.currentTarget)setCommandOpen(false)}}><section className="nt-command"><header><Search/><strong>快速命令</strong><kbd>Esc</kbd><button onClick={()=>setCommandOpen(false)}><X/></button></header><div>
     <button onClick={()=>{setCommandOpen(false);void create("document")}}><Plus/><span><strong>新建笔记</strong><small>Ctrl + N</small></span></button>
     <button onClick={()=>{setCommandOpen(false);void create("quick")}}><FileText/><span><strong>新建快速记录</strong><small>Ctrl + Shift + N</small></span></button>
