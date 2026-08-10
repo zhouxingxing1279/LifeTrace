@@ -3,6 +3,7 @@
 //! The production path is backed by PostgreSQL through SQLx. The protocol
 //! surface remains the v1 contract defined in `lifetrace-contracts`.
 
+pub mod api_rate_limit;
 pub mod auth;
 pub mod config;
 pub mod error;
@@ -23,7 +24,7 @@ use axum::http::{
     header::{ACCEPT, AUTHORIZATION, CACHE_CONTROL, CONTENT_TYPE},
     HeaderName, HeaderValue, Method,
 };
-use axum::middleware::{from_fn, Next};
+use axum::middleware::{from_fn, from_fn_with_state, Next};
 use axum::response::Response;
 use axum::Router;
 use tower_http::cors::CorsLayer;
@@ -60,11 +61,16 @@ pub fn app(state: AppState) -> Router {
                 HeaderName::from_static("x-request-id"),
             ])
     };
+    let rate_limit_state = state.clone();
     routes::router(state.clone())
         .with_state(state)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
         .layer(cors)
+        .layer(from_fn_with_state(
+            rate_limit_state,
+            api_rate_limit::enforce,
+        ))
         .layer(from_fn(security_headers))
 }
 
