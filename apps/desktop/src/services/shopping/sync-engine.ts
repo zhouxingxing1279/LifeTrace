@@ -11,7 +11,10 @@ import {
 
 export interface ShoppingSyncOptions {
   cursor?: ShoppingSyncCursor;
+  /** Existing order keys used as the newest-order traversal boundary. */
   knownOrderKeys?: Iterable<string>;
+  /** Known active orders that should still be refreshed after reaching the list boundary. */
+  refreshOrderIds?: Iterable<string>;
   signal?: AbortSignal;
   /** Hard safety guard, not a normal pagination policy. */
   maxPages?: number;
@@ -63,6 +66,28 @@ async function failureFromError(
   return publish(options, { status: "failed", platform: adapter.platform, error: shoppingError, collected });
 }
 
+function validateAdapterOrder(adapter: ShoppingAdapter<unknown>, order: UnifiedOrder): void {
+  if (order.platform !== adapter.platform) {
+    throw new TypeError(`adapter platform ${adapter.platform} normalized order for ${order.platform}`);
+  }
+  validateUnifiedOrder(order);
+}
+
+async function emitBatch(
+  adapter: ShoppingAdapter<unknown>,
+  options: ShoppingSyncOptions,
+  batch: readonly UnifiedOrder[],
+  collected: number,
+): Promise<{ collected: number; failure?: ShoppingSyncState }> {
+  if (batch.length === 0) return { collected };
+  try {
+    await options.onBatch?.(batch);
+    return { collected: collected + batch.length };
+  } catch (error) {
+    return { collected, failure: await failureFromError(adapter, options, error, collected) };
+  }
+}
+
 export async function runShoppingSync<TRawOrder>(
   adapter: ShoppingAdapter<TRawOrder>,
   options: ShoppingSyncOptions = {},
@@ -75,6 +100,7 @@ export async function runShoppingSync<TRawOrder>(
   let pages = 0;
   let pageToken: string | undefined;
   let checkpoint = options.cursor;
+  let checkpointCaptured = false;
 
   if (!Number.isSafeInteger(maxPages) || maxPages <= 0) {
     throw new TypeError("maxPages must be a positive safe integer");
@@ -117,7 +143,8 @@ export async function runShoppingSync<TRawOrder>(
     });
   }
 
-  while (true) {
+  let listTraversalComplete = false;
+  while (!listTraversalComplete) {
     if (options.signal?.aborted) return cancelled(genericAdapter, options, collected);
     if (pages >= maxPages) {
       return publish(options, {
@@ -141,7 +168,10 @@ export async function runShoppingSync<TRawOrder>(
     }
 
     pages += 1;
-    if (page.checkpoint && checkpoint === options.cursor) checkpoint = page.checkpoint;
+    if (page.checkpoint && !checkpointCaptured) {
+      checkpoint = page.checkpoint;
+      checkpointCaptured = true;
+    }
     if (options.signal?.aborted) return cancelled(genericAdapter, options, collected);
 
     const batch: UnifiedOrder[] = [];
@@ -153,10 +183,7 @@ export async function runShoppingSync<TRawOrder>(
       let order: UnifiedOrder;
       try {
         order = await adapter.normalizeOrder(rawOrder, options.signal);
-        if (order.platform !== adapter.platform) {
-          throw new TypeError(`adapter platform ${adapter.platform} normalized order for ${order.platform}`);
-        }
-        validateUnifiedOrder(order);
+        validateAdapterOrder(genericAdapter, order);
       } catch (error) {
         return failureFromError(
           genericAdapter,
@@ -172,34 +199,73 @@ export async function runShoppingSync<TRawOrder>(
       }
 
       const key = getUnifiedOrderKey(order);
+      if (!seenOrderKeys.has(key)) {
+        seenOrderKeys.add(key);
+        batch.push(order);
+      }
+
+      // Emit the boundary order once so a newly changed status is not lost.
       if (knownOrderKeys.has(key)) {
         boundaryReached = true;
         break;
       }
-      if (seenOrderKeys.has(key)) continue;
-      seenOrderKeys.add(key);
-      batch.push(order);
     }
 
-    if (batch.length > 0) {
-      try {
-        await options.onBatch?.(batch);
-      } catch (error) {
-        return failureFromError(genericAdapter, options, error, collected);
-      }
-      collected += batch.length;
-    }
+    const emitted = await emitBatch(genericAdapter, options, batch, collected);
+    collected = emitted.collected;
+    if (emitted.failure) return emitted.failure;
 
-    if (boundaryReached || page.done || !page.nextPageToken) {
-      return publish(options, {
-        status: "completed",
-        platform: adapter.platform,
-        pages,
-        collected,
-        cursor: checkpoint,
-      });
-    }
-
-    pageToken = page.nextPageToken;
+    listTraversalComplete = boundaryReached || page.done || !page.nextPageToken;
+    if (!listTraversalComplete) pageToken = page.nextPageToken;
   }
+
+  const refreshOrderIds = [...new Set(options.refreshOrderIds ?? [])].filter(
+    (platformOrderId) => !seenOrderKeys.has(`${adapter.platform}::${platformOrderId}`),
+  );
+
+  if (refreshOrderIds.length > 0 && adapter.refreshOrders) {
+    if (options.signal?.aborted) return cancelled(genericAdapter, options, collected);
+
+    let refreshedOrders: readonly UnifiedOrder[];
+    try {
+      refreshedOrders = await adapter.refreshOrders(refreshOrderIds, options.signal);
+    } catch (error) {
+      return failureFromError(genericAdapter, options, error, collected);
+    }
+
+    if (options.signal?.aborted) return cancelled(genericAdapter, options, collected);
+
+    const refreshBatch: UnifiedOrder[] = [];
+    try {
+      for (const order of refreshedOrders) {
+        validateAdapterOrder(genericAdapter, order);
+        const key = getUnifiedOrderKey(order);
+        if (seenOrderKeys.has(key)) continue;
+        seenOrderKeys.add(key);
+        refreshBatch.push(order);
+      }
+    } catch (error) {
+      return failureFromError(
+        genericAdapter,
+        options,
+        new ShoppingError("NORMALIZE_FAILED", error instanceof Error ? error.message : "Refreshed order validation failed", {
+          platform: adapter.platform,
+          cause: error,
+        }),
+        collected,
+      );
+    }
+
+    const emitted = await emitBatch(genericAdapter, options, refreshBatch, collected);
+    collected = emitted.collected;
+    if (emitted.failure) return emitted.failure;
+  }
+
+  return publish(options, {
+    status: "completed",
+    platform: adapter.platform,
+    pages,
+    collected,
+    cursor: checkpoint,
+  });
 }
