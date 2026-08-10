@@ -38,21 +38,28 @@ function makeOrder(platform: ShoppingPlatform, platformOrderId: string, override
 
 class FakeAdapter implements ShoppingAdapter<RawOrder> {
   readonly requests: OrderPageRequest[] = [];
+  readonly refreshCalls: readonly string[][] = [];
   readonly platform: ShoppingPlatform;
   private readonly pages: AdapterOrderPage<RawOrder>[];
   private readonly connection: ConnectionCheckResult;
   private readonly errorsByFetchIndex: Map<number, unknown>;
+  private readonly refreshedOrders?: readonly UnifiedOrder[];
+  private readonly refreshError?: unknown;
 
   constructor(options: {
     platform?: ShoppingPlatform;
     pages?: AdapterOrderPage<RawOrder>[];
     connection?: ConnectionCheckResult;
     errorsByFetchIndex?: Map<number, unknown>;
+    refreshedOrders?: readonly UnifiedOrder[];
+    refreshError?: unknown;
   } = {}) {
     this.platform = options.platform ?? "jd";
     this.pages = options.pages ?? [];
     this.connection = options.connection ?? { status: "connected" };
     this.errorsByFetchIndex = options.errorsByFetchIndex ?? new Map();
+    this.refreshedOrders = options.refreshedOrders;
+    this.refreshError = options.refreshError;
   }
 
   async checkConnection(): Promise<ConnectionCheckResult> {
@@ -69,6 +76,12 @@ class FakeAdapter implements ShoppingAdapter<RawOrder> {
 
   normalizeOrder(rawOrder: RawOrder): UnifiedOrder {
     return rawOrder.order;
+  }
+
+  async refreshOrders(platformOrderIds: readonly string[]): Promise<readonly UnifiedOrder[]> {
+    (this.refreshCalls as string[][]).push([...platformOrderIds]);
+    if (this.refreshError) throw this.refreshError;
+    return this.refreshedOrders ?? [];
   }
 }
 
@@ -143,13 +156,13 @@ test("syncs multiple pages, advances page token and returns newest checkpoint", 
   assert.equal(adapter.requests[1]?.since?.latestOrderId, "old");
 });
 
-test("stops at a known order boundary without emitting older orders", async () => {
+test("emits the known boundary order once so status changes are not lost", async () => {
   const adapter = new FakeAdapter({
     pages: [
       {
         orders: [
           { order: makeOrder("jd", "3") },
-          { order: makeOrder("jd", "2") },
+          { order: makeOrder("jd", "2", { status: "fulfilled", updatedAt: "2026-08-10T12:00:00+08:00" }) },
           { order: makeOrder("jd", "1") },
         ],
         nextPageToken: "should-not-be-used",
@@ -157,16 +170,67 @@ test("stops at a known order boundary without emitting older orders", async () =
       },
     ],
   });
-  const received: string[] = [];
+  const received: UnifiedOrder[] = [];
 
   const result = await runShoppingSync(adapter, {
     knownOrderKeys: ["jd::2"],
-    onBatch: (orders) => received.push(...orders.map(getUnifiedOrderKey)),
+    onBatch: (orders) => received.push(...orders),
   });
 
   assert.equal(result.status, "completed");
-  assert.deepEqual(received, ["jd::3"]);
+  assert.deepEqual(received.map(getUnifiedOrderKey), ["jd::3", "jd::2"]);
+  assert.equal(received[1]?.status, "fulfilled");
   assert.equal(adapter.requests.length, 1);
+});
+
+test("refreshes older active orders after reaching the newest-order boundary", async () => {
+  const adapter = new FakeAdapter({
+    pages: [
+      {
+        orders: [{ order: makeOrder("jd", "3") }, { order: makeOrder("jd", "2") }],
+        nextPageToken: "should-not-be-used",
+        done: false,
+      },
+    ],
+    refreshedOrders: [
+      makeOrder("jd", "1", {
+        status: "fulfilled",
+        fulfillments: [{ type: "parcel", status: "out_for_delivery", events: [] }],
+        updatedAt: "2026-08-10T13:00:00+08:00",
+      }),
+    ],
+  });
+  const received: UnifiedOrder[] = [];
+
+  const result = await runShoppingSync(adapter, {
+    knownOrderKeys: ["jd::2"],
+    refreshOrderIds: ["2", "1", "1"],
+    onBatch: (orders) => received.push(...orders),
+  });
+
+  assert.equal(result.status, "completed");
+  if (result.status !== "completed") return;
+  assert.deepEqual(adapter.refreshCalls, [["1"]]);
+  assert.deepEqual(received.map(getUnifiedOrderKey), ["jd::3", "jd::2", "jd::1"]);
+  assert.equal(received[2]?.fulfillments[0]?.status, "out_for_delivery");
+  assert.equal(result.collected, 3);
+});
+
+test("pauses when active-order refresh requires user verification", async () => {
+  const adapter = new FakeAdapter({
+    pages: [{ orders: [{ order: makeOrder("jd", "2") }], done: true }],
+    refreshError: new ShoppingError("VERIFICATION_REQUIRED", "Verify to read logistics", {
+      platform: "jd",
+      verification: { type: "slider" },
+    }),
+  });
+
+  const result = await runShoppingSync(adapter, { refreshOrderIds: ["1"] });
+
+  assert.equal(result.status, "verification_required");
+  if (result.status !== "verification_required") return;
+  assert.equal(result.verification.type, "slider");
+  assert.equal(result.collected, 1);
 });
 
 test("deduplicates repeated orders inside one sync run", async () => {
@@ -205,9 +269,7 @@ test("pauses immediately when verification appears during pagination", async () 
     verification: { type: "sms" },
   });
   const adapter = new FakeAdapter({
-    pages: [
-      { orders: [{ order: makeOrder("jd", "2") }], nextPageToken: "page-2", done: false },
-    ],
+    pages: [{ orders: [{ order: makeOrder("jd", "2") }], nextPageToken: "page-2", done: false }],
     errorsByFetchIndex: new Map([[1, verificationError]]),
   });
   const received: string[] = [];
