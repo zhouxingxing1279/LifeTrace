@@ -102,7 +102,9 @@ fn sync_request(cookie: &str, csrf: Option<&str>, origin: &str) -> Request<Body>
     if let Some(csrf) = csrf {
         builder = builder.header("x-csrf-token", csrf);
     }
-    builder.body(Body::from(pull_body().to_string())).unwrap()
+    builder
+        .body(Body::from(pull_body().to_string()))
+        .unwrap()
 }
 
 #[tokio::test]
@@ -157,7 +159,11 @@ async fn web_cookie_sync_requires_valid_csrf_and_origin() {
 
     let allowed = router
         .clone()
-        .oneshot(sync_request(&cookie, Some(&csrf), "http://localhost:3000"))
+        .oneshot(sync_request(
+            &cookie,
+            Some(&csrf),
+            "http://localhost:3000",
+        ))
         .await
         .unwrap();
     assert_eq!(allowed.status(), StatusCode::OK);
