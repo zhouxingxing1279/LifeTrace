@@ -61,7 +61,7 @@ pub async fn get(State(state): State<AppState>, Query(query): Query<NoteQuery>) 
                 .as_deref()
                 .ok_or_else(|| "缺少笔记 id".to_owned())?;
             match notes_repo::get_note(&connection, note_id)? {
-                Some(note) => Ok(note),
+                Some(note) => crate::database::note_links::enrich_note(&connection, note),
                 None => Err("笔记不存在".to_owned()),
             }
         }
@@ -101,7 +101,9 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
     let result: Result<Value, String> = (|| match action {
         "create" => {
             let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
-            notes_repo::save_note(&connection, note, false, false)
+            let saved = notes_repo::save_note(&connection, note, false, false)?;
+            crate::database::note_links::sync_note_links(&connection, &saved)?;
+            crate::database::note_links::enrich_note(&connection, saved)
         }
         "update" => {
             let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
@@ -109,7 +111,9 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("createRevision")
                 .and_then(Value::as_bool)
                 .unwrap_or(false);
-            notes_repo::save_note(&connection, note, true, create_revision)
+            let saved = notes_repo::save_note(&connection, note, true, create_revision)?;
+            crate::database::note_links::sync_note_links(&connection, &saved)?;
+            crate::database::note_links::enrich_note(&connection, saved)
         }
         "trash" | "restore" => {
             let note_id = body
@@ -132,7 +136,9 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少笔记 id".to_owned())?;
-            notes_repo::duplicate_note(&connection, note_id)
+            let duplicated = notes_repo::duplicate_note(&connection, note_id)?;
+            crate::database::note_links::sync_note_links(&connection, &duplicated)?;
+            crate::database::note_links::enrich_note(&connection, duplicated)
         }
         "folder.save" | "tag.save" => {
             let key = if action == "folder.save" {
@@ -169,7 +175,9 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少版本 id".to_owned())?;
-            notes_repo::restore_revision(&connection, revision_id)
+            let restored = notes_repo::restore_revision(&connection, revision_id)?;
+            crate::database::note_links::sync_note_links(&connection, &restored)?;
+            crate::database::note_links::enrich_note(&connection, restored)
         }
         "attachment.record" => {
             let file = body.get("file").ok_or_else(|| "缺少附件数据".to_owned())?;
@@ -198,6 +206,7 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             )
             .map_err(|message| message)?;
             notes_repo::restore_backup(&mut *connection, data)?;
+            crate::database::note_links::rebuild_all(&connection)?;
             Ok(json!({ "ok": true }))
         }
         _ => Err("不支持的笔记操作".to_owned()),
