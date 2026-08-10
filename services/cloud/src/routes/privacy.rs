@@ -173,11 +173,7 @@ async fn safe_account_profile(
     }))
 }
 
-async fn jsonb_array(
-    state: &AppState,
-    sql: &str,
-    user_id: Uuid,
-) -> Result<Value, ApiError> {
+async fn jsonb_array(state: &AppState, sql: &str, user_id: Uuid) -> Result<Value, ApiError> {
     sqlx::query_scalar::<_, Value>(sql)
         .bind(user_id)
         .fetch_one(&state.pool)
@@ -216,7 +212,7 @@ async fn database_section(
         "mail" => {
             let accounts = jsonb_array(
                 state,
-                "SELECT COALESCE(jsonb_agg(to_jsonb(a) - ARRAY['credential_ciphertext','credential_nonce'] ORDER BY a.created_at), '[]'::jsonb) FROM mail_accounts a WHERE user_id=$1",
+                "SELECT COALESCE(jsonb_agg((to_jsonb(a) - ARRAY['credential_ciphertext','credential_nonce']) ORDER BY a.created_at), '[]'::jsonb) FROM mail_accounts a WHERE user_id=$1",
                 user_id,
             )
             .await?;
@@ -307,7 +303,8 @@ async fn build_export(
             .iter()
             .copied()
             .filter(|module| {
-                module_read_scope(module).is_some_and(|required| principal.scopes.contains(required))
+                module_read_scope(module)
+                    .is_some_and(|required| principal.scopes.contains(required))
             })
             .collect()
     };
