@@ -177,11 +177,7 @@ mod tests {
             headers
         };
         let peer: SocketAddr = "10.0.0.2:1234".parse().unwrap();
-        let resolved = resolve_client_ip(
-            Some(peer),
-            &headers,
-            &["10.0.0.0/8".to_owned()],
-        );
+        let resolved = resolve_client_ip(Some(peer), &headers, &["10.0.0.0/8".to_owned()]);
         assert_eq!(resolved, Some("203.0.113.9".parse().unwrap()));
     }
 }
