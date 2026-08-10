@@ -23,12 +23,11 @@ jobs:
           from pathlib import Path
           path = Path('apps/desktop/src/components/feature/mail/MailActionCenter.tsx')
           text = path.read_text()
-          old = '''  const activeSenderGroup = screen.kind === "sender"
-            ? senderGroups.find((group) => group.key === screen.senderKey) || null
-            : screen.kind === "detail" && screen.back.kind === "sender"
-              ? senderGroups.find((group) => group.key === screen.back.senderKey) || null
-              : null;'''
-          new = '''  const activeSenderKey = screen.kind === "sender"
+          start_marker = '  const activeSenderGroup = screen.kind === "sender"'
+          end_marker = '\n\n  const loadAccounts = useCallback'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start)
+          replacement = '''  const activeSenderKey = screen.kind === "sender"
             ? screen.senderKey
             : screen.kind === "detail" && screen.back.kind === "sender"
               ? screen.back.senderKey
@@ -36,9 +35,7 @@ jobs:
           const activeSenderGroup = activeSenderKey
             ? senderGroups.find((group) => group.key === activeSenderKey) || null
             : null;'''
-          if old not in text:
-              raise SystemExit('target TypeScript block not found')
-          path.write_text(text.replace(old, new))
+          path.write_text(text[:start] + replacement + text[end:])
           PY
       - name: Remove helper workflow and commit fix
         run: |
