@@ -47,7 +47,7 @@ pub fn parse_wiki_links(input: &str) -> Vec<ParsedWikiLink> {
             break;
         };
         let start = cursor + relative_start + 2;
-        let Some(relative_end) = input[start..].find("]]" ) else {
+        let Some(relative_end) = input[start..].find("]]") else {
             break;
         };
         let end = start + relative_end;
@@ -157,12 +157,8 @@ fn sync_note_fields(
     let stamp = now();
     let parsed = parse_wiki_links(markdown);
     for link in &parsed {
-        let mut target_note_id = resolve_target_id(
-            connection,
-            user_id,
-            note_id,
-            &link.target_title,
-        )?;
+        let mut target_note_id =
+            resolve_target_id(connection, user_id, note_id, &link.target_title)?;
         if target_note_id.is_none() {
             if let Some(previous_id) = previous_targets.get(&link.target_title.to_lowercase()) {
                 if target_is_available(connection, user_id, previous_id)? {
@@ -255,14 +251,12 @@ pub fn rebuild_all(connection: &Connection) -> Result<usize, String> {
         .map_err(|error| error.to_string())?;
     let mut total = 0usize;
     for (note_id, user_id, title, markdown, text) in notes {
-        let source = if markdown.trim().is_empty() { &text } else { &markdown };
-        total += sync_note_fields(
-            connection,
-            &note_id,
-            &user_id,
-            title.as_deref(),
-            source,
-        )?;
+        let source = if markdown.trim().is_empty() {
+            &text
+        } else {
+            &markdown
+        };
+        total += sync_note_fields(connection, &note_id, &user_id, title.as_deref(), source)?;
     }
     Ok(total)
 }
@@ -297,13 +291,14 @@ pub fn enrich_note(connection: &Connection, mut note: Value) -> Result<Value, St
         let rows = statement
             .query_map([&note_id], |row| {
                 let target_note_id = row.get::<_, Option<String>>(1)?;
+                let resolved = target_note_id.is_some();
                 Ok(json!({
                     "id": row.get::<_, String>(0)?,
                     "targetNoteId": target_note_id,
                     "targetTitle": row.get::<_, String>(2)?,
                     "displayTitle": row.get::<_, String>(3)?,
                     "alias": row.get::<_, Option<String>>(4)?,
-                    "resolved": target_note_id.is_some(),
+                    "resolved": resolved,
                     "createdAt": row.get::<_, String>(5)?
                 }))
             })
