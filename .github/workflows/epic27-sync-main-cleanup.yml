@@ -1,0 +1,66 @@
+name: EPIC-27 Sync Main Cleanup
+
+on:
+  push:
+    branches: ["agent/epic27-mail-ui"]
+    paths: [".github/workflows/epic27-sync-main-cleanup.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic27-mail-ui
+          fetch-depth: 0
+      - name: Align incidental cloud files with current main
+        run: |
+          git fetch origin main
+          git checkout origin/main -- \
+            services/cloud/src/mail/protocol.rs \
+            services/cloud/tests/auth_postgres.rs \
+            services/cloud/tests/cors.rs \
+            services/cloud/tests/security_privacy.rs \
+            services/cloud/tests/web_management_postgres.rs \
+            services/cloud/tests/web_sync_postgres.rs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: align cloud baseline with main" || true
+          git merge --no-edit origin/main
+      - name: Move NetEase protocol test module to file end
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('services/cloud/src/mail/protocol.rs')
+          text = path.read_text()
+          marker = '#[cfg(test)]\nmod tests {'
+          start = text.index(marker)
+          depth = 0
+          opened = False
+          end = None
+          for index in range(start, len(text)):
+              char = text[index]
+              if char == '{':
+                  depth += 1
+                  opened = True
+              elif char == '}':
+                  depth -= 1
+                  if opened and depth == 0:
+                      end = index + 1
+                      break
+          if end is None:
+              raise SystemExit('test module end not found')
+          block = text[start:end].strip()
+          remaining = (text[:start] + text[end:]).rstrip()
+          path.write_text(remaining + '\n\n' + block + '\n')
+          PY
+      - name: Commit clean final state and remove helper
+        run: |
+          rm .github/workflows/epic27-sync-main-cleanup.yml
+          git add -A
+          git commit -m "fix(mail): keep protocol tests after production items"
+          git push origin HEAD:agent/epic27-mail-ui
