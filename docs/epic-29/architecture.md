@@ -1,457 +1,319 @@
-# EPIC-29 购物订单公共架构
+# EPIC-29 Android 订单采集架构
 
 > 日期：2026-08-10  
-> 状态：公共核心已设计，平台 PoC 尚未接入
+> 状态：Android-first 方案确定，平台 PoC 尚未完成
 
-## 1. 架构目标
+## 1. 架构结论
 
-LifeTrace 的购物能力最终需要把不同平台的订单、履约、物流和退款信息统一到一个 Order Center 中，同时避免让淘宝、京东、拼多多、美团的页面结构和登录方式污染上层业务。
-
-公共架构只解决一个问题：
-
-> 无论底层通过 Windows WebView2、云端 Chromium、Browser XHR、DOM 解析还是未来官方 API 获取数据，上层都只接收统一订单模型和统一同步状态。
-
-整体结构：
+订单采集采用独立 Android Order App 作为第一采集端。云端不运行购物平台常驻浏览器作为默认方案，不保存购物平台认证凭据。
 
 ```text
-                         LifeTrace Order Center
-                                  │
-                                  ▼
-                         UnifiedOrder Model
-                                  │
-                                  ▼
-                         Shopping Sync Engine
-                                  │
-             ┌────────────────────┼────────────────────┐
-             │                    │                    │
-             ▼                    ▼                    ▼
-        TaobaoAdapter          JDAdapter           PddAdapter ...
-             │                    │                    │
-             ▼                    ▼                    ▼
-        ShoppingSource       ShoppingSource       ShoppingSource
-             │                    │                    │
-      ┌──────┴──────┐       ┌─────┴─────┐       ┌─────┴─────┐
-      │             │       │           │       │           │
- Windows WebView  Cloud   Browser XHR  DOM    Official API  ...
-                 Browser
+                        Android Order App
+                               │
+          ┌────────────────────┼────────────────────┐
+          │                    │                    │
+          ▼                    ▼                    ▼
+     WebView Auth       Notification Trigger   App Lifecycle
+          │                    │                    │
+          └──────────────┬─────┴──────────────┬────┘
+                         ▼                    ▼
+                    Platform Manager      Sync Scheduler
+                         │
+        ┌────────────────┼─────────────────┐
+        ▼                ▼                 ▼
+ TaobaoAdapter        JDAdapter      MeituanAdapter ...
+        │                │                 │
+        └────────────────┼─────────────────┘
+                         ▼
+                     Fetch Engine
+             ┌───────────┼───────────┐
+             ▼           ▼           ▼
+          Native       WebView       DOM
+          HTTP          Fetch       Fallback
+             └───────────┼───────────┘
+                         ▼
+                    Raw Platform Data
+                         ▼
+                      Normalizer
+                         ▼
+                     UnifiedOrder
+                         ▼
+                        Room
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+         Android UI           LifeTrace Sync
 ```
 
-当前提交只实现中间公共层，不包含图中任何真实平台 Adapter。
+## 2. 生命周期
 
----
-
-## 2. 分层职责
-
-### 2.1 ShoppingSource
-
-`ShoppingSource` 是最低层采集边界。
-
-它负责：
-
-- 访问一个已认证的平台上下文
-- 检查当前连接 / 登录状态
-- 获取平台原始订单页或原始接口响应
-- 可选获取原始订单详情
-- 可选获取原始履约 / 物流详情
-
-它不负责：
-
-- 生成 LifeTrace 业务实体
-- 写 SQLite / PostgreSQL
-- 去重
-- 财务匹配
-- UI
-- Cloud Sync
-
-Source 可以有多种实现：
+主动抓取只在应用前台执行。
 
 ```text
-WebView2Source
-PlaywrightSource
-BrowserXhrSource
-OfficialApiSource
+BACKGROUND / CLOSED
+        │
+        │ app foreground
+        ▼
+INITIAL_REFRESH
+        │
+        ├── 普通订单 → NORMAL_TRACKING（5 min）
+        │
+        └── 活跃外卖 → REALTIME_DELIVERY（10～20 s）
+                         │
+                         └── 完成 / 取消 → NORMAL_TRACKING
+
+任意前台状态
+        │
+        │ app background
+        ▼
+STOPPED
 ```
 
-### 2.2 ShoppingAdapter
+重新回到前台时，不等待上一轮定时器，而是立即执行一次刷新，再重新建立周期。
 
-Adapter 是平台专用语义层。
+## 3. 登录与认证上下文
 
-它负责：
+### WebView 的职责
 
-- 平台登录状态解释
-- 平台分页方式
-- 平台原始字段解析
-- 平台订单状态映射
-- 平台物流状态映射
-- 平台退款状态映射
-- 转换为 `UnifiedOrder`
-- 可选刷新已知但仍处于待发货、运输中、退款中等活跃状态的订单
+WebView 只负责：
 
-例如后续：
+- 打开平台官网登录页面；
+- 由用户正常完成密码、短信、扫码、安全确认等流程；
+- 持久化 Cookie 及站点本地存储；
+- 在必要时提供平台自己的页面 JS 环境。
+
+### 凭据边界
+
+以下内容只能留在 Android 本地：
+
+- Cookie；
+- Access / Session Token；
+- WebView Profile；
+- LocalStorage / IndexedDB 中的认证数据；
+- 可能用于平台请求的临时签名上下文。
+
+不得上传到普通 LifeTrace 业务数据库、云端日志、诊断包或其他设备。
+
+## 4. Fetch Engine
+
+Fetcher 按平台 PoC 结果选择，不强迫所有平台使用同一路径。
+
+### 4.1 Native HTTP/API
+
+首选方案。WebView 完成登录后，由原生网络层复用必要认证状态，请求订单列表、详情、物流或外卖状态 JSON。
+
+优点：
+
+- 资源消耗低；
+- 不需要完整渲染页面；
+- 适合 5 分钟普通刷新和 10～20 秒外卖状态刷新。
+
+### 4.2 WebView Context Fetch
+
+如果平台请求依赖页面 Token、JS 运行环境或浏览器上下文，则在可信 origin 的 WebView 内执行 fetch/XHR，再通过受 origin 限制的消息桥返回结果。
+
+### 4.3 DOM Fallback
+
+只有前两种方案无法稳定取得结构化数据时才解析 DOM。DOM 方案必须封装在平台 Adapter 内，并把页面结构变化视为可诊断的 `PARSE_FAILED`，不能污染业务层。
+
+## 5. 平台 Adapter
+
+公共接口建议：
 
 ```text
-JDAdapter
-├── JD Source
-├── 京东订单字段映射
-├── 京东履约字段映射
-└── UnifiedOrder
+PlatformAdapter
+├── checkAuth()
+├── fetchOrderPage(cursor, range)
+├── fetchOrderDetail(orderId)?
+├── refreshOrders(orderIds)?
+├── fetchActiveDeliveries()?
+├── normalize(raw)
+└── classifyError(error)
 ```
 
-而淘宝可以使用完全不同的原始数据结构，但最终输出相同模型。
+Adapter 负责平台 URL、分页参数、原始字段、订单状态、物流状态、退款状态等平台差异。
 
-### 2.3 Shopping Sync Engine
+上层不允许直接依赖淘宝、京东、美团原始字段。
 
-Sync Engine 不知道任何平台 URL、Cookie、Selector 或 API 参数。
+## 6. 统一订单模型
 
-它只负责：
+稳定业务键：
 
 ```text
-检查连接
-→ 获取一页
-→ 标准化
-→ 校验
-→ 去重
-→ 输出 batch
-→ 翻下一页
-→ 到达边界停止列表遍历
-→ 可选刷新仍活跃的已知订单
+platform + accountId + platformOrderId
 ```
-
-因此平台改版时，只需要修复对应 Adapter / Source。
-
----
-
-## 3. 统一订单模型
 
 核心模型：
 
 ```text
 UnifiedOrder
 ├── platform
+├── accountId
 ├── platformOrderId
-├── 时间
-├── 商户
-├── 金额
+├── orderedAt
+├── merchantName
+├── status
+├── amountMinor
 ├── OrderItem[]
 ├── Fulfillment[]
-└── Refund[]
+├── Refund[]
+├── sourceUpdatedAt?
+└── lastSeenAt
 ```
 
-### 3.1 金额
+金额统一使用最小货币单位整数。
 
-金额统一使用最小货币单位整数，例如人民币分：
+履约统一使用 `Fulfillment`，兼容普通快递、京东配送、外卖、本地配送、到店自取和虚拟商品。
+
+## 7. 首次历史回填
+
+第一次使用平台连接时，用户可以选择：
 
 ```text
-¥399.00
-↓
-39900
+最近 1 个月
+最近 1 年
 ```
 
-公共校验会拒绝浮点金额进入统一模型。
-
-### 3.2 OrderItem
-
-支持一单多商品：
+同步过程：
 
 ```text
-Order
-├── 键盘 × 1
-├── 数据线 × 2
-└── 鼠标垫 × 1
+start backfill
+→ fetch page
+→ normalize
+→ Room upsert
+→ 保存 checkpoint / cursor
+→ fetch next page
+→ 到达时间边界
+→ mark initial_sync_completed
 ```
 
-商品层可以保留平台商品 ID、SKU、图片和商品链接，但这些字段不是所有平台的强制字段。
+每一页成功后立即事务性写入 Room 并更新 checkpoint，确保 App 被杀掉、网络中断或用户退出后可以继续，而不是重头抓取。
 
----
+## 8. 后续增量同步
 
-## 4. 履约模型而不是单纯快递模型
+后续打开 App 不重新扫描全部历史，使用三条增量路径。
 
-统一模型使用 `Fulfillment`，而不是只使用 `Express` / `Shipment`。
+### 8.1 新订单扫描
 
-原因是 LifeTrace 需要同时容纳：
+从最新订单页向后扫描，遇到稳定的已知区域后停止。停止条件不能只依赖“遇到第一条旧订单”，应至少允许 Adapter 使用连续已知页 / 时间边界等安全规则。
+
+### 8.2 重叠校验窗口
+
+最近一段时间的订单允许重复拉取并 UPSERT，例如最近 7～30 天。该窗口用于捕获：
+
+- 退款；
+- 售后；
+- 延迟发货；
+- 平台异步修正。
+
+具体窗口由平台 Adapter 配置。
+
+### 8.3 活跃订单刷新
+
+所有尚未终态的订单独立进入刷新集合，例如：
 
 ```text
-淘宝普通快递
-京东自营配送
-美团外卖即时配送
-到店自取
-虚拟商品
+待付款
+待发货
+运输中
+配送中
+退款 / 售后中
 ```
 
-当前履约类型：
+即使这些订单早于最新列表的停止边界，也必须可单独刷新。
+
+## 9. Room 与同步状态
+
+建议至少维护：
 
 ```text
-parcel
-platform_delivery
-local_delivery
-pickup
-virtual
-none
+orders
+├── platform
+├── account_id
+├── platform_order_id
+├── ordered_at
+├── status
+├── is_active
+├── source_updated_at
+├── last_seen_at
+└── raw_hash?
+
+shopping_sync_state
+├── platform
+├── account_id
+├── initial_sync_completed
+├── initial_range_start
+├── initial_cursor
+├── last_success_at
+└── source_cursor
 ```
 
-一个订单可以包含多个履约记录，例如拆单发货。
+`raw_hash` 可用于判断关键字段没有变化时跳过无意义的数据库更新和 UI 事件。
 
-### TrackingEvent
+## 10. 通知触发器
 
-物流 / 配送动态统一为：
+`NotificationListenerService` 只用于识别“某个平台可能发生订单变化”。
+
+触发规则：
 
 ```text
-occurredAt
-status
-description
-location?
+package 属于已支持平台
++ 通知满足订单 / 配送相关规则
+→ enqueue immediate refresh signal
 ```
 
-因此未来 Order Center 可以统一生成：
+当 App 前台时，立即调用对应 Adapter 刷新。
+
+当 App 后台时，不启动长期轮询；只记录轻量待检查标记，下一次进入前台立即验证。
+
+通知正文不能作为最终业务状态，因为通知可能缺订单号、金额或完整状态，也可能因为文案变化而失真。
+
+## 11. 外卖实时追踪
+
+入口有两个：
+
+1. App 进入前台后的首次同步发现活跃外卖；
+2. App 前台时收到外卖相关通知并确认存在活跃订单。
 
 ```text
-10:20 已发货
-14:35 到达转运中心
-次日 09:10 正在派送
-11:42 已签收
-```
-
-而不需要关心数据来自京东订单页还是第三方物流 Provider。
-
----
-
-## 5. 去重规则
-
-第一层稳定业务键：
-
-```text
-platform + platformOrderId
-```
-
-例如：
-
-```text
-jd::123456
-
-taobao::123456
-```
-
-两个平台即使出现相同订单号也不会冲突。
-
-数据库层后续应建立等价唯一约束。
-
-同步运行内部也会去除同一轮分页或活跃订单刷新中重复出现的订单。
-
----
-
-## 6. 增量同步
-
-公共层区分两种 Cursor。
-
-### 临时分页 Cursor
-
-`pageToken` 只用于本次同步过程：
-
-```text
-page 1
-→ pageToken A
-→ page 2
-→ pageToken B
-→ page 3
-```
-
-同步结束后不要求长期保存它。
-
-### 持久化同步 Cursor
-
-`ShoppingSyncCursor` 表示下一次增量同步的水位，例如：
-
-```text
-latestOrderId
-latestOrderTime
-sourceData
-```
-
-平台 Adapter 可以使用 `sourceData` 保存少量平台专用水位，但上层不解释其意义。
-
-### 已知订单边界
-
-调用方还可以把数据库已经存在的订单 key 作为边界传入。
-
-例如：
-
-```text
-本次页面
-
-订单 D 新
-订单 C 新
-订单 B 已存在且状态可能变化 ← boundary
-订单 A 更旧
-```
-
-Sync Engine 输出 D、C，并且**仍会输出边界订单 B 一次**，然后停止继续翻旧页。这样 B 如果刚从“待发货”变成“已发货”，更新不会因为它已经存在而丢失；Repository 层通过 upsert / 唯一约束保证它不会被创建成重复订单。
-
-### 活跃订单刷新
-
-仅依靠“遇到第一个已知订单停止”还不足以跟踪更早但尚未结束的订单。例如订单 A 可能比边界订单 B 更旧，但仍处于运输中或退款中。
-
-因此调用方可以通过 `refreshOrderIds` 传入需要继续观察的已知订单 ID，平台 Adapter 可实现可选的 `refreshOrders()`：
-
-```text
-最新订单列表增量遍历
+VERIFY_ACTIVE_DELIVERY
         ↓
-遇到已知边界停止
-        ↓
-refreshOrderIds
-├── 待发货订单
-├── 运输中订单
-└── 退款中订单
-        ↓
-Adapter.refreshOrders()
-        ↓
-再次输出最新 UnifiedOrder
+有活跃订单？
+   ├── 否 → NORMAL_TRACKING
+   └── 是 → REALTIME_DELIVERY
+              ↓
+           10～20 秒状态刷新
+              ↓
+       通知到达时立即抢先刷新
+              ↓
+        completed / cancelled
+              ↓
+         NORMAL_TRACKING
 ```
 
-已经在列表遍历中看到过的订单不会重复刷新。后续 Repository 只需要 upsert，便可生成订单状态和物流动态。
+如果 PoC 发现平台自身存在稳定 WebSocket / SSE / 长轮询，可替换周期轮询，但上层仍保持同一 `RealtimeDeliveryTracker` 契约。
 
----
+## 12. 云端同步边界
 
-## 7. 同步状态机
+Android 完成采集和标准化后，可以把 `UnifiedOrder` 作为普通 LifeTrace 业务数据同步到云端。
 
-```text
-idle
-  ↓
-checking_connection
-  ↓
-syncing
-  ├──────────────→ completed
-  │
-  ├─ 登录失效 ──→ paused(auth_required)
-  │
-  ├─ 用户验证 ──→ verification_required
-  │
-  ├─ 用户取消 ──→ paused(cancelled)
-  │
-  └─ 真实错误 ──→ failed
-```
+云端可以保存：
 
-### 验证不是普通失败
+- 订单；
+- 商品；
+- 履约 / 物流事件；
+- 退款；
+- 与财务流水的关联。
 
-以下情况统一进入需要用户处理的状态：
+云端不得保存：
 
-```text
-slider
-sms
-qr
-security_confirmation
-login
-unknown
-```
+- Cookie；
+- Token；
+- WebView Profile；
+- 平台登录密码；
+- 用于复现平台认证环境的私有浏览器状态。
 
-验证既可能出现在订单列表遍历，也可能出现在活跃订单 / 物流详情刷新阶段。两种情况都立即暂停本轮同步，公共层不实现验证码求解，也不会自动高频重试。
-
----
-
-## 8. Verification Relay 未来接入
-
-如果 PoC 最终选择云端 Browser Worker，验证流程可在不修改 Sync Engine 的情况下接入：
-
-```text
-Cloud Browser Worker
-       │
-       │ 遇到验证
-       ▼
-ShoppingError(VERIFICATION_REQUIRED)
-       │
-       ▼
-Sync Engine
-       │
-       ▼
-verification_required
-       │
-       ▼
-Verification Relay
-       │
-       ▼
-LifeTrace 手机端通知
-       │
-       ▼
-用户远程操作原浏览器 Session
-       │
-       ▼
-验证完成
-       │
-       ▼
-重新启动一次增量同步
-```
-
-关键原则：
-
-- 不自动求解滑块
-- 不把验证答案拆出来转发
-- 用户操作原认证上下文
-- 验证完成后仍复用同一浏览器 Profile
-- 远程验证入口必须独立做认证、短时有效和审计
-
-Verification Relay 属于后续实现，不在当前公共核心中。
-
----
-
-## 9. Windows Collector 与 Cloud Collector
-
-公共架构不绑定采集发生的位置。
-
-### Windows Collector
-
-```text
-LifeTrace Desktop
-→ WebView2 / Chromium
-→ Platform Source
-→ Adapter
-→ Sync Engine
-```
-
-优点：
-
-- 用户本地完成登录和验证方便
-- 本地网络环境更接近日常使用
-
-限制：
-
-- Windows 关机时无法持续更新
-
-### Cloud Collector
-
-```text
-LifeTrace Cloud
-→ Persistent Chromium Worker
-→ Platform Source
-→ Adapter
-→ Sync Engine compatible contract
-```
-
-优点：
-
-- Windows 关机后仍可定时更新
-- 更适合统一订单动态中心
-
-额外要求：
-
-- 浏览器 Profile 属于高敏认证凭据
-- 必须与普通业务数据库隔离
-- 不记录 Cookie / Token 到日志
-- 浏览器控制接口不得直接暴露公网
-- 出现人机验证时暂停并交给用户
-
-### Hybrid
-
-最终也允许：
-
-```text
-Cloud Collector 作为主采集器
-Windows Collector 作为 fallback / 调试入口
-```
-
-两者只要输出同一个 `UnifiedOrder`，上层无需区分来源。
-
----
-
-## 10. 错误模型
+## 13. 错误模型
 
 统一错误码：
 
@@ -467,134 +329,24 @@ CANCELLED
 UNKNOWN
 ```
 
-平台自己的错误字符串只能作为诊断信息，不能成为上层业务分支条件。
+登录失效、人机验证和限流都必须停止当前高频流程，禁止无限自动重试。
 
-### 限流
+## 14. PoC 顺序
 
-出现平台限流或拒绝访问时：
-
-```text
-立即停止本轮
-→ 返回结构化错误
-→ 上层调度器决定以后何时再次尝试
-```
-
-Sync Engine 本身不进行无限重试。
-
----
-
-## 11. 数据写入边界
-
-当前 Sync Engine 通过 `onBatch` 输出标准化订单：
+第一阶段优先验证：
 
 ```text
-Sync Engine
-→ UnifiedOrder[]
-→ onBatch
+1. 美团：登录、当前订单、外卖状态实时刷新、通知触发
+2. 京东：历史回填、增量订单、物流状态
+3. 淘宝 / 天猫：历史回填、增量订单、物流状态
+4. 拼多多：同一 Adapter 契约验证
 ```
 
-未来由业务层决定：
+每个平台 PoC 必须回答：
 
-```text
-onBatch
-├── SQLite Repository
-├── PostgreSQL Repository
-├── Sync Outbox
-└── Order Event Generator
-```
-
-这里允许同一个业务订单再次被输出，因为“已存在”与“未变化”不是同一个概念。Repository 必须以 `platform + platformOrderId` 做 upsert，并根据版本 / `updatedAt` / 字段差异决定是否产生状态动态。
-
-这样公共采集核心不会与某个数据库实现绑定，同时又不会漏掉已发货、派送、退款等后续变化。
-
----
-
-## 12. PoC 接入方式
-
-每个平台 PoC 通过后，只新增平台专用实现，不修改公共流程。
-
-例如京东：
-
-```text
-PoC 证明：
-登录可保持
-订单页可访问
-订单数据可稳定取得
-        ↓
-JdSource
-        ↓
-JDAdapter
-        ↓
-runShoppingSync()
-        ↓
-UnifiedOrder
-```
-
-平台接入至少需要验证：
-
-1. 登录状态可以稳定判断
-2. 用户验证可以人工完成
-3. 订单列表可以增量读取
-4. 一单多商品可以正确表达
-5. 订单状态可以映射
-6. 未完成订单可以再次刷新
-7. 物流 / 履约信息可选补全
-8. 平台改版时失败是可诊断的
-
----
-
-## 13. 第一阶段正式接入顺序
-
-当前建议：
-
-```text
-1. 京东
-2. 淘宝 / 天猫
-3. 拼多多
-4. 美团
-```
-
-原因不是要求所有平台使用相同抓取方式，而是逐个平台证明 Adapter 能够独立接入公共架构。
-
----
-
-## 14. 当前代码位置
-
-```text
-apps/desktop/src/services/shopping/
-├── index.ts        # 公共导出
-├── types.ts        # 领域模型与运行时校验
-├── errors.ts       # 统一错误
-├── source.ts       # 采集源契约
-├── adapter.ts      # 平台 Adapter 契约
-├── sync-state.ts   # 状态机类型
-└── sync-engine.ts  # 公共同步编排
-```
-
-测试：
-
-```text
-apps/desktop/tests/shopping-core.test.ts
-```
-
-执行计划：
-
-```text
-docs/epic-29/execution-plan.md
-```
-
----
-
-## 15. 当前安全边界
-
-公共核心明确不包含：
-
-- Cookie 读取 / 导出
-- Token 读取 / 导出
-- 密码保存
-- 验证码自动处理
-- 浏览器远程控制
-- 平台请求签名逆向
-- 平台反自动化绕过
-
-这些能力如果未来确有需要，必须在平台 PoC 与专门安全设计中单独评估，不能塞入通用 Sync Engine。
+- 登录态是否可稳定保存在 WebView；
+- 哪种 Fetcher 最稳定；
+- 历史订单分页如何停止；
+- 活跃订单如何刷新；
+- 哪些异常要求用户重新验证；
+- 页面 / 接口变化是否可被诊断。

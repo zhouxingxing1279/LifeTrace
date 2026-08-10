@@ -44,6 +44,14 @@ epic-xx/
 
 只创建当前 Epic 实际需要的文件，不要求每个目录包含全部类型。
 
+## 当前重点规划入口
+
+以下 Epic 是当前跨设备 / 移动端数据采集规划的权威入口：
+
+- `docs/epic-29/README.md`：购物订单聚合与 Android 本地采集；首次历史回填、后续增量、通知触发与外卖前台实时追踪。
+- `docs/epic-30/README.md`：本地加密相册与私密媒体保险库；严格 `local-only`，不参与远程相册同步。
+- `docs/epic-31/README.md`：普通相册 Android ↔ Windows 设备直连同步；LAN / P2P 优先，TURN 兜底，云端不持久化照片。
+
 ## EPIC-17 文档
 
 安全、隐私与数据生命周期的权威文档位于 `docs/epic-17/`：
