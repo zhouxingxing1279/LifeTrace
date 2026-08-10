@@ -80,8 +80,23 @@ const MAX_STRING_LENGTH = 4_000;
 const MAX_OBJECT_DEPTH = 6;
 const MAX_CAUSE_DEPTH = 5;
 const SENSITIVE_KEY_PATTERN = /authorization|cookie|set-cookie|password|passwd|token|secret|api[-_]?key|credential/i;
+const SENSITIVE_CONTENT_KEYS = new Set([
+  "body",
+  "bodytext",
+  "bodyhtml",
+  "bodyhtmlsanitized",
+  "raw",
+  "rawbody",
+  "rawcontent",
+  "mailbody",
+  "mailcontent",
+  "messagebody",
+  "notificationbody",
+  "notificationcontent",
+]);
 const BEARER_PATTERN = /Bearer\s+[A-Za-z0-9._~+/=-]+/gi;
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+const PRODUCTION_BUILD = Boolean(import.meta.env?.PROD);
 
 const memoryEvents: ClientLogEvent[] = [];
 let globalHandlersInstalled = false;
@@ -127,13 +142,19 @@ function scrubString(value: string): string {
     : redacted;
 }
 
+function isSensitiveLogKey(key: string): boolean {
+  if (SENSITIVE_KEY_PATTERN.test(key)) return true;
+  const normalized = key.toLowerCase().replace(/[-_]/g, "");
+  return SENSITIVE_CONTENT_KEYS.has(normalized);
+}
+
 export function sanitizeLogValue(
   value: unknown,
   depth = 0,
   seen: WeakSet<object> = new WeakSet<object>(),
   key = "",
 ): unknown {
-  if (SENSITIVE_KEY_PATTERN.test(key)) return "[REDACTED]";
+  if (isSensitiveLogKey(key)) return "[REDACTED]";
   if (value === null || value === undefined) return value;
   if (typeof value === "string") return scrubString(value);
   if (typeof value === "number" || typeof value === "boolean") return value;
@@ -297,6 +318,7 @@ class StructuredClientLogger implements ClientLogger {
   }
 
   private write(level: ClientLogLevel, event: string, data?: unknown, error?: unknown): void {
+    if (level === "debug" && PRODUCTION_BUILD) return;
     try {
       const context = sanitizeLogValue(this.baseContext) as Record<string, unknown>;
       emitEvent({

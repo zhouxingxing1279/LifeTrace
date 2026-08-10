@@ -3,6 +3,7 @@
 //! The production path is backed by PostgreSQL through SQLx. The protocol
 //! surface remains the v1 contract defined in `lifetrace-contracts`.
 
+pub mod api_rate_limit;
 pub mod auth;
 pub mod config;
 pub mod error;
@@ -10,6 +11,7 @@ pub mod mail;
 pub mod postgres_repository;
 pub mod repository;
 pub mod routes;
+pub mod security;
 pub mod state;
 pub mod store;
 pub mod sync;
@@ -22,7 +24,7 @@ use axum::http::{
     header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE},
     HeaderName, Method,
 };
-use axum::Router;
+use axum::{middleware, Router};
 use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
@@ -57,9 +59,24 @@ pub fn app(state: AppState) -> Router {
                 HeaderName::from_static("x-request-id"),
             ])
     };
-    routes::router(state.clone())
+
+    let production = state.config.is_production();
+    let rate_limiter = api_rate_limit::ApiRateLimiter::from_config(&state.config);
+    let mut router = routes::router(state.clone())
+        .layer(middleware::from_fn_with_state(
+            rate_limiter,
+            api_rate_limit::middleware,
+        ))
         .with_state(state)
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
-        .layer(cors)
+        .layer(cors);
+
+    for layer in security::response_security_layers() {
+        router = router.layer(layer);
+    }
+    if production {
+        router = router.layer(security::hsts_layer());
+    }
+    router
 }

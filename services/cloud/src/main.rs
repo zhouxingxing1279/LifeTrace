@@ -1,10 +1,14 @@
-use lifetrace_cloud::{app, Config};
+use lifetrace_cloud::{app, security, Config};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env();
     config.validate().map_err(|message| {
         eprintln!("[lifetrace-cloud] invalid configuration: {message}");
+        message
+    })?;
+    security::validate_config(&config).map_err(|message| {
+        eprintln!("[lifetrace-cloud] insecure production configuration: {message}");
         message
     })?;
     let state = lifetrace_cloud::AppState::new(config.clone());

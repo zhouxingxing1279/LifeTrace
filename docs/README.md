@@ -44,6 +44,14 @@ epic-xx/
 
 只创建当前 Epic 实际需要的文件，不要求每个目录包含全部类型。
 
+## EPIC-17 文档
+
+安全、隐私与数据生命周期的权威文档位于 `docs/epic-17/`：
+
+- `execution-plan.md`：执行顺序、实现范围、测试与合并门禁；
+- `security-architecture.md`：HTTPS/CORS/CSP/CSRF、安全响应头、Token、Scope、日志脱敏与数据库最小权限；
+- `data-lifecycle.md`：全量/分模块导出、账号注销、Session/Token 清理、文件对象删除和备份/原文/导入文件保留策略。
+
 ## 命名选择原则
 
 优先描述**文档职责**，而不是把项目名、Epic 名、作者、Agent、版本等元信息全部塞进文件名。

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -27,10 +28,13 @@ test("serializeClientError preserves the cause chain", () => {
   assert.ok(serialized.stack);
 });
 
-test("sanitizeLogValue redacts credentials and bearer tokens", () => {
+test("sanitizeLogValue redacts credentials and sensitive content bodies", () => {
   const sanitized = sanitizeLogValue({
     authorization: "Bearer abc.def.ghi",
     password: "secret-password",
+    rawBody: "完整第三方通知原文",
+    body_text: "完整邮件正文",
+    notificationContent: "完整通知内容",
     nested: {
       accessToken: "eyJabcdefgh.abcdefgh.abcdefgh",
       note: "safe value",
@@ -39,10 +43,20 @@ test("sanitizeLogValue redacts credentials and bearer tokens", () => {
 
   assert.equal(sanitized.authorization, "[REDACTED]");
   assert.equal(sanitized.password, "[REDACTED]");
+  assert.equal(sanitized.rawBody, "[REDACTED]");
+  assert.equal(sanitized.body_text, "[REDACTED]");
+  assert.equal(sanitized.notificationContent, "[REDACTED]");
   assert.deepEqual(sanitized.nested, {
     accessToken: "[REDACTED]",
     note: "safe value",
   });
+  assert.doesNotMatch(JSON.stringify(sanitized), /完整第三方通知原文|完整邮件正文|完整通知内容/);
+});
+
+test("production logger explicitly drops debug events", async () => {
+  const source = await readFile("src/services/clientObservability.ts", "utf8");
+  assert.match(source, /PRODUCTION_BUILD/);
+  assert.match(source, /level === "debug" && PRODUCTION_BUILD/);
 });
 
 test("bindFetch preserves the owner required by a native-style fetch", async () => {
