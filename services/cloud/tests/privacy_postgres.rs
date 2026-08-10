@@ -119,13 +119,31 @@ async fn export_is_readable_secret_free_and_account_deletion_cascades() {
         export["data"]["sync"]["entities"][0]["payload"]["note"],
         "export-visible"
     );
+
+    // The response intentionally names excluded field classes in
+    // `secretsExcluded`; verify that sensitive fields are absent from the
+    // exported user-data payload itself, while actual token values are absent
+    // from the entire response.
     let serialized = String::from_utf8(body.to_vec()).unwrap();
-    assert!(!serialized.contains("password_hash"));
+    let data_serialized = export["data"].to_string();
+    for forbidden_field in [
+        "password_hash",
+        "passwordHash",
+        "credentialCiphertext",
+        "credentialNonce",
+        "sessionSecret",
+    ] {
+        assert!(!data_serialized.contains(forbidden_field));
+    }
     assert!(!serialized.contains(&tokens.access_token));
     if let Some(refresh) = tokens.refresh_token.as_deref() {
         assert!(!serialized.contains(refresh));
     }
-    assert!(!serialized.contains("credentialCiphertext"));
+    assert!(export["secretsExcluded"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|value| value == "credentialCiphertext"));
 
     let response = router
         .oneshot(
