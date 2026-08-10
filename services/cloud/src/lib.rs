@@ -77,7 +77,9 @@ async fn security_headers(request: Request, next: Next) -> Response {
     // own CSP if it starts serving HTML from this origin.
     headers.insert(
         HeaderName::from_static("content-security-policy"),
-        HeaderValue::from_static("default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"),
+        HeaderValue::from_static(
+            "default-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'",
+        ),
     );
     headers.insert(
         HeaderName::from_static("x-content-type-options"),
