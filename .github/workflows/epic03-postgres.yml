@@ -55,23 +55,7 @@ jobs:
       - name: Contract tests
         run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud tests
-        shell: bash
-        run: |
-          set +e
-          set -o pipefail
-          cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1 2>&1 | tee /tmp/cloud-tests.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            diagnostic="$(grep -E 'panicked|FAILED|failures:|assertion|error:|privacy_|test result:' /tmp/cloud-tests.log | tail -n 30 || true)"
-            if [ -z "$diagnostic" ]; then
-              diagnostic="$(tail -n 30 /tmp/cloud-tests.log)"
-            fi
-            diagnostic="${diagnostic//'%'/'%25'}"
-            diagnostic="${diagnostic//$'\r'/'%0D'}"
-            diagnostic="${diagnostic//$'\n'/'%0A'}"
-            echo "::error title=Cloud test root cause::$diagnostic"
-          fi
-          exit "$status"
+        run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
       - name: Clippy production targets
         run: cargo clippy --manifest-path services/cloud/Cargo.toml --lib --bins -- -D warnings
       - name: Docker build
