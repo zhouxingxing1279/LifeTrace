@@ -1,6 +1,10 @@
-# 示例：仅本地 HTTPS 反代，不使用真实域名/证书。
-# EPIC-04 完成前不得声明可正式公网部署。
+# EPIC-17 production TLS baseline.
+#
+# Set LIFETRACE_DOMAIN to the public hostname (for example life.example.com).
+# Caddy obtains/renews the certificate automatically for a routable hostname.
+# Only this TLS endpoint should be internet-facing; port 8787 remains private.
 
-localhost:8443 {
+{$LIFETRACE_DOMAIN:localhost}:443 {
+    encode zstd gzip
     reverse_proxy 127.0.0.1:8787
 }
