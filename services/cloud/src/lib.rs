@@ -61,7 +61,7 @@ pub fn app(state: AppState) -> Router {
     };
 
     let production = state.config.is_production();
-    let rate_limiter = api_rate_limit::ApiRateLimiter::default();
+    let rate_limiter = api_rate_limit::ApiRateLimiter::from_config(&state.config);
     let mut router = routes::router(state.clone())
         .layer(middleware::from_fn_with_state(
             rate_limiter,
