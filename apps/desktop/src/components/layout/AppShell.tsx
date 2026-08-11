@@ -160,7 +160,7 @@ export default function AppShell({
           />
         ) : null}
 
-        <div className="hx-main">
+        <div className="hx-main" data-view={view}>
           <header className="hx-topbar">
             <button
               type="button"
