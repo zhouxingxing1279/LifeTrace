@@ -33,6 +33,7 @@ import "@/app/execution.css";
 import "@/app/execution-calendar.css";
 import "@/app/analytics.css";
 import "@/app/record-workspace.css";
+import "@/app/module-layout-overrides.css";
 import "./uiPreviewFrame.css";
 
 const uiPreview = import.meta.env.VITE_UI_PREVIEW === "1";
