@@ -52,6 +52,7 @@ pub fn run() {
             desktop::note_show_attachment,
             desktop::write_text_file,
             desktop::read_text_file,
+            desktop::desktop_open_url,
             sync::commands::sync_set_session,
             sync::commands::sync_clear_session,
             sync::commands::sync_bind_current_profile,

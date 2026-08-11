@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   Archive,
   ArrowLeft,
@@ -23,14 +24,19 @@ function sourceText(message: MailMessage) {
   return `来源邮件：${message.subject || "无主题"}\n发件人：${senderLabel(message)}\n邮件时间：${formatTime(message.sentAt || message.receivedAt)}\nmail:${message.id}`;
 }
 
-function openSafeUrl(href: string) {
+async function openSafeUrl(href: string) {
   try {
     const parsed = new URL(href, window.location.href);
     if (!["http:", "https:", "mailto:"].includes(parsed.protocol)) {
       toast("已阻止不安全的邮件链接", "error");
       return;
     }
-    window.open(parsed.href, "_blank", "noopener,noreferrer");
+    try {
+      await invoke("desktop_open_url", { url: parsed.href });
+    } catch {
+      const opened = window.open(parsed.href, "_blank", "noopener,noreferrer");
+      if (!opened) toast("无法打开链接，请检查系统默认浏览器设置", "error");
+    }
   } catch {
     toast("邮件链接无效", "error");
   }
@@ -40,7 +46,7 @@ function PlainBody({ text }: { text: string }) {
   const parts = text.split(/(https?:\/\/[^\s<>"']+)/g);
   return <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere", lineHeight: 1.75 }}>
     {parts.map((part, index) => /^https?:\/\//i.test(part)
-      ? <a key={`${part}-${index}`} href={part} onClick={(event) => { event.preventDefault(); openSafeUrl(part); }} rel="noopener noreferrer">{part}</a>
+      ? <a key={`${part}-${index}`} href={part} onClick={(event) => { event.preventDefault(); void openSafeUrl(part); }} rel="noopener noreferrer">{part}</a>
       : <span key={`text-${index}`}>{part}</span>)}
   </div>;
 }
@@ -54,7 +60,7 @@ function HtmlBody({ html }: { html: string }) {
       const href = anchor?.getAttribute("href");
       if (!href) return;
       event.preventDefault();
-      openSafeUrl(href);
+      void openSafeUrl(href);
     }}
     dangerouslySetInnerHTML={{ __html: html }}
   />;

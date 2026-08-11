@@ -30,6 +30,28 @@ fn safe_segment(value: &str) -> Result<&str, String> {
 }
 
 #[tauri::command]
+pub fn desktop_open_url(url: String) -> Result<(), String> {
+    let parsed = url::Url::parse(&url).map_err(|_| "链接地址无效".to_owned())?;
+    if !matches!(parsed.scheme(), "http" | "https" | "mailto") {
+        return Err("不允许打开该类型的链接".to_owned());
+    }
+
+    #[cfg(target_os = "windows")]
+    let result = Command::new("rundll32")
+        .arg("url.dll,FileProtocolHandler")
+        .arg(parsed.as_str())
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = Command::new("open").arg(parsed.as_str()).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = Command::new("xdg-open").arg(parsed.as_str()).spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|error| format!("无法调用系统默认浏览器：{error}"))
+}
+
+#[tauri::command]
 pub fn photo_status(state: State<'_, DesktopState>) -> Value {
     json!({ "ok": true, "status": state.photo_runtime.status() })
 }

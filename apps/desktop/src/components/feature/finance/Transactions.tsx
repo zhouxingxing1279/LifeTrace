@@ -98,7 +98,7 @@ export default function Transactions({
   ];
 
   return (
-    <div className="hx-view">
+    <div className="hx-view hx-transactions-view">
       <div className="hx-toolbar hx-tx-tools">
         <SearchInput
           value={search}

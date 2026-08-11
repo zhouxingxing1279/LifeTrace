@@ -1,8 +1,21 @@
 /* Master-detail workspace for data-heavy desktop screens. */
+.hx-transactions-view {
+  display: flex;
+  height: calc(100dvh - var(--ui-topbar-height) - 52px);
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hx-transactions-view > .hx-toolbar {
+  flex: none;
+}
+
 .lt-record-workspace {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 300px;
-  min-height: 560px;
+  min-height: 0;
+  flex: 1;
   border: 1px solid var(--ui-border);
   border-radius: var(--ui-radius-lg);
   overflow: hidden;
@@ -39,6 +52,8 @@
 
 .lt-record-inspector {
   min-width: 0;
+  height: 100%;
+  overflow-y: auto;
   padding: var(--ui-space-5);
   border-left: 1px solid var(--ui-border);
   background: var(--ui-bg-inset);
@@ -126,8 +141,15 @@
 }
 
 @media (max-width: 840px) {
+  .hx-transactions-view {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
   .lt-record-workspace {
     grid-template-columns: 1fr;
+    min-height: 560px;
   }
   .lt-record-inspector {
     border-top: 1px solid var(--ui-border);
