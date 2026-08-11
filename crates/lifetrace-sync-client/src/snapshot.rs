@@ -11,10 +11,12 @@ pub(crate) async fn run_snapshot<T: SyncTransport, S: SyncStore>(
     scope: &SyncScope,
     page_size: u32,
 ) -> Result<(), SyncError> {
-    let (mut snapshot_id, mut page_token) = store.snapshot_resume(profile, scope).await?;
-    if snapshot_id.is_none() {
-        store.begin_snapshot(profile, scope).await?;
-    }
+    // A snapshot run is also the recovery path for an expired or foreign
+    // cursor. Never resume persisted pagination here: that state may belong
+    // to the previous user/scope and would make recovery fail repeatedly.
+    store.begin_snapshot(profile, scope).await?;
+    let mut snapshot_id = None;
+    let mut page_token = None;
     loop {
         let response = transport
             .snapshot(SnapshotRequestV1 {
