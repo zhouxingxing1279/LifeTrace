@@ -206,7 +206,10 @@ export function AccountEntry({ autoOpen = false }: { autoOpen?: boolean }) {
     </> : <button type="button" className="hx-account-button" onClick={() => setDialog("login")}>
       <span className="hx-account-avatar anonymous"><UserCircle /></span><div><strong>{auth.phase === "bootstrapping" || auth.phase === "refreshing" ? "正在恢复账户…" : "登录 / 注册"}</strong><small>{status}</small></div><ChevronRight />
     </button>}
-    {dialog && <AccountDialog initialMode={dialog} close={() => setDialog(null)} />}
+    {dialog && createPortal(
+      <AccountDialog initialMode={dialog} close={() => setDialog(null)} />,
+      document.body,
+    )}
   </div>;
 }
 
