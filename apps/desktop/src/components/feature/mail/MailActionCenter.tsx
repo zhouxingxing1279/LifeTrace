@@ -295,11 +295,19 @@ function AccountDialog({ onClose, onCreated }: { onClose: () => void; onCreated:
   );
 }
 
-function ReplyPanel({ account, message, onClose }: { account: MailAccount; message: MailMessage; onClose: () => void }) {
+function ReplyDialog({ account, message, onClose }: { account: MailAccount; message: MailMessage; onClose: () => void }) {
   const [to, setTo] = useState(() => senderIdentity(message).email);
   const [subject, setSubject] = useState(() => /^re:/i.test(message.subject) ? message.subject : `Re: ${message.subject}`);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !sending) onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose, sending]);
 
   const send = async () => {
     const recipients = to.split(/[;,\n]/).map((value) => value.trim()).filter(Boolean);
@@ -331,13 +339,42 @@ function ReplyPanel({ account, message, onClose }: { account: MailAccount; messa
     }
   };
 
-  return <section style={{ ...card, padding: 16, marginTop: 14 }}>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><strong>回复邮件</strong><button style={actionButton} type="button" onClick={onClose}><X size={15} /></button></div>
-    <label>收件人<input style={{ ...inputStyle, margin: "5px 0 10px" }} value={to} onChange={(event) => setTo(event.target.value)} /></label>
-    <label>主题<input style={{ ...inputStyle, margin: "5px 0 10px" }} value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
-    <label>正文<textarea style={{ ...inputStyle, marginTop: 5, minHeight: 140, resize: "vertical" }} value={body} onChange={(event) => setBody(event.target.value)} /></label>
-    <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}><button type="button" className="hx-btn primary" disabled={sending} onClick={() => void send()}>{sending ? <LoaderCircle size={16} /> : <Send size={16} />}发送</button></div>
-  </section>;
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,.42)", display: "grid", placeItems: "center", padding: 24 }}
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !sending) onClose();
+      }}
+    >
+      <section
+        style={{ ...card, width: "min(760px, 94vw)", maxHeight: "88vh", overflow: "auto", padding: 22, background: "var(--background, #fff)", boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label="回复邮件"
+      >
+        <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
+          <div style={{ minWidth: 0 }}>
+            <h2 style={{ margin: 0, fontSize: 20 }}>回复邮件</h2>
+            <p style={{ margin: "6px 0 0", opacity: .62, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              通过 {account.emailAddress} 回复 {senderLabel(message)}
+            </p>
+          </div>
+          <button type="button" style={actionButton} disabled={sending} onClick={onClose}><X size={16} />关闭</button>
+        </header>
+
+        <div style={{ display: "grid", gap: 12 }}>
+          <label>收件人<input style={{ ...inputStyle, marginTop: 6 }} value={to} onChange={(event) => setTo(event.target.value)} /></label>
+          <label>主题<input style={{ ...inputStyle, marginTop: 6 }} value={subject} onChange={(event) => setSubject(event.target.value)} /></label>
+          <label>正文<textarea autoFocus style={{ ...inputStyle, marginTop: 6, minHeight: 240, resize: "vertical" }} value={body} onChange={(event) => setBody(event.target.value)} /></label>
+        </div>
+
+        <footer style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 18 }}>
+          <button type="button" style={actionButton} disabled={sending} onClick={onClose}>取消</button>
+          <button type="button" className="hx-btn primary" disabled={sending} onClick={() => void send()}>{sending ? <LoaderCircle size={16} /> : <Send size={16} />}发送</button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 type SenderGroup = {
@@ -671,8 +708,8 @@ const activeSenderGroup = activeSenderKey
               <button type="button" style={actionButton} disabled={busy} onClick={() => void convert("memo")}><StickyNote size={15} />创建 Memo</button>
               <button type="button" style={actionButton} disabled={busy} onClick={() => void convert("waiting")}><Clock3 size={15} />等待事项</button>
             </div>
-            {replying ? <ReplyPanel account={selectedAccount} message={detailMessage} onClose={() => setReplying(false)} /> : null}
           </section>
+          {replying ? <ReplyDialog account={selectedAccount} message={detailMessage} onClose={() => setReplying(false)} /> : null}
         </> : <section style={{ ...card, padding: 36, textAlign: "center" }}>邮件不存在或已无法读取。</section>}
       </div>
     );
