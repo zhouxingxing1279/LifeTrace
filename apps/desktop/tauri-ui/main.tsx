@@ -31,6 +31,7 @@ import "@/app/execution.css";
 import "@/app/execution-calendar.css";
 import "@/app/analytics.css";
 import "@/app/record-workspace.css";
+import "@/app/module-layout-overrides.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
