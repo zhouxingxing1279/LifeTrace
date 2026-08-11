@@ -404,6 +404,126 @@
   }
 }
 
+/* Dark theme -----------------------------------------------------------
+ * Legacy English views used literal white surfaces. Keep every learning
+ * workspace on the same semantic surface and text tokens as the app shell. */
+:root[data-theme="dark"] .en-module {
+  --en-ink: var(--ui-foreground);
+  --en-text: var(--ui-foreground);
+  --en-muted: var(--ui-muted);
+  --en-paper: var(--ui-bg-surface);
+  --en-line: var(--ui-border);
+  --en-green-soft: var(--ui-primary-soft);
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-vocab-tools label,
+:root[data-theme="dark"] .en-vocab-tools input,
+:root[data-theme="dark"] .en-vocab-tools select,
+:root[data-theme="dark"] .en-review-session > article,
+:root[data-theme="dark"] .en-review-session footer button,
+:root[data-theme="dark"] .en-vocab-settings > div,
+:root[data-theme="dark"] .en-vocab-insights article,
+:root[data-theme="dark"] .en-history-stats article,
+:root[data-theme="dark"] .en-chart,
+:root[data-theme="dark"] .en-history-list,
+:root[data-theme="dark"] .en-score-grid article,
+:root[data-theme="dark"] .en-feedback-grid > section,
+:root[data-theme="dark"] .en-reference,
+:root[data-theme="dark"] .en-summary-editor,
+:root[data-theme="dark"] .en-summary-grid > section:first-child article,
+:root[data-theme="dark"] .en-source-manager,
+:root[data-theme="dark"] .en-library-metrics article,
+:root[data-theme="dark"] .en-source-table-wrap,
+:root[data-theme="dark"] .en-source-table button,
+:root[data-theme="dark"] .en-article-grid article,
+:root[data-theme="dark"] .en-library-load-more button,
+:root[data-theme="dark"] .en-library-error button {
+  border-color: var(--ui-border);
+  background: var(--ui-bg-surface);
+  color: var(--ui-foreground);
+  box-shadow: none;
+}
+
+:root[data-theme="dark"] .en-section-head input,
+:root[data-theme="dark"] .en-section-head select,
+:root[data-theme="dark"] .en-vocab-settings select,
+:root[data-theme="dark"] .en-vocab-settings input,
+:root[data-theme="dark"] .en-vocab-detail-overlay textarea {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-bg-inset);
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-vocab-list > button:hover,
+:root[data-theme="dark"] .en-history-list article:hover {
+  background: var(--ui-bg-hover);
+}
+
+:root[data-theme="dark"] .en-history-list article,
+:root[data-theme="dark"] .en-feedback-grid section > article,
+:root[data-theme="dark"] .en-source-table th,
+:root[data-theme="dark"] .en-source-table td,
+:root[data-theme="dark"] .en-summary-editor footer {
+  border-color: var(--ui-border);
+}
+
+:root[data-theme="dark"] .en-source-table th,
+:root[data-theme="dark"] .en-reference blockquote,
+:root[data-theme="dark"] .en-vocab-detail-overlay blockquote,
+:root[data-theme="dark"] .en-article-reading-state,
+:root[data-theme="dark"] .en-library-breakdown span {
+  background: var(--ui-bg-inset);
+  color: var(--ui-muted);
+}
+
+:root[data-theme="dark"] .en-vocab-detail-overlay aside,
+:root[data-theme="dark"] .en-dictionary-popover,
+:root[data-theme="dark"] .en-dictionary-loading,
+:root[data-theme="dark"] .en-quick-note-popover,
+:root[data-theme="dark"] .en-quick-note-card,
+:root[data-theme="dark"] .en-translation-card {
+  border-color: var(--ui-border);
+  background: var(--ui-bg-surface);
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-dictionary-popover button,
+:root[data-theme="dark"] .en-vocab-detail-overlay footer button {
+  border-color: var(--ui-border-strong);
+  background: var(--ui-bg-inset);
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-vocab-detail-overlay footer .primary {
+  border-color: var(--ui-primary);
+  background: var(--ui-primary);
+  color: var(--ui-on-primary);
+}
+
+:root[data-theme="dark"] .en-summary-grid {
+  background: var(--ui-bg-inset);
+}
+
+:root[data-theme="dark"] .en-summary-editor textarea {
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-sync-progress,
+:root[data-theme="dark"] .en-source-message {
+  border-color: color-mix(in srgb, var(--ui-primary) 28%, var(--ui-border));
+  background: var(--ui-primary-soft);
+  color: var(--ui-foreground);
+}
+
+:root[data-theme="dark"] .en-article-skeleton i,
+:root[data-theme="dark"] .en-article-skeleton h3,
+:root[data-theme="dark"] .en-article-skeleton p,
+:root[data-theme="dark"] .en-article-skeleton small,
+:root[data-theme="dark"] .en-article-skeleton b {
+  background: var(--ui-bg-inset);
+}
+
 @media (max-width: 920px) {
   .hx-shell .en-section-head {
     align-items: stretch;

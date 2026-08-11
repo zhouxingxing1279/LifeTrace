@@ -175,10 +175,32 @@
 }
 
 /* Mail ------------------------------------------------------------------ */
+.hx-shell .mail-sidebar-primary {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 3px;
+  min-height: auto;
+  overflow: visible;
+  overscroll-behavior: auto;
+  scrollbar-gutter: auto;
+}
+
+.hx-main[data-view="mail"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.hx-main[data-view="mail"] > .hx-topbar {
+  flex: 0 0 auto;
+}
+
 .hx-main[data-view="mail"] > div {
-  align-content: start !important;
+  flex: 1 1 auto;
+  width: auto;
+  margin: 0;
   min-height: 0 !important;
-  padding: var(--ui-space-3) var(--ui-space-5) var(--ui-space-6);
+  padding: var(--ui-space-3) var(--ui-space-2) var(--ui-space-4);
 }
 
 .hx-main[data-view="mail"] > div > header:first-child {

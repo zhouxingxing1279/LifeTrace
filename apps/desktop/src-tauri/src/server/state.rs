@@ -176,6 +176,12 @@ pub async fn get(State(state): State<AppState>) -> Response {
         }
         Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
     }
+    match finance::list_categories(&connection) {
+        Ok(categories) => {
+            result.insert("categories".to_owned(), Value::Array(categories));
+        }
+        Err(message) => return error(StatusCode::INTERNAL_SERVER_ERROR, message),
+    }
     Json(Value::Object(result)).into_response()
 }
 
@@ -206,6 +212,12 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             }
             if key == "transactions" {
                 return match finance::save_transaction(&connection, value) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "categories" {
+                return match finance::save_category(&connection, value) {
                     Ok(()) => Json(json!({ "ok": true })).into_response(),
                     Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                 };
@@ -341,6 +353,12 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             }
             if key == "transactions" {
                 return match finance::delete_transaction(&connection, id) {
+                    Ok(()) => Json(json!({ "ok": true })).into_response(),
+                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+                };
+            }
+            if key == "categories" {
+                return match finance::delete_category(&connection, id) {
                     Ok(()) => Json(json!({ "ok": true })).into_response(),
                     Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
                 };

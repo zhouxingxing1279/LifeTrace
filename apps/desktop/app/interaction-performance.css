@@ -1,0 +1,129 @@
+/* Keep every control responsive: immediate feedback, cheap compositing, no
+ * decorative delay before content becomes usable. */
+button,
+[role="button"],
+a,
+summary {
+  touch-action: manipulation;
+}
+
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]),
+a[href],
+summary {
+  cursor: pointer;
+}
+
+button {
+  transition-duration: 90ms !important;
+}
+
+button:active:not(:disabled),
+[role="button"]:active:not([aria-disabled="true"]) {
+  transform: scale(.975) !important;
+  transition-duration: 35ms !important;
+}
+
+/* Long entrance and blur animations read as latency in a productivity app. */
+.hx-view,
+.hx-btn,
+.hx-icon-btn {
+  animation: none !important;
+}
+
+.hx-btn:not(.sm),
+.hx-icon-btn {
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Do not animate large workspaces when switching modules. */
+.hx-main > .hx-view,
+.hx-main > [class$="-root"],
+.hx-main > [class$="-workspace"] {
+  animation: none !important;
+}
+
+/* Resizable navigation ------------------------------------------------- */
+.hx-shell > aside {
+  position: relative;
+}
+
+.hx-sidebar-resizer {
+  position: absolute;
+  z-index: 20;
+  top: 12px;
+  right: -5px;
+  bottom: 12px;
+  width: 10px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.hx-sidebar-resizer::after {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  bottom: 0;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+  content: "";
+  transition: background-color 90ms ease;
+}
+
+.hx-sidebar-resizer:hover::after,
+.is-resizing-sidebar .hx-sidebar-resizer::after {
+  background: var(--ui-primary);
+}
+
+.is-resizing-sidebar,
+.is-resizing-sidebar * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
+
+.is-resizing-sidebar .hx-shell > aside {
+  transition: none !important;
+}
+
+/* Keep rounded frames and workspace content away from hard edges. */
+.hx-main {
+  margin: 12px !important;
+  padding: 0 16px 16px;
+}
+
+/* The top bar belongs to the outer frame; module content below it observes
+ * the shared 16px workspace gutter. */
+.hx-main > .hx-topbar {
+  margin-inline: -16px;
+}
+
+.hx-main[data-view="execution"] > .lt-exec-root,
+.hx-main[data-view="finance"] > .analytics-page {
+  width: auto !important;
+  margin: 0 !important;
+  padding: var(--ui-space-4) var(--ui-space-1) var(--ui-space-6) !important;
+}
+
+@media (max-width: 980px) {
+  .hx-sidebar-resizer {
+    display: none;
+  }
+
+  .hx-main {
+    margin: 8px !important;
+    padding-inline: 10px;
+  }
+
+  .hx-main > .hx-topbar {
+    margin-inline: -10px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  button:active:not(:disabled),
+  [role="button"]:active:not([aria-disabled="true"]) {
+    transform: none !important;
+  }
+}

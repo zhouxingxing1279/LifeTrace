@@ -65,10 +65,10 @@ export function MailAccountDialog({
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.38)", display: "grid", placeItems: "center", padding: 24 }}
+      style={{ position: "fixed", inset: 0, zIndex: 60, background: "var(--apple-scrim, rgba(0,0,0,.48))", display: "grid", placeItems: "center", padding: 24 }}
       onMouseDown={(event) => event.target === event.currentTarget && !saving && onClose()}
     >
-      <section style={{ ...panelStyle, width: "min(620px, 94vw)", maxHeight: "90vh", overflow: "auto", padding: 22, background: "var(--background, #fff)" }} role="dialog" aria-modal="true" aria-label="添加邮箱">
+      <section style={{ ...panelStyle, width: "min(620px, 94vw)", maxHeight: "calc(100dvh - 48px)", overflowY: "auto", overscrollBehavior: "contain", padding: 22, background: "var(--ui-bg-surface)", color: "var(--ui-foreground)", boxShadow: "0 24px 70px rgba(0,0,0,.32)" }} role="dialog" aria-modal="true" aria-label="添加邮箱">
         <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, marginBottom: 18 }}>
           <div>
             <h2 style={{ margin: 0, fontSize: 20 }}>连接邮箱</h2>

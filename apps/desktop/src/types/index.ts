@@ -44,6 +44,7 @@ export interface Transaction {
   type: "expense" | "income" | "transfer";
   amount: number;
   category: string;
+  categoryId?: string;
   account: string;
   accountId?: string;
   toAccount?: string;
@@ -52,6 +53,20 @@ export interface Transaction {
   item?: string;
   note?: string;
   occurredAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FinanceCategory {
+  id: string;
+  userId: string;
+  name: string;
+  type: "expense" | "income" | "transfer" | "refund" | "fee";
+  parentId?: string;
+  icon?: string;
+  color?: string;
+  isSystem: boolean;
+  isArchived: boolean;
   createdAt: string;
   updatedAt: string;
 }

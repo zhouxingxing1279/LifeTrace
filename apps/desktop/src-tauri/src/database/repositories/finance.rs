@@ -497,6 +497,7 @@ fn transaction_to_dto(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "type": row.get::<_, String>(2)?,
         "amount": cents_to_amount(amount_cents),
         "category": category_name,
+        "categoryId": row.get::<_, Option<String>>(7)?,
         "account": account_name,
         "accountId": account_id,
         "toAccount": to_account_name,
@@ -538,6 +539,83 @@ pub fn list_transactions(connection: &Connection) -> Result<Vec<Value>, String> 
         .map_err(|error| error.to_string())?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
+}
+
+/// 当前资料下可用的账单分类。分类是正式实体，交易仍同时返回名称以兼容旧界面。
+pub fn list_categories(connection: &Connection) -> Result<Vec<Value>, String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id, user_id, name, category_type, parent_id, icon, color,
+                    is_system, is_archived, created_at, updated_at
+             FROM transaction_categories
+             WHERE user_id=?1 AND deleted_at IS NULL AND is_archived=0
+             ORDER BY category_type, is_system DESC, name",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([profile_id], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "userId": row.get::<_, String>(1)?,
+                "name": row.get::<_, String>(2)?,
+                "type": row.get::<_, String>(3)?,
+                "parentId": row.get::<_, Option<String>>(4)?,
+                "icon": row.get::<_, Option<String>>(5)?,
+                "color": row.get::<_, Option<String>>(6)?,
+                "isSystem": row.get::<_, bool>(7)?,
+                "isArchived": row.get::<_, bool>(8)?,
+                "createdAt": row.get::<_, String>(9)?,
+                "updatedAt": row.get::<_, String>(10)?,
+            }))
+        })
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+pub fn save_category(connection: &Connection, dto: &Value) -> Result<(), String> {
+    let owned = crate::database::profile::assign_active_owner(connection, dto)?;
+    let object = json_parser::as_object(&owned, "分类数据")?;
+    let user_id = user_id(object);
+    let name = json_parser::string_field(object, "name")
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "分类名称不能为空".to_owned())?;
+    let category_type = json_parser::string_field(object, "type")
+        .filter(|value| matches!(*value, "expense" | "income"))
+        .ok_or_else(|| "分类类型仅支持 expense 或 income".to_owned())?;
+    let id = json_parser::string_field(object, "id")
+        .filter(|value| !value.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let stamp = now();
+    connection.execute(
+        "INSERT INTO transaction_categories(
+           id,user_id,name,category_type,parent_id,icon,color,is_system,is_archived,
+           created_at,updated_at,deleted_at,version
+         ) VALUES(?1,?2,?3,?4,NULL,?5,?6,0,0,?7,?7,NULL,1)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, category_type=excluded.category_type,
+           icon=excluded.icon, color=excluded.color, is_archived=0, deleted_at=NULL,
+           updated_at=excluded.updated_at, version=transaction_categories.version+1",
+        params![
+            id,
+            user_id,
+            name,
+            category_type,
+            optional_text(object, "icon"),
+            optional_text(object, "color"),
+            stamp,
+        ],
+    ).map(|_| ()).map_err(|error| error.to_string())
+}
+
+pub fn delete_category(connection: &Connection, id: &str) -> Result<(), String> {
+    connection.execute(
+        "UPDATE transaction_categories SET is_archived=1, updated_at=?1, version=version+1
+         WHERE id=?2 AND is_system=0",
+        params![now(), id],
+    ).map(|_| ()).map_err(|error| error.to_string())
 }
 
 fn existing_version(connection: &Connection, table: &str, id: &str) -> Result<i64, String> {

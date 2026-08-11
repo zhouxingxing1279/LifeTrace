@@ -55,7 +55,7 @@ function NavButton({ active, children, onClick, disabled = false }: { active: bo
         gap: 8,
         textAlign: "left",
         color: "inherit",
-        background: active ? "rgba(91,124,255,.12)" : "transparent",
+        background: active ? "var(--ui-primary-soft)" : "transparent",
         fontWeight: active ? 700 : 500,
         cursor: disabled ? "not-allowed" : "pointer",
         opacity: disabled ? .42 : 1,
@@ -84,12 +84,22 @@ export function MailSidebar({
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   return (
-    <aside style={{ width: "100%", minWidth: 0, display: "flex", flexDirection: "column", gap: 14, padding: "14px 10px", borderRight: "1px solid var(--line, rgba(128,128,128,.16))", background: "var(--panel, rgba(255,255,255,.45))" }}>
+    <aside style={{ width: "100%", minWidth: 0, minHeight: 0, overflow: "hidden", display: "flex", flexDirection: "column", gap: 14, padding: "14px 10px", borderRight: "1px solid var(--ui-border)", background: "var(--ui-bg-inset)" }}>
       <button type="button" className="hx-btn primary" onClick={onCompose} disabled={!accounts.length} style={{ width: "100%", minHeight: 38 }}>
         <Plus size={16} />写邮件
       </button>
 
-      <nav style={{ display: "grid", gap: 3 }}>
+      <nav
+        className="mail-sidebar-primary"
+        aria-label="邮件快捷入口"
+        style={{
+          display: "grid",
+          gap: 3,
+          flex: "0 0 auto",
+          minHeight: "auto",
+          overflow: "visible",
+        }}
+      >
         <NavButton active={sourceEquals(activeSource, { kind: "unified" })} onClick={() => onSelectSource({ kind: "unified" })}>
           <Inbox size={16} />统一收件箱
         </NavButton>
@@ -98,9 +108,9 @@ export function MailSidebar({
         </NavButton>
       </nav>
 
-      <div style={{ height: 1, background: "var(--line, rgba(128,128,128,.14))" }} />
+      <div style={{ height: 1, background: "var(--ui-border)" }} />
 
-      <div style={{ minHeight: 0, overflow: "auto" }}>
+      <div style={{ minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" }}>
         <div style={{ padding: "0 8px 7px", fontSize: 11.5, fontWeight: 700, opacity: .48, letterSpacing: ".08em" }}>邮箱账户</div>
         <div style={{ display: "grid", gap: 4 }}>
           {accounts.map((account) => {
@@ -108,7 +118,7 @@ export function MailSidebar({
             const folders = visibleFolders(foldersByAccount[account.id] || []);
             const accountSource: MailCollectionSource = { kind: "account", accountId: account.id };
             return (
-              <section key={account.id} style={{ borderRadius: 9, border: "1px solid var(--line, rgba(128,128,128,.1))", overflow: "hidden" }}>
+              <section key={account.id} style={{ borderRadius: 9, border: "1px solid var(--ui-border)", overflow: "hidden" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 4, padding: "5px 5px 3px 7px" }}>
                   <button
                     type="button"

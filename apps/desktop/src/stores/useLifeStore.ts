@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { dayKey, loadSQLiteState, mutateSQLite, now, uid } from "@/src/db/sqliteClient";
-import type { Activity, ActivityLog, DailyReview, FinanceAccount, Transaction, ViewId, WorkoutHistory } from "@/src/types";
+import type { Activity, ActivityLog, DailyReview, FinanceAccount, FinanceCategory, Transaction, ViewId, WorkoutHistory } from "@/src/types";
 
 interface LifeState {
   ready: boolean;
@@ -12,6 +12,7 @@ interface LifeState {
   activities: Activity[];
   logs: ActivityLog[];
   transactions: Transaction[];
+  categories: FinanceCategory[];
   reviews: DailyReview[];
   accounts: FinanceAccount[];
   workoutHistory: WorkoutHistory[];
@@ -31,6 +32,8 @@ interface LifeState {
   deleteWorkoutHistory: (id: string) => Promise<void>;
   updateTransaction: (id: string, data: Partial<Transaction>) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  saveCategory: (data: Pick<FinanceCategory, "name" | "type"> & Partial<FinanceCategory>) => Promise<void>;
+  archiveCategory: (id: string) => Promise<void>;
   startTimer: (activityId: string) => void;
   pauseTimer: () => void;
   finishTimer: () => Promise<void>;
@@ -45,6 +48,7 @@ export const useLifeStore = create<LifeState>((set, get) => ({
   activities: [],
   logs: [],
   transactions: [],
+  categories: [],
   reviews: [],
   accounts: [],
   workoutHistory: [],
@@ -58,8 +62,8 @@ export const useLifeStore = create<LifeState>((set, get) => ({
   }),
   initialize: async () => {
     try {
-      const { activities, logs, transactions, reviews, settings, accounts, workoutHistory } = await loadSQLiteState();
-      set({ activities: activities.filter((item) => !item.isArchived), logs, transactions, reviews, accounts: accounts.filter(item=>!item.isArchived), workoutHistory, ready: true, storageError: null, dark: settings.dark, timer: settings.timer, syncState: "synced" });
+      const { activities, logs, transactions, categories, reviews, settings, accounts, workoutHistory } = await loadSQLiteState();
+      set({ activities: activities.filter((item) => !item.isArchived), logs, transactions, categories: categories ?? [], reviews, accounts: accounts.filter(item=>!item.isArchived), workoutHistory, ready: true, storageError: null, dark: settings.dark, timer: settings.timer, syncState: "synced" });
     } catch (error) {
       set({ ready: true, storageError: error instanceof Error ? error.message : "无法连接 SQLite 数据库", syncState: "offline" });
     }
@@ -110,6 +114,31 @@ export const useLifeStore = create<LifeState>((set, get) => ({
   deleteWorkoutHistory: async (id) => { await mutateSQLite({operation:"delete",table:"workoutHistory",id}); set({workoutHistory:get().workoutHistory.filter(item=>item.id!==id)}); },
   updateTransaction: async (id,data) => { const old=get().transactions.find(item=>item.id===id); if(!old)return; const value={...old,...data,id,updatedAt:now()}; await mutateSQLite({operation:"put",table:"transactions",value}); set({transactions:get().transactions.map(item=>item.id===id?value:item)}); },
   deleteTransaction: async (id) => { await mutateSQLite({operation:"delete",table:"transactions",id}); set({transactions:get().transactions.filter(item=>item.id!==id)}); },
+  saveCategory: async (data) => {
+    const stamp = now();
+    const existing = data.id ? get().categories.find((item) => item.id === data.id) : undefined;
+    const category: FinanceCategory = {
+      id: existing?.id ?? uid(),
+      userId: "local-user",
+      name: data.name.trim(),
+      type: data.type,
+      parentId: data.parentId,
+      icon: data.icon,
+      color: data.color,
+      isSystem: existing?.isSystem ?? false,
+      isArchived: false,
+      createdAt: existing?.createdAt ?? stamp,
+      updatedAt: stamp,
+    };
+    await mutateSQLite({ operation: "put", table: "categories", value: category });
+    set({ categories: existing
+      ? get().categories.map((item) => item.id === category.id ? category : item)
+      : [...get().categories, category] });
+  },
+  archiveCategory: async (id) => {
+    await mutateSQLite({ operation: "delete", table: "categories", id });
+    set({ categories: get().categories.filter((item) => item.id !== id) });
+  },
   startTimer: (activityId) => {
     const current = get().timer;
     const timer = current?.activityId === activityId

@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
-import type { ReactNode } from "react";
+import { startTransition, useEffect, useState } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import {
-  ChevronsLeft,
   Menu,
   Search,
   Settings,
@@ -35,7 +34,17 @@ interface AppShellProps {
   pageActions?: ReactNode;
 }
 
-const SIDEBAR_STORAGE_KEY = "lifetrace:sidebar-collapsed";
+const SIDEBAR_WIDTH_STORAGE_KEY = "lifetrace:sidebar-width";
+const DEFAULT_SIDEBAR_WIDTH = 252;
+const MIN_SIDEBAR_WIDTH = 220;
+const MAX_SIDEBAR_WIDTH = 360;
+
+function storedSidebarWidth() {
+  const value = Number(window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY));
+  return Number.isFinite(value) && value > 0
+    ? Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, value))
+    : DEFAULT_SIDEBAR_WIDTH;
+}
 
 export default function AppShell({
   view,
@@ -49,9 +58,7 @@ export default function AppShell({
 }: AppShellProps) {
   const dark = useLifeStore((state) => state.dark);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(
-    () => window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "1",
-  );
+  const [sidebarWidth, setSidebarWidth] = useState(storedSidebarWidth);
   const [commandOpen, setCommandOpen] = useState(false);
 
   useEffect(() => {
@@ -79,39 +86,53 @@ export default function AppShell({
   }, []);
 
   const navigate = (next: string) => {
-    onNavigate(next);
     setMenuOpen(false);
+    startTransition(() => onNavigate(next));
   };
 
-  const toggleCollapsed = () => {
-    setCollapsed((current) => {
-      const next = !current;
-      window.localStorage.setItem(SIDEBAR_STORAGE_KEY, next ? "1" : "0");
+  const startSidebarResize = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = sidebarWidth;
+    let latestWidth = startWidth;
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    document.documentElement.classList.add("is-resizing-sidebar");
+
+    const move = (moveEvent: PointerEvent) => {
+      latestWidth = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, startWidth + moveEvent.clientX - startX));
+      setSidebarWidth(latestWidth);
+    };
+    const finish = () => {
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      document.documentElement.classList.remove("is-resizing-sidebar");
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(latestWidth)));
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish, { once: true });
+  };
+
+  const resizeSidebarBy = (delta: number) => {
+    setSidebarWidth((current) => {
+      const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, current + delta));
+      window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(next)));
       return next;
     });
   };
 
   return (
     <>
-      <main className="hx-shell">
-        <aside className={collapsed && !menuOpen ? "collapsed" : ""} aria-label="主导航">
+      <main className="hx-shell" style={{ "--ui-sidebar-width": `${sidebarWidth}px` } as CSSProperties}>
+        <aside aria-label="主导航">
           <div className="hx-brand">
             <span aria-hidden="true">LT</span>
             <div>
               <strong>LifeTrace</strong>
               <small>个人管理系统</small>
             </div>
-            <button
-              type="button"
-              className="hx-sidebar-collapse"
-              aria-label={collapsed ? "展开侧边栏" : "折叠侧边栏"}
-              onClick={toggleCollapsed}
-            >
-              <ChevronsLeft
-                aria-hidden="true"
-                style={collapsed ? { transform: "rotate(180deg)" } : undefined}
-              />
-            </button>
           </div>
           <nav>
             {navGroups.map((group) => (
@@ -124,7 +145,6 @@ export default function AppShell({
                     className={view === id ? "active" : ""}
                     aria-current={view === id ? "page" : undefined}
                     onClick={() => navigate(id)}
-                    title={collapsed ? label : undefined}
                   >
                     <span>
                       <Icon aria-hidden="true" />
@@ -141,7 +161,6 @@ export default function AppShell({
               className={view === "settings" ? "active" : ""}
               aria-current={view === "settings" ? "page" : undefined}
               onClick={() => navigate("settings")}
-              title={collapsed ? "设置" : undefined}
             >
               <span>
                 <Settings aria-hidden="true" />
@@ -149,6 +168,26 @@ export default function AppShell({
               </span>
             </button>
           </div>
+          <div
+            className="hx-sidebar-resizer"
+            role="separator"
+            aria-label="调整导航栏宽度"
+            aria-orientation="vertical"
+            aria-valuemin={MIN_SIDEBAR_WIDTH}
+            aria-valuemax={MAX_SIDEBAR_WIDTH}
+            aria-valuenow={Math.round(sidebarWidth)}
+            tabIndex={0}
+            title="拖动调整导航栏宽度；双击恢复默认"
+            onPointerDown={startSidebarResize}
+            onDoubleClick={() => {
+              setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+              window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(DEFAULT_SIDEBAR_WIDTH));
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowLeft") resizeSidebarBy(-10);
+              if (event.key === "ArrowRight") resizeSidebarBy(10);
+            }}
+          />
         </aside>
 
         {menuOpen ? (

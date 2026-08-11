@@ -1,5 +1,6 @@
 use std::collections::BTreeSet;
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chrono::{Duration, Utc};
 use sqlx::{PgPool, Postgres, Transaction};
 use thiserror::Error;
@@ -344,13 +345,14 @@ impl MailService {
     ) -> Result<(), MailServiceError> {
         for name in folders {
             let role = folder_role(name);
-            let sync_enabled = !matches!(role, "trash" | "spam" | "drafts");
             sqlx::query(
                 r#"
                 INSERT INTO mail_folders (id,user_id,account_id,remote_name,normalized_role,sync_enabled)
                 VALUES ($1,$2,$3,$4,$5,$6)
                 ON CONFLICT (account_id,remote_name)
-                DO UPDATE SET normalized_role=EXCLUDED.normalized_role,updated_at=now()
+                DO UPDATE SET normalized_role=EXCLUDED.normalized_role,
+                              sync_enabled=TRUE,
+                              updated_at=now()
                 "#,
             )
             .bind(Uuid::new_v4())
@@ -358,7 +360,7 @@ impl MailService {
             .bind(account_id)
             .bind(name)
             .bind(role)
-            .bind(sync_enabled)
+            .bind(true)
             .execute(&self.pool)
             .await?;
         }
@@ -371,7 +373,7 @@ impl MailService {
         account_id: Uuid,
     ) -> Result<Vec<MailFolder>, MailServiceError> {
         self.require_database()?;
-        sqlx::query_as::<_, MailFolder>(
+        let mut folders = sqlx::query_as::<_, MailFolder>(
             r#"
             SELECT id,account_id,remote_name,normalized_role,uidvalidity,uidnext,last_seen_uid,last_sync_at,sync_enabled
             FROM mail_folders WHERE user_id=$1 AND account_id=$2 ORDER BY remote_name
@@ -381,7 +383,12 @@ impl MailService {
         .bind(account_id)
         .fetch_all(&self.pool)
         .await
-        .map_err(Into::into)
+        .map_err(MailServiceError::from)?;
+        for folder in &mut folders {
+            folder.normalized_role = folder_role(&folder.remote_name).to_owned();
+            folder.remote_name = decode_imap_mailbox_name(&folder.remote_name);
+        }
+        Ok(folders)
     }
 
     pub async fn sync_account(
@@ -1045,7 +1052,56 @@ async fn refresh_thread_pool(pool: &PgPool, thread_id: Uuid) -> Result<(), MailS
     Ok(())
 }
 
+/// Decode the modified UTF-7 representation used for non-ASCII IMAP mailbox names.
+/// Malformed segments are preserved so provider-specific names remain usable.
+fn decode_imap_mailbox_name(value: &str) -> String {
+    let bytes = value.as_bytes();
+    let mut result = String::with_capacity(value.len());
+    let mut cursor = 0;
+
+    while cursor < bytes.len() {
+        let Some(relative_start) = bytes[cursor..].iter().position(|byte| *byte == b'&') else {
+            result.push_str(&value[cursor..]);
+            break;
+        };
+        let start = cursor + relative_start;
+        result.push_str(&value[cursor..start]);
+        let Some(relative_end) = bytes[start + 1..].iter().position(|byte| *byte == b'-') else {
+            result.push_str(&value[start..]);
+            break;
+        };
+        let end = start + 1 + relative_end;
+        if end == start + 1 {
+            result.push('&');
+            cursor = end + 1;
+            continue;
+        }
+
+        let encoded = value[start + 1..end].replace(',', "/");
+        let padded = format!("{encoded}{}", "=".repeat((4 - encoded.len() % 4) % 4));
+        let decoded = STANDARD.decode(padded).ok().and_then(|raw| {
+            if raw.len() % 2 != 0 {
+                return None;
+            }
+            let units = raw
+                .chunks_exact(2)
+                .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
+                .collect::<Vec<_>>();
+            String::from_utf16(&units).ok()
+        });
+        match decoded {
+            Some(decoded) => result.push_str(&decoded),
+            None => result.push_str(&value[start..=end]),
+        }
+        cursor = end + 1;
+    }
+
+    result
+}
+
 fn folder_role(value: &str) -> &'static str {
+    let decoded = decode_imap_mailbox_name(value);
+    let value = decoded.as_str();
     let normalized = value.to_ascii_lowercase();
     if normalized == "inbox" || value.contains("收件") {
         "inbox"
@@ -1084,6 +1140,25 @@ mod tests {
         assert_eq!(folder_role("已发送"), "sent");
         assert_eq!(folder_role("垃圾邮件"), "spam");
         assert_eq!(folder_role("Archive"), "archive");
+    }
+
+    #[test]
+    fn decodes_modified_utf7_mailbox_names() {
+        assert_eq!(
+            decode_imap_mailbox_name("&XfJT0ZAB-"),
+            "\u{5df2}\u{53d1}\u{9001}"
+        );
+        assert_eq!(
+            decode_imap_mailbox_name("&XfJSIJZk-"),
+            "\u{5df2}\u{5220}\u{9664}"
+        );
+        assert_eq!(
+            decode_imap_mailbox_name("Projects &- Notes"),
+            "Projects & Notes"
+        );
+        assert_eq!(decode_imap_mailbox_name("INBOX"), "INBOX");
+        assert_eq!(decode_imap_mailbox_name("broken &name"), "broken &name");
+        assert_eq!(folder_role("&XfJT0ZAB-"), "sent");
     }
 
     #[test]

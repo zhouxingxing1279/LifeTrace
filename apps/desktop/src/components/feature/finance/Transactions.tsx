@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Copy, NotebookPen, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, NotebookPen, Pencil, Plus, Tags, Trash2 } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import type { Transaction } from "@/src/types";
 import ContextMenu from "@/src/ui/menu/ContextMenu";
@@ -9,6 +9,8 @@ import { confirmAction } from "@/src/ui/feedback/confirm";
 import { notify } from "@/src/ui/feedback/toastBus";
 import { transactionAmountText } from "@/src/utils/format";
 import { Button, SearchInput, Select } from "@/src/components/ui";
+import { categoryNames } from "@/src/utils/financeCategories";
+import CategoryManagerDialog from "./CategoryManagerDialog";
 
 export default function Transactions({
   edit,
@@ -17,14 +19,17 @@ export default function Transactions({
   edit: (value?: Transaction) => void;
   note: (value: Transaction) => void;
 }) {
-  const { transactions, deleteTransaction } = useLifeStore();
+  const { transactions, categories, deleteTransaction } = useLifeStore();
   const [search, setSearch] = useState("");
   const [direction, setDirection] = useState<"all" | Transaction["type"]>("all");
+  const [category, setCategory] = useState("all");
+  const [categoryManagerOpen, setCategoryManagerOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const rows = transactions
     .filter(
       (item) =>
         (direction === "all" || item.type === direction) &&
+        (category === "all" || item.category === category) &&
         `${item.counterparty ?? ""}${item.category}${item.note ?? ""}`
           .toLowerCase()
           .includes(search.toLowerCase()),
@@ -37,6 +42,12 @@ export default function Transactions({
     () => rows.find((item) => item.id === selectedId) ?? rows[0] ?? null,
     [rows, selectedId],
   );
+  const filterCategories = Array.from(new Set([
+    ...transactions.map((item) => item.category),
+    ...(direction === "all"
+      ? [...categoryNames(categories, "expense"), ...categoryNames(categories, "income")]
+      : categoryNames(categories, direction)),
+  ])).filter(Boolean).sort((left, right) => left.localeCompare(right, "zh-CN"));
 
   const actionsFor = (item: Transaction): AppAction<Transaction>[] => [
     {
@@ -106,7 +117,16 @@ export default function Transactions({
           <option value="income">收入</option>
           <option value="transfer">转账</option>
         </Select>
+        <Select
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+          aria-label="按分类筛选"
+        >
+          <option value="all">全部分类</option>
+          {filterCategories.map((name) => <option key={name} value={name}>{name}</option>)}
+        </Select>
         <span className="hx-toolbar-summary">{rows.length} 笔</span>
+        <Button variant="secondary" icon={<Tags aria-hidden="true" />} onClick={() => setCategoryManagerOpen(true)}>分类管理</Button>
         <Button
           variant="primary"
           icon={<Plus aria-hidden="true" />}
@@ -221,6 +241,7 @@ export default function Transactions({
           )}
         </aside>
       </div>
+      {categoryManagerOpen ? <CategoryManagerDialog onClose={() => setCategoryManagerOpen(false)} /> : null}
     </div>
   );
 }

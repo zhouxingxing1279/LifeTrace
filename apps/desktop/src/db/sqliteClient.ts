@@ -1,10 +1,11 @@
-import type { Activity, ActivityLog, DailyReview, FinanceAccount, Transaction, WorkoutHistory } from "@/src/types";
+import type { Activity, ActivityLog, DailyReview, FinanceAccount, FinanceCategory, Transaction, WorkoutHistory } from "@/src/types";
 import { createId } from "@/src/utils/id";
 
 export interface LifeData {
   activities: Activity[];
   logs: ActivityLog[];
   transactions: Transaction[];
+  categories?: FinanceCategory[];
   reviews: DailyReview[];
   settings: LifeSettings;
   accounts: FinanceAccount[];
@@ -19,9 +20,9 @@ export interface LifeSettings {
 }
 
 export type SQLiteMutation =
-  | { operation: "put"; table: "activities" | "logs" | "transactions" | "reviews" | "settings" | "accounts" | "workoutHistory"; value: Activity | ActivityLog | Transaction | DailyReview | LifeSettings | FinanceAccount | WorkoutHistory }
+  | { operation: "put"; table: "activities" | "logs" | "transactions" | "reviews" | "settings" | "accounts" | "categories" | "workoutHistory"; value: Activity | ActivityLog | Transaction | DailyReview | LifeSettings | FinanceAccount | FinanceCategory | WorkoutHistory }
   | { operation: "patch"; table: "activities" | "accounts"; id: string; patch: Record<string, unknown> }
-  | { operation: "delete"; table: "transactions" | "accounts" | "workoutHistory"; id: string }
+  | { operation: "delete"; table: "transactions" | "accounts" | "categories" | "workoutHistory"; id: string }
   | { operation: "restore"; data: Omit<LifeData, "settings"> };
 
 const request = async <T>(input: RequestInfo, init?: RequestInit): Promise<T> => {

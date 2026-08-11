@@ -1,18 +1,18 @@
 import type { CSSProperties } from "react";
 
 export const panelStyle: CSSProperties = {
-  border: "1px solid var(--line, rgba(128,128,128,.18))",
+  border: "1px solid var(--ui-border)",
   borderRadius: 12,
-  background: "var(--panel, rgba(255,255,255,.72))",
+  background: "var(--ui-bg-surface)",
   overflow: "hidden",
 };
 
 export const inputStyle: CSSProperties = {
   width: "100%",
   minHeight: 38,
-  border: "1px solid var(--line, rgba(128,128,128,.25))",
+  border: "1px solid var(--ui-border)",
   borderRadius: 9,
-  background: "var(--surface, transparent)",
+  background: "var(--ui-bg-inset)",
   color: "inherit",
   padding: "8px 10px",
   font: "inherit",
@@ -25,9 +25,9 @@ export const actionButton: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   gap: 6,
-  border: "1px solid var(--line, rgba(128,128,128,.22))",
+  border: "1px solid var(--ui-border)",
   borderRadius: 9,
-  background: "transparent",
+  background: "var(--ui-bg-surface)",
   color: "inherit",
   padding: "6px 10px",
   cursor: "pointer",

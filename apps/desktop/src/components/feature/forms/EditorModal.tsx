@@ -11,6 +11,7 @@ import PersistProjectDialog from "@/src/components/persist-project/PersistProjec
 import { getAccountBalanceSnapshot } from "@/src/utils/finance";
 import { dateTimeLocal, money } from "@/src/utils/format";
 import { notify } from "@/src/ui/feedback/toastBus";
+import { categoryNames } from "@/src/utils/financeCategories";
 
 export type EditorModalState =
   | null
@@ -257,7 +258,7 @@ function TransactionForm({
   value?: Transaction;
   close: () => void;
 }) {
-  const { accounts, addTransaction, updateTransaction } = useLifeStore();
+  const { accounts, categories, addTransaction, updateTransaction } = useLifeStore();
   const [type, setType] = useState<Transaction["type"]>(value?.type ?? "expense");
   const [amount, setAmount] = useState(value?.amount ?? 0);
   const [category, setCategory] = useState(value?.category ?? "餐饮");
@@ -274,6 +275,7 @@ function TransactionForm({
   const [occurredAt, setOccurredAt] = useState(dateTimeLocal(value?.occurredAt));
   const account = accounts.find((i) => i.id === accountId);
   const toAccount = accounts.find((i) => i.id === toAccountId);
+  const availableCategories = categoryNames(categories, type, category);
 
   return (
     <ModalFrame title={value ? "编辑账单" : "手动记账"} close={close}>
@@ -306,9 +308,11 @@ function TransactionForm({
             流水类型
             <select
               value={type}
-              onChange={(event) =>
-                setType(event.target.value as Transaction["type"])
-              }
+              onChange={(event) => {
+                const next = event.target.value as Transaction["type"];
+                setType(next);
+                setCategory(categoryNames(categories, next)[0] ?? "未分类");
+              }}
             >
               <option value="expense">支出</option>
               <option value="income">收入</option>
@@ -362,11 +366,13 @@ function TransactionForm({
           <div>
             <label>
               分类
-              <input
+              <select
                 required
                 value={category}
                 onChange={(event) => setCategory(event.target.value)}
-              />
+              >
+                {availableCategories.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
             </label>
             <label>
               账户

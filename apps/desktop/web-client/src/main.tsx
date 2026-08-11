@@ -19,6 +19,7 @@ import "../../app/record-workspace.css";
 import "./styles.css";
 import "./cloud-pages.css";
 import "./browser.css";
+import "../../app/apple-polish.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();

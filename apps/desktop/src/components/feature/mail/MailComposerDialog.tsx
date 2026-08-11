@@ -79,11 +79,11 @@ export function MailComposerDialog({ accounts, initialAccountId, replyMessage, o
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, zIndex: 70, background: "rgba(0,0,0,.42)", display: "grid", placeItems: "center", padding: 24 }}
+      style={{ position: "fixed", inset: 0, zIndex: 70, background: "var(--apple-scrim, rgba(0,0,0,.48))", display: "grid", placeItems: "center", padding: 24 }}
       onMouseDown={(event) => event.target === event.currentTarget && !sending && onClose()}
     >
       <section
-        style={{ ...panelStyle, width: "min(820px, 95vw)", maxHeight: "90vh", overflow: "auto", padding: 22, background: "var(--background, #fff)", boxShadow: "0 24px 70px rgba(0,0,0,.28)" }}
+        style={{ ...panelStyle, width: "min(820px, 95vw)", height: "min(820px, calc(100dvh - 48px))", maxHeight: "calc(100dvh - 48px)", display: "flex", flexDirection: "column", padding: 22, background: "var(--ui-bg-surface)", color: "var(--ui-foreground)", boxShadow: "0 24px 70px rgba(0,0,0,.32)" }}
         role="dialog"
         aria-modal="true"
         aria-label={replyMessage ? "回复邮件" : "写邮件"}
@@ -98,7 +98,7 @@ export function MailComposerDialog({ accounts, initialAccountId, replyMessage, o
           <button type="button" style={actionButton} disabled={sending} onClick={onClose}><X size={16} />关闭</button>
         </header>
 
-        <div style={{ display: "grid", gap: 11 }}>
+        <div style={{ display: "grid", gap: 11, minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", paddingRight: 6, scrollbarGutter: "stable" }}>
           <label>发件邮箱
             <select
               style={{ ...inputStyle, marginTop: 6 }}
@@ -124,7 +124,7 @@ export function MailComposerDialog({ accounts, initialAccountId, replyMessage, o
           <label>正文<textarea autoFocus={Boolean(replyMessage)} style={{ ...inputStyle, marginTop: 6, minHeight: 300, resize: "vertical", lineHeight: 1.6 }} value={body} onChange={(event) => setBody(event.target.value)} placeholder="输入邮件正文…" /></label>
         </div>
 
-        <footer style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 18 }}>
+        <footer style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 18, flex: "0 0 auto" }}>
           <span style={{ fontSize: 12.5, opacity: .55 }}>当前发送接口暂不支持添加新附件。</span>
           <div style={{ display: "flex", gap: 10 }}>
             <button type="button" style={actionButton} disabled={sending} onClick={onClose}>取消</button>

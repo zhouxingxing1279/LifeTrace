@@ -97,9 +97,10 @@ export default function MailActionCenter() {
       setMessages([]);
       return;
     }
+    const delay = search.trim() ? 180 : 0;
     const timer = window.setTimeout(() => {
       void loadMessages(activeSource, search).catch((error) => toast(errorMessage(error), "error"));
-    }, 220);
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [accounts.length, activeSource, search, loadMessages]);
 
@@ -180,14 +181,14 @@ export default function MailActionCenter() {
 
   return (
     <div
+      className="mail-action-center"
       style={{
         display: "grid",
         gridTemplateColumns: "244px minmax(0, 1fr)",
-        minHeight: "calc(100vh - 118px)",
-        border: "1px solid var(--line, rgba(128,128,128,.16))",
-        borderRadius: 13,
+        minHeight: 0,
+        height: "100%",
         overflow: "hidden",
-        background: "var(--background, transparent)",
+        background: "transparent",
       }}
     >
       <MailSidebar
@@ -200,7 +201,15 @@ export default function MailActionCenter() {
         onDisconnect={(account) => void disconnect(account)}
       />
 
-      <main style={{ minWidth: 0, padding: 18, overflow: "auto" }}>
+      <main style={{
+        minWidth: 0,
+        minHeight: 0,
+        padding: 18,
+        overflowX: "hidden",
+        overflowY: screen.kind === "detail" ? "auto" : "hidden",
+        overscrollBehavior: "contain",
+        scrollbarGutter: screen.kind === "detail" ? "stable" : "auto",
+      }}>
         {loading ? <div style={{ minHeight: 360, display: "grid", placeItems: "center" }}><span style={{ display: "inline-flex", alignItems: "center", gap: 9 }}><LoaderCircle size={18} />正在加载邮件…</span></div> : accounts.length === 0 ? (
           <section style={{ ...panelStyle, minHeight: 360, display: "grid", placeItems: "center", textAlign: "center", padding: 40 }}>
             <div><Inbox size={34} style={{ opacity: .42 }} /><h2>连接第一个邮箱</h2><p style={{ opacity: .62 }}>连接后会进入统一收件箱，并同步最近 30 天邮件。</p><button type="button" className="hx-btn primary" onClick={() => setAccountDialog(true)}>添加邮箱</button></div>
@@ -216,7 +225,7 @@ export default function MailActionCenter() {
             onArchived={archiveMessage}
           />
         ) : (
-          <div style={{ display: "grid", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: 14, height: "100%", minHeight: 0 }}>
             <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
               <div style={{ minWidth: 0 }}>
                 {activeContext.senderKey ? <button type="button" style={{ ...actionButton, marginBottom: 10 }} onClick={() => setScreen({ kind: "list", context: { source: activeSource } })}><ArrowLeft size={15} />返回 {sourceTitle(activeSource, accounts)}</button> : null}
@@ -230,8 +239,16 @@ export default function MailActionCenter() {
               <button type="button" style={actionButton} disabled={syncing} onClick={() => void sync()}><RefreshCw size={15} />{syncing ? "同步中…" : sourceAccountId(activeSource) ? "同步邮箱" : "同步全部"}</button>
             </header>
 
-            <section style={{ ...panelStyle }}>
-              <div style={{ padding: 11, display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--line, rgba(128,128,128,.14))" }}>
+            <section style={{
+              minHeight: 0,
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              borderTop: "1px solid var(--ui-border)",
+              borderBottom: "1px solid var(--ui-border)",
+              background: "transparent",
+            }}>
+              <div style={{ padding: 11, display: "flex", gap: 10, alignItems: "center", borderBottom: "1px solid var(--ui-border)", flex: "0 0 auto" }}>
                 <div style={{ position: "relative", flex: 1 }}>
                   <Search size={15} style={{ position: "absolute", left: 10, top: 12, opacity: .45 }} />
                   <input aria-label="搜索邮件" style={{ ...inputStyle, paddingLeft: 31 }} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索发件人、主题或摘要" />
@@ -240,15 +257,17 @@ export default function MailActionCenter() {
                 {listLoading ? <span style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 11.5, opacity: .55 }}><LoaderCircle size={13} />加载中</span> : null}
               </div>
 
-              <MailMessageList
-                messages={messages}
-                source={activeSource}
-                senderKey={activeContext.senderKey}
-                accounts={accounts}
-                loading={listLoading}
-                onOpenMessage={openMessage}
-                onOpenSender={openSender}
-              />
+              <div style={{ minHeight: 0, overflowY: "auto", overscrollBehavior: "contain", scrollbarGutter: "stable" }}>
+                <MailMessageList
+                  messages={messages}
+                  source={activeSource}
+                  senderKey={activeContext.senderKey}
+                  accounts={accounts}
+                  loading={listLoading}
+                  onOpenMessage={openMessage}
+                  onOpenSender={openSender}
+                />
+              </div>
             </section>
           </div>
         )}
