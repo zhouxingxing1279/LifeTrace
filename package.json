@@ -20,6 +20,7 @@
     "ui:dev": "npm --prefix apps/desktop run ui:dev",
     "ui:build": "npm --prefix apps/desktop run ui:build",
     "ui:preview": "npm --prefix apps/desktop run ui:preview",
+    "cloudflare-build": "npm --prefix apps/desktop run ui:build",
     "lint": "npm --prefix apps/desktop run lint",
     "test": "npm run test:desktop",
     "test:desktop": "npm --prefix apps/desktop run test",
