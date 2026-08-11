@@ -32,22 +32,28 @@ import "@/app/execution.css";
 import "@/app/execution-calendar.css";
 import "@/app/analytics.css";
 import "@/app/record-workspace.css";
+import "./uiPreviewFrame.css";
 
 const uiPreview = import.meta.env.VITE_UI_PREVIEW === "1";
-
-if (uiPreview) {
-  installUiPreviewMocks();
-} else {
-  installDesktopContextMenuPolicy();
-}
-
-installGlobalFetchInstrumentation();
-installGlobalErrorHandlers();
+const uiPreviewFrame = new URLSearchParams(window.location.search).get("__appFrame") === "1";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
 
-installAppPreferences();
+function renderUiPreviewHost() {
+  document.documentElement.dataset.uiPreviewHost = "true";
+
+  const appUrl = new URL(window.location.href);
+  appUrl.searchParams.set("__appFrame", "1");
+
+  const frame = document.createElement("iframe");
+  frame.className = "lt-ui-preview-window";
+  frame.title = "LifeTrace Windows App UI Preview — 1460 × 850";
+  frame.src = appUrl.toString();
+  frame.setAttribute("aria-label", "LifeTrace Windows App UI Preview");
+
+  root.replaceChildren(frame);
+}
 
 async function start() {
   if (uiPreview) {
@@ -98,4 +104,17 @@ async function start() {
   }
 }
 
-void start();
+if (uiPreview && !uiPreviewFrame) {
+  renderUiPreviewHost();
+} else {
+  if (uiPreview) {
+    installUiPreviewMocks();
+  } else {
+    installDesktopContextMenuPolicy();
+  }
+
+  installGlobalFetchInstrumentation();
+  installGlobalErrorHandlers();
+  installAppPreferences();
+  void start();
+}
