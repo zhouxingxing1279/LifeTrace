@@ -1,0 +1,226 @@
+/*
+ * LifeTrace module workspace layout overrides
+ * ---------------------------------------------------------------
+ * The main shell styles its primary sidebar with `.hx-shell nav`.
+ * Execution and analytics also use semantic <nav> elements, so those
+ * sidebar selectors can leak into nested module navigation and turn
+ * horizontal tabs into a second vertical sidebar. Keep the permanent
+ * left navigation limited to the app shell and make module navigation
+ * compact, horizontal and workspace-first.
+ */
+
+/* Execution center ------------------------------------------------------ */
+.hx-shell .lt-exec-root {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+}
+
+.hx-shell .lt-exec-head {
+  min-height: 48px;
+  padding-bottom: var(--ui-space-2);
+}
+
+.hx-shell .lt-exec-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.hx-shell .lt-exec-tabs > div {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  min-width: max-content;
+}
+
+.hx-shell .lt-exec-tabs button {
+  display: inline-flex;
+  width: auto;
+  min-width: auto;
+  min-height: 32px;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 11px;
+  border: 1px solid transparent;
+  border-radius: var(--ui-radius-sm);
+  background: transparent;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-caption);
+  font-weight: var(--ui-font-weight-medium);
+  white-space: nowrap;
+}
+
+.hx-shell .lt-exec-tabs button:hover {
+  background: var(--ui-bg-hover);
+  color: var(--ui-foreground);
+}
+
+.hx-shell .lt-exec-tabs button.active {
+  border-color: color-mix(in srgb, var(--ui-primary) 18%, transparent);
+  background: var(--ui-primary-soft);
+  color: var(--ui-primary);
+  font-weight: var(--ui-font-weight-semibold);
+}
+
+.hx-shell .lt-exec-tabs button > span,
+.hx-shell .lt-exec-tabs button > svg {
+  display: inline-flex;
+}
+
+.hx-shell .lt-exec-tabs svg {
+  width: 15px;
+  height: 15px;
+  color: currentColor;
+}
+
+.hx-shell .lt-exec-summary,
+.hx-shell .lt-exec-workspace,
+.hx-shell .lt-exec-due {
+  width: 100%;
+}
+
+/* Analytics ------------------------------------------------------------- */
+.hx-shell .analytics-page {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 var(--ui-space-6);
+  gap: var(--ui-space-3);
+}
+
+.hx-shell .analytics-header {
+  padding: 0 0 var(--ui-space-2);
+  gap: var(--ui-space-4);
+}
+
+.hx-shell .analytics-controls {
+  gap: var(--ui-space-2);
+  padding: var(--ui-space-3);
+  border-radius: var(--ui-radius-md);
+}
+
+.hx-shell .analytics-controls label {
+  min-width: 140px;
+}
+
+.hx-shell .analytics-tabs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 2px;
+  min-height: 44px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.hx-shell .analytics-tabs button {
+  display: inline-flex;
+  width: auto;
+  min-width: auto;
+  min-height: 40px;
+  justify-content: center;
+  gap: var(--ui-space-2);
+  padding: 0 var(--ui-space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ui-muted);
+  font-weight: var(--ui-font-weight-medium);
+  white-space: nowrap;
+}
+
+.hx-shell .analytics-tabs button:hover {
+  background: var(--ui-bg-hover);
+  color: var(--ui-foreground);
+}
+
+.hx-shell .analytics-tabs button.active {
+  border-bottom-color: var(--ui-primary);
+  background: transparent;
+  color: var(--ui-primary);
+}
+
+.hx-shell .analytics-tabs svg {
+  width: 16px;
+  height: 16px;
+  color: currentColor;
+}
+
+.hx-shell .analytics-panel {
+  width: 100%;
+  min-height: 0;
+  padding: var(--ui-space-4);
+  border-radius: var(--ui-radius-lg);
+}
+
+.hx-shell .analytics-metrics-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.hx-shell .analytics-insights {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ui-space-3);
+}
+
+/* Mail ------------------------------------------------------------------ */
+.hx-main[data-view="mail"] > div {
+  align-content: start !important;
+  min-height: 0 !important;
+  padding: var(--ui-space-3) var(--ui-space-5) var(--ui-space-6);
+}
+
+.hx-main[data-view="mail"] > div > header:first-child {
+  min-height: 46px;
+  padding: 0 0 var(--ui-space-2);
+  border-bottom: 1px solid var(--ui-border);
+}
+
+.hx-main[data-view="mail"] > div > header:first-child > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ui-space-3);
+}
+
+.hx-main[data-view="mail"] > div > header:first-child h1 {
+  font-size: var(--ui-font-card-title) !important;
+  font-weight: var(--ui-font-weight-semibold);
+}
+
+.hx-main[data-view="mail"] > div > header:first-child p {
+  margin: 0 !important;
+  color: var(--ui-muted);
+  font-size: var(--ui-font-caption);
+}
+
+@media (max-width: 1100px) {
+  .hx-shell .analytics-insights {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .hx-shell .lt-exec-tabs,
+  .hx-shell .analytics-tabs {
+    overflow-x: auto;
+  }
+
+  .hx-shell .analytics-page {
+    padding-inline: 0;
+  }
+
+  .hx-main[data-view="mail"] > div {
+    padding-inline: var(--ui-space-3);
+  }
+}
