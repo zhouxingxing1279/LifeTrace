@@ -8,6 +8,7 @@ import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientO
 import { installDesktopContextMenuPolicy } from "@/src/services/contextMenuPolicy";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
+import { installUiPreviewMailMocks } from "./uiPreviewMailMocks";
 import { installUiPreviewMocks } from "./uiPreviewMocks";
 import { installVaultBridge } from "./vaultBridge";
 import { fitWindowToWorkArea } from "./windowFit";
@@ -109,6 +110,7 @@ if (uiPreview && !uiPreviewFrame) {
 } else {
   if (uiPreview) {
     installUiPreviewMocks();
+    installUiPreviewMailMocks();
   } else {
     installDesktopContextMenuPolicy();
   }
