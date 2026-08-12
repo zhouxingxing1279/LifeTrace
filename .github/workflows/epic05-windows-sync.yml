@@ -10,33 +10,35 @@ on:
       - ".github/workflows/epic05-windows-sync.yml"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  format:
+  diagnose-rustfmt:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Checkout PR head
-        run: |
-          git fetch origin "$GITHUB_HEAD_REF"
-          git checkout -B "$GITHUB_HEAD_REF" FETCH_HEAD
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
           components: rustfmt
-      - name: Apply exact EPIC-05 formatters
+      - name: Capture rustfmt diff
+        shell: bash
         run: |
-          cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml
-          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
-      - name: Persist Rust formatting
-        run: |
-          if ! git diff --quiet HEAD -- ':(glob)**/*.rs'; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -- ':(glob)**/*.rs'
-            git commit -m "style: satisfy EPIC-05 rustfmt"
-            git push origin "HEAD:$GITHUB_HEAD_REF"
+          set +e
+          {
+            cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml -- --check
+            a=$?
+            cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+            b=$?
+            exit $(( a || b ))
+          } 2>&1 | tee rustfmt.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          text = Path('rustfmt.log').read_text(errors='replace')[-20000:]
+          text = text.replace('%','%25').replace('\r','%0D').replace('\n','%0A')
+          print(f'::error title=EPIC-05 rustfmt diff::{text}')
+          PY
+            exit "$status"
           fi
