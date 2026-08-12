@@ -53,7 +53,20 @@ jobs:
       - name: Format validation workspace
         run: cargo fmt --manifest-path services/cloud/Cargo.toml
       - name: Contract tests
-        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+        shell: bash
+        run: |
+          set +e
+          cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml 2>&1 | tee contract-tests.log
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          from pathlib import Path
+          text = Path("contract-tests.log").read_text(errors="replace")[-12000:]
+          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+          print(f"::error title=Contract test failure::{text}")
+          PY
+            exit "$status"
+          fi
       - name: Cloud tests
         run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
       - name: Clippy production targets
