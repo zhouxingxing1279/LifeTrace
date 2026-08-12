@@ -59,14 +59,24 @@ jobs:
             crates/lifetrace-contracts
       - name: Format validation workspace
         run: cargo fmt --manifest-path services/cloud/Cargo.toml
-      - name: Persist rustfmt on finance feature branch
+      - name: Restore unrelated cloud test formatting
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/beecount-domain-model'
+        run: |
+          git fetch origin main
+          git checkout origin/main -- \
+            services/cloud/tests/auth_postgres.rs \
+            services/cloud/tests/cors.rs \
+            services/cloud/tests/security_privacy.rs \
+            services/cloud/tests/web_management_postgres.rs \
+            services/cloud/tests/web_sync_postgres.rs
+      - name: Persist scoped rustfmt on finance feature branch
         if: github.event_name == 'pull_request' && github.head_ref == 'feature/beecount-domain-model'
         run: |
           if ! git diff --quiet -- ':(glob)**/*.rs'; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -- ':(glob)**/*.rs'
-            git commit -m "style: apply rustfmt"
+            git commit -m "style: limit rustfmt to finance contracts"
             git push origin "HEAD:$GITHUB_HEAD_REF"
           fi
       - name: Contract tests
