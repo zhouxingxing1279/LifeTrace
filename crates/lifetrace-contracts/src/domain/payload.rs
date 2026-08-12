@@ -1,8 +1,8 @@
 //! Typed domain payload dispatch.
 //!
-//! Change payloads travel as opaque JSON on the wire; `EntityPayload` is a
-//! Rust-side convenience for validation, adapters and the reference
-//! implementation. It is dispatched through the entity registry.
+//! Change payloads travel as opaque JSON on the wire; `EntityPayload` provides
+//! strict validation for typed LifeTrace domains before the generic sync store
+//! accepts them.
 
 use crate::domain::english::*;
 use crate::domain::files::FileMetadata;
@@ -18,19 +18,20 @@ use crate::ids::EntityId;
 use crate::json_value::JsonValue;
 use crate::registry::EntityType;
 
-/// All supported domain payloads, keyed by registered entity type.
-///
-/// This is a stable Rust-side protocol dispatch API. Boxing selected variants
-/// would impose a source-breaking constructor change across every adapter for
-/// no wire-format benefit, so its deliberately heterogeneous size is accepted.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq)]
 pub enum EntityPayload {
     User(User),
     Device(Device),
+    FinanceLedger(FinanceLedger),
     FinanceAccount(FinanceAccount),
     TransactionCategory(TransactionCategory),
     Transaction(Transaction),
+    RecurringTransaction(RecurringTransaction),
+    FinanceTag(FinanceTag),
+    FinanceTransactionTag(FinanceTransactionTag),
+    FinanceBudget(FinanceBudget),
+    TransactionAttachment(TransactionAttachment),
     TransactionEvidence(TransactionEvidence),
     Activity(Activity),
     ActivityLog(ActivityLog),
@@ -64,14 +65,19 @@ pub enum EntityPayload {
 }
 
 impl EntityPayload {
-    /// The registered entity type of this payload.
     pub fn entity_type(&self) -> EntityType {
         EntityType::new(match self {
             EntityPayload::User(_) => EntityType::IDENTITY_USER,
             EntityPayload::Device(_) => EntityType::IDENTITY_DEVICE,
+            EntityPayload::FinanceLedger(_) => EntityType::FINANCE_LEDGER,
             EntityPayload::FinanceAccount(_) => EntityType::FINANCE_ACCOUNT,
             EntityPayload::TransactionCategory(_) => EntityType::FINANCE_CATEGORY,
             EntityPayload::Transaction(_) => EntityType::FINANCE_TRANSACTION,
+            EntityPayload::RecurringTransaction(_) => EntityType::FINANCE_RECURRING_TRANSACTION,
+            EntityPayload::FinanceTag(_) => EntityType::FINANCE_TAG,
+            EntityPayload::FinanceTransactionTag(_) => EntityType::FINANCE_TRANSACTION_TAG,
+            EntityPayload::FinanceBudget(_) => EntityType::FINANCE_BUDGET,
+            EntityPayload::TransactionAttachment(_) => EntityType::FINANCE_TRANSACTION_ATTACHMENT,
             EntityPayload::TransactionEvidence(_) => EntityType::FINANCE_TRANSACTION_EVIDENCE,
             EntityPayload::Activity(_) => EntityType::HABIT_ACTIVITY,
             EntityPayload::ActivityLog(_) => EntityType::HABIT_LOG,
@@ -101,14 +107,19 @@ impl EntityPayload {
         })
     }
 
-    /// The entity id embedded in the payload meta.
     pub fn entity_id(&self) -> &EntityId {
         match self {
             EntityPayload::User(value) => &value.meta.id,
             EntityPayload::Device(value) => &value.meta.id,
+            EntityPayload::FinanceLedger(value) => &value.meta.id,
             EntityPayload::FinanceAccount(value) => &value.meta.id,
             EntityPayload::TransactionCategory(value) => &value.meta.id,
             EntityPayload::Transaction(value) => &value.meta.id,
+            EntityPayload::RecurringTransaction(value) => &value.meta.id,
+            EntityPayload::FinanceTag(value) => &value.meta.id,
+            EntityPayload::FinanceTransactionTag(value) => &value.meta.id,
+            EntityPayload::FinanceBudget(value) => &value.meta.id,
+            EntityPayload::TransactionAttachment(value) => &value.meta.id,
             EntityPayload::TransactionEvidence(value) => &value.meta.id,
             EntityPayload::Activity(value) => &value.meta.id,
             EntityPayload::ActivityLog(value) => &value.meta.id,
@@ -138,49 +149,47 @@ impl EntityPayload {
         }
     }
 
-    /// Serialize this payload back to wire JSON.
     pub fn to_json(&self) -> JsonValue {
+        macro_rules! json {
+            ($value:expr) => { serde_json::to_value($value).unwrap().into() };
+        }
         match self {
-            EntityPayload::User(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::Device(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::FinanceAccount(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::TransactionCategory(value) => {
-                serde_json::to_value(value).unwrap().into()
-            }
-            EntityPayload::Transaction(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::TransactionEvidence(value) => {
-                serde_json::to_value(value).unwrap().into()
-            }
-            EntityPayload::Activity(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::ActivityLog(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::DailyReview(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::NoteFolder(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::Note(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::NoteTag(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::NoteTagRelation(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::NoteRelation(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::NoteRevision(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::EnglishArticle(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::EnglishLearningRecord(value) => {
-                serde_json::to_value(value).unwrap().into()
-            }
-            EntityPayload::EnglishHighlight(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::EnglishNote(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::EnglishVocabulary(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::VocabularyOccurrence(value) => {
-                serde_json::to_value(value).unwrap().into()
-            }
-            EntityPayload::VocabularyReviewState(value) => {
-                serde_json::to_value(value).unwrap().into()
-            }
-            EntityPayload::WorkoutImport(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::Workout(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::WorkoutExercise(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::WorkoutSet(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::TrainingNote(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::FileMetadata(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::EntityLink(value) => serde_json::to_value(value).unwrap().into(),
-            EntityPayload::UserPreference(value) => serde_json::to_value(value).unwrap().into(),
+            EntityPayload::User(v) => json!(v),
+            EntityPayload::Device(v) => json!(v),
+            EntityPayload::FinanceLedger(v) => json!(v),
+            EntityPayload::FinanceAccount(v) => json!(v),
+            EntityPayload::TransactionCategory(v) => json!(v),
+            EntityPayload::Transaction(v) => json!(v),
+            EntityPayload::RecurringTransaction(v) => json!(v),
+            EntityPayload::FinanceTag(v) => json!(v),
+            EntityPayload::FinanceTransactionTag(v) => json!(v),
+            EntityPayload::FinanceBudget(v) => json!(v),
+            EntityPayload::TransactionAttachment(v) => json!(v),
+            EntityPayload::TransactionEvidence(v) => json!(v),
+            EntityPayload::Activity(v) => json!(v),
+            EntityPayload::ActivityLog(v) => json!(v),
+            EntityPayload::DailyReview(v) => json!(v),
+            EntityPayload::NoteFolder(v) => json!(v),
+            EntityPayload::Note(v) => json!(v),
+            EntityPayload::NoteTag(v) => json!(v),
+            EntityPayload::NoteTagRelation(v) => json!(v),
+            EntityPayload::NoteRelation(v) => json!(v),
+            EntityPayload::NoteRevision(v) => json!(v),
+            EntityPayload::EnglishArticle(v) => json!(v),
+            EntityPayload::EnglishLearningRecord(v) => json!(v),
+            EntityPayload::EnglishHighlight(v) => json!(v),
+            EntityPayload::EnglishNote(v) => json!(v),
+            EntityPayload::EnglishVocabulary(v) => json!(v),
+            EntityPayload::VocabularyOccurrence(v) => json!(v),
+            EntityPayload::VocabularyReviewState(v) => json!(v),
+            EntityPayload::WorkoutImport(v) => json!(v),
+            EntityPayload::Workout(v) => json!(v),
+            EntityPayload::WorkoutExercise(v) => json!(v),
+            EntityPayload::WorkoutSet(v) => json!(v),
+            EntityPayload::TrainingNote(v) => json!(v),
+            EntityPayload::FileMetadata(v) => json!(v),
+            EntityPayload::EntityLink(v) => json!(v),
+            EntityPayload::UserPreference(v) => json!(v),
             EntityPayload::RegisteredJson { payload, .. } => payload.clone(),
         }
     }
@@ -190,185 +199,115 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
     type Error = String;
 
     fn try_from((entity_type, value): (&EntityType, JsonValue)) -> Result<Self, Self::Error> {
-        fn parse<T: serde::de::DeserializeOwned>(
-            value: &JsonValue,
-            name: &'static str,
-        ) -> Result<T, String> {
+        fn parse<T: serde::de::DeserializeOwned>(value: &JsonValue, name: &'static str) -> Result<T, String> {
             serde_json::from_value(value.0.clone())
                 .map_err(|error| format!("invalid {name} payload: {error}"))
         }
+        fn registered(value: JsonValue, entity_type: &'static str) -> Result<EntityPayload, String> {
+            let id = value.0
+                .get("meta")
+                .and_then(|meta| meta.get("id"))
+                .and_then(|id| id.as_str())
+                .filter(|id| !id.is_empty())
+                .ok_or_else(|| format!("invalid {entity_type} payload: meta.id is required"))?;
+            Ok(EntityPayload::RegisteredJson {
+                entity_type,
+                entity_id: EntityId::new(id),
+                payload: value,
+            })
+        }
+
         match entity_type.as_str() {
-            EntityType::IDENTITY_USER => {
-                parse::<User>(&value, "identity.user").map(EntityPayload::User)
-            }
-            EntityType::IDENTITY_DEVICE => {
-                parse::<Device>(&value, "identity.device").map(EntityPayload::Device)
-            }
-            EntityType::FINANCE_ACCOUNT => parse::<FinanceAccount>(&value, "finance.account")
-                .map(EntityPayload::FinanceAccount),
-            EntityType::FINANCE_CATEGORY => {
-                parse::<TransactionCategory>(&value, "finance.category")
-                    .map(EntityPayload::TransactionCategory)
-            }
-            EntityType::FINANCE_TRANSACTION => {
-                parse::<Transaction>(&value, "finance.transaction").map(EntityPayload::Transaction)
-            }
-            EntityType::FINANCE_TRANSACTION_EVIDENCE => {
-                parse::<TransactionEvidence>(&value, "finance.transaction_evidence")
-                    .map(EntityPayload::TransactionEvidence)
-            }
-            EntityType::HABIT_ACTIVITY => {
-                parse::<Activity>(&value, "habit.activity").map(EntityPayload::Activity)
-            }
-            EntityType::HABIT_LOG => {
-                parse::<ActivityLog>(&value, "habit.log").map(EntityPayload::ActivityLog)
-            }
-            EntityType::REVIEW_DAILY => {
-                parse::<DailyReview>(&value, "review.daily").map(EntityPayload::DailyReview)
-            }
-            EntityType::NOTE_FOLDER => {
-                parse::<NoteFolder>(&value, "note.folder").map(EntityPayload::NoteFolder)
-            }
-            EntityType::NOTE_NOTE => parse::<Note>(&value, "note.note").map(EntityPayload::Note),
-            EntityType::NOTE_TAG => {
-                parse::<NoteTag>(&value, "note.tag").map(EntityPayload::NoteTag)
-            }
-            EntityType::NOTE_TAG_RELATION => parse::<NoteTagRelation>(&value, "note.tag_relation")
-                .map(EntityPayload::NoteTagRelation),
-            EntityType::NOTE_RELATION => {
-                parse::<NoteRelation>(&value, "note.relation").map(EntityPayload::NoteRelation)
-            }
-            EntityType::NOTE_REVISION => {
-                parse::<NoteRevision>(&value, "note.revision").map(EntityPayload::NoteRevision)
-            }
-            EntityType::ENGLISH_ARTICLE => parse::<EnglishArticle>(&value, "english.article")
-                .map(EntityPayload::EnglishArticle),
-            EntityType::ENGLISH_LEARNING_RECORD => {
-                parse::<EnglishLearningRecord>(&value, "english.learning_record")
-                    .map(EntityPayload::EnglishLearningRecord)
-            }
-            EntityType::ENGLISH_HIGHLIGHT => parse::<EnglishHighlight>(&value, "english.highlight")
-                .map(EntityPayload::EnglishHighlight),
-            EntityType::ENGLISH_NOTE => {
-                parse::<EnglishNote>(&value, "english.note").map(EntityPayload::EnglishNote)
-            }
-            EntityType::ENGLISH_VOCABULARY => {
-                parse::<EnglishVocabulary>(&value, "english.vocabulary")
-                    .map(EntityPayload::EnglishVocabulary)
-            }
-            EntityType::ENGLISH_VOCABULARY_OCCURRENCE => {
-                parse::<VocabularyOccurrence>(&value, "english.vocabulary_occurrence")
-                    .map(EntityPayload::VocabularyOccurrence)
-            }
-            EntityType::ENGLISH_VOCABULARY_REVIEW_STATE => {
-                parse::<VocabularyReviewState>(&value, "english.vocabulary_review_state")
-                    .map(EntityPayload::VocabularyReviewState)
-            }
-            EntityType::WORKOUT_IMPORT => {
-                parse::<WorkoutImport>(&value, "workout.import").map(EntityPayload::WorkoutImport)
-            }
-            EntityType::WORKOUT_WORKOUT => {
-                parse::<Workout>(&value, "workout.workout").map(EntityPayload::Workout)
-            }
-            EntityType::WORKOUT_EXERCISE => parse::<WorkoutExercise>(&value, "workout.exercise")
-                .map(EntityPayload::WorkoutExercise),
-            EntityType::WORKOUT_SET => {
-                parse::<WorkoutSet>(&value, "workout.set").map(EntityPayload::WorkoutSet)
-            }
-            EntityType::WORKOUT_TRAINING_NOTE => {
-                parse::<TrainingNote>(&value, "workout.training_note")
-                    .map(EntityPayload::TrainingNote)
-            }
-            EntityType::FILE_METADATA => {
-                parse::<FileMetadata>(&value, "file.metadata").map(EntityPayload::FileMetadata)
-            }
-            EntityType::ENTITY_LINK => {
-                parse::<EntityLink>(&value, "entity.link").map(EntityPayload::EntityLink)
-            }
-            EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, "user.preference")
-                .map(EntityPayload::UserPreference),
-            other => {
-                let registered_type = match other {
-                    EntityType::EXECUTION_PROJECT => Some(EntityType::EXECUTION_PROJECT),
-                    EntityType::EXECUTION_RECURRENCE_RULE => {
-                        Some(EntityType::EXECUTION_RECURRENCE_RULE)
-                    }
-                    EntityType::EXECUTION_TASK => Some(EntityType::EXECUTION_TASK),
-                    EntityType::EXECUTION_TASK_DEPENDENCY => {
-                        Some(EntityType::EXECUTION_TASK_DEPENDENCY)
-                    }
-                    EntityType::EXECUTION_TASK_OCCURRENCE => {
-                        Some(EntityType::EXECUTION_TASK_OCCURRENCE)
-                    }
-                    EntityType::EXECUTION_WAITING_ITEM => Some(EntityType::EXECUTION_WAITING_ITEM),
-                    EntityType::EXECUTION_CALENDAR_EVENT => {
-                        Some(EntityType::EXECUTION_CALENDAR_EVENT)
-                    }
-                    EntityType::EXECUTION_CALENDAR_OCCURRENCE => {
-                        Some(EntityType::EXECUTION_CALENDAR_OCCURRENCE)
-                    }
-                    EntityType::EXECUTION_MEMO => Some(EntityType::EXECUTION_MEMO),
-                    EntityType::EXECUTION_MEMO_TAG => Some(EntityType::EXECUTION_MEMO_TAG),
-                    EntityType::EXECUTION_MEMO_TAG_RELATION => {
-                        Some(EntityType::EXECUTION_MEMO_TAG_RELATION)
-                    }
-                    EntityType::EXECUTION_REMINDER => Some(EntityType::EXECUTION_REMINDER),
-                    EntityType::EXECUTION_COMPLETION_RESULT => {
-                        Some(EntityType::EXECUTION_COMPLETION_RESULT)
-                    }
-                    EntityType::EXECUTION_ENTITY_LINK => Some(EntityType::EXECUTION_ENTITY_LINK),
-                    _ => None,
-                };
-                let Some(registered_type) = registered_type else {
-                    return Err(format!("unknown entity type: {other}"));
-                };
-                if crate::registry::describe(registered_type).is_none() {
-                    return Err(format!("unregistered entity type: {other}"));
-                }
-                let entity_id = value
-                    .0
-                    .get("meta")
-                    .and_then(serde_json::Value::as_object)
-                    .and_then(|meta| meta.get("id"))
-                    .and_then(serde_json::Value::as_str)
-                    .filter(|id| !id.is_empty())
-                    .ok_or_else(|| format!("invalid {other} payload: meta.id is required"))?;
-                Ok(EntityPayload::RegisteredJson {
-                    entity_type: registered_type,
-                    entity_id: EntityId::new(entity_id),
-                    payload: value,
-                })
-            }
+            EntityType::IDENTITY_USER => parse::<User>(&value, EntityType::IDENTITY_USER).map(EntityPayload::User),
+            EntityType::IDENTITY_DEVICE => parse::<Device>(&value, EntityType::IDENTITY_DEVICE).map(EntityPayload::Device),
+            EntityType::FINANCE_LEDGER => parse::<FinanceLedger>(&value, EntityType::FINANCE_LEDGER).map(EntityPayload::FinanceLedger),
+            EntityType::FINANCE_ACCOUNT => parse::<FinanceAccount>(&value, EntityType::FINANCE_ACCOUNT).map(EntityPayload::FinanceAccount),
+            EntityType::FINANCE_CATEGORY => parse::<TransactionCategory>(&value, EntityType::FINANCE_CATEGORY).map(EntityPayload::TransactionCategory),
+            EntityType::FINANCE_TRANSACTION => parse::<Transaction>(&value, EntityType::FINANCE_TRANSACTION).map(EntityPayload::Transaction),
+            EntityType::FINANCE_RECURRING_TRANSACTION => parse::<RecurringTransaction>(&value, EntityType::FINANCE_RECURRING_TRANSACTION).map(EntityPayload::RecurringTransaction),
+            EntityType::FINANCE_TAG => parse::<FinanceTag>(&value, EntityType::FINANCE_TAG).map(EntityPayload::FinanceTag),
+            EntityType::FINANCE_TRANSACTION_TAG => parse::<FinanceTransactionTag>(&value, EntityType::FINANCE_TRANSACTION_TAG).map(EntityPayload::FinanceTransactionTag),
+            EntityType::FINANCE_BUDGET => parse::<FinanceBudget>(&value, EntityType::FINANCE_BUDGET).map(EntityPayload::FinanceBudget),
+            EntityType::FINANCE_TRANSACTION_ATTACHMENT => parse::<TransactionAttachment>(&value, EntityType::FINANCE_TRANSACTION_ATTACHMENT).map(EntityPayload::TransactionAttachment),
+            EntityType::FINANCE_TRANSACTION_EVIDENCE => parse::<TransactionEvidence>(&value, EntityType::FINANCE_TRANSACTION_EVIDENCE).map(EntityPayload::TransactionEvidence),
+            EntityType::HABIT_ACTIVITY => parse::<Activity>(&value, EntityType::HABIT_ACTIVITY).map(EntityPayload::Activity),
+            EntityType::HABIT_LOG => parse::<ActivityLog>(&value, EntityType::HABIT_LOG).map(EntityPayload::ActivityLog),
+            EntityType::REVIEW_DAILY => parse::<DailyReview>(&value, EntityType::REVIEW_DAILY).map(EntityPayload::DailyReview),
+            EntityType::NOTE_FOLDER => parse::<NoteFolder>(&value, EntityType::NOTE_FOLDER).map(EntityPayload::NoteFolder),
+            EntityType::NOTE_NOTE => parse::<Note>(&value, EntityType::NOTE_NOTE).map(EntityPayload::Note),
+            EntityType::NOTE_TAG => parse::<NoteTag>(&value, EntityType::NOTE_TAG).map(EntityPayload::NoteTag),
+            EntityType::NOTE_TAG_RELATION => parse::<NoteTagRelation>(&value, EntityType::NOTE_TAG_RELATION).map(EntityPayload::NoteTagRelation),
+            EntityType::NOTE_RELATION => parse::<NoteRelation>(&value, EntityType::NOTE_RELATION).map(EntityPayload::NoteRelation),
+            EntityType::NOTE_REVISION => parse::<NoteRevision>(&value, EntityType::NOTE_REVISION).map(EntityPayload::NoteRevision),
+            EntityType::ENGLISH_ARTICLE => parse::<EnglishArticle>(&value, EntityType::ENGLISH_ARTICLE).map(EntityPayload::EnglishArticle),
+            EntityType::ENGLISH_LEARNING_RECORD => parse::<EnglishLearningRecord>(&value, EntityType::ENGLISH_LEARNING_RECORD).map(EntityPayload::EnglishLearningRecord),
+            EntityType::ENGLISH_HIGHLIGHT => parse::<EnglishHighlight>(&value, EntityType::ENGLISH_HIGHLIGHT).map(EntityPayload::EnglishHighlight),
+            EntityType::ENGLISH_NOTE => parse::<EnglishNote>(&value, EntityType::ENGLISH_NOTE).map(EntityPayload::EnglishNote),
+            EntityType::ENGLISH_VOCABULARY => parse::<EnglishVocabulary>(&value, EntityType::ENGLISH_VOCABULARY).map(EntityPayload::EnglishVocabulary),
+            EntityType::ENGLISH_VOCABULARY_OCCURRENCE => parse::<VocabularyOccurrence>(&value, EntityType::ENGLISH_VOCABULARY_OCCURRENCE).map(EntityPayload::VocabularyOccurrence),
+            EntityType::ENGLISH_VOCABULARY_REVIEW_STATE => parse::<VocabularyReviewState>(&value, EntityType::ENGLISH_VOCABULARY_REVIEW_STATE).map(EntityPayload::VocabularyReviewState),
+            EntityType::WORKOUT_IMPORT => parse::<WorkoutImport>(&value, EntityType::WORKOUT_IMPORT).map(EntityPayload::WorkoutImport),
+            EntityType::WORKOUT_WORKOUT => parse::<Workout>(&value, EntityType::WORKOUT_WORKOUT).map(EntityPayload::Workout),
+            EntityType::WORKOUT_EXERCISE => parse::<WorkoutExercise>(&value, EntityType::WORKOUT_EXERCISE).map(EntityPayload::WorkoutExercise),
+            EntityType::WORKOUT_SET => parse::<WorkoutSet>(&value, EntityType::WORKOUT_SET).map(EntityPayload::WorkoutSet),
+            EntityType::WORKOUT_TRAINING_NOTE => parse::<TrainingNote>(&value, EntityType::WORKOUT_TRAINING_NOTE).map(EntityPayload::TrainingNote),
+            EntityType::FILE_METADATA => parse::<FileMetadata>(&value, EntityType::FILE_METADATA).map(EntityPayload::FileMetadata),
+            EntityType::ENTITY_LINK => parse::<EntityLink>(&value, EntityType::ENTITY_LINK).map(EntityPayload::EntityLink),
+            EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, EntityType::USER_PREFERENCE).map(EntityPayload::UserPreference),
+            EntityType::EXECUTION_PROJECT => registered(value, EntityType::EXECUTION_PROJECT),
+            EntityType::EXECUTION_RECURRENCE_RULE => registered(value, EntityType::EXECUTION_RECURRENCE_RULE),
+            EntityType::EXECUTION_TASK => registered(value, EntityType::EXECUTION_TASK),
+            EntityType::EXECUTION_TASK_DEPENDENCY => registered(value, EntityType::EXECUTION_TASK_DEPENDENCY),
+            EntityType::EXECUTION_TASK_OCCURRENCE => registered(value, EntityType::EXECUTION_TASK_OCCURRENCE),
+            EntityType::EXECUTION_WAITING_ITEM => registered(value, EntityType::EXECUTION_WAITING_ITEM),
+            EntityType::EXECUTION_CALENDAR_EVENT => registered(value, EntityType::EXECUTION_CALENDAR_EVENT),
+            EntityType::EXECUTION_CALENDAR_OCCURRENCE => registered(value, EntityType::EXECUTION_CALENDAR_OCCURRENCE),
+            EntityType::EXECUTION_MEMO => registered(value, EntityType::EXECUTION_MEMO),
+            EntityType::EXECUTION_MEMO_TAG => registered(value, EntityType::EXECUTION_MEMO_TAG),
+            EntityType::EXECUTION_MEMO_TAG_RELATION => registered(value, EntityType::EXECUTION_MEMO_TAG_RELATION),
+            EntityType::EXECUTION_REMINDER => registered(value, EntityType::EXECUTION_REMINDER),
+            EntityType::EXECUTION_COMPLETION_RESULT => registered(value, EntityType::EXECUTION_COMPLETION_RESULT),
+            EntityType::EXECUTION_ENTITY_LINK => registered(value, EntityType::EXECUTION_ENTITY_LINK),
+            other => Err(format!("unknown entity type: {other}")),
         }
     }
 }
 
 #[cfg(test)]
-mod execution_registered_json_tests {
+mod tests {
     use super::*;
-    use serde_json::json;
+    use crate::common::EntityMeta;
+    use crate::ids::UserId;
+    use crate::time::UtcTimestamp;
 
-    #[test]
-    fn registered_execution_payload_preserves_json_and_id() {
-        let entity_type = EntityType::new(EntityType::EXECUTION_TASK);
-        let raw = JsonValue(json!({
-            "meta": {"id": "task-1", "userId": "local"},
-            "title": "Ship EPIC20",
-            "status": "todo"
-        }));
-        let payload = EntityPayload::try_from((&entity_type, raw.clone())).unwrap();
-        assert_eq!(payload.entity_type().as_str(), EntityType::EXECUTION_TASK);
-        assert_eq!(payload.entity_id().as_str(), "task-1");
-        assert_eq!(payload.to_json(), raw);
+    fn meta(id: &str) -> EntityMeta {
+        let stamp: UtcTimestamp = "2026-08-12T00:00:00Z".parse().unwrap();
+        EntityMeta {
+            id: EntityId::new(id),
+            user_id: UserId::new("user-1"),
+            created_at: stamp,
+            updated_at: stamp,
+            deleted_at: None,
+            local_version: 1,
+            server_version: None,
+            modified_by_device: None,
+        }
     }
 
     #[test]
-    fn execution_payload_requires_meta_id_and_unknown_type_stays_rejected() {
-        let entity_type = EntityType::new(EntityType::EXECUTION_MEMO);
-        let missing_id = JsonValue(json!({"meta": {}, "content": "memo"}));
-        assert!(EntityPayload::try_from((&entity_type, missing_id)).is_err());
-        let unknown = EntityType::new("future.secret");
-        let raw = JsonValue(json!({"meta": {"id": "x"}}));
-        assert!(EntityPayload::try_from((&unknown, raw)).is_err());
+    fn finance_ledger_dispatch_round_trips() {
+        let payload = FinanceLedger {
+            meta: meta("ledger-1"),
+            name: "日常账本".to_owned(),
+            currency: crate::money::CurrencyCode::cny(),
+            ledger_type: "personal".to_owned(),
+            month_start_day: 1,
+            sort_order: 0,
+            is_archived: false,
+        };
+        let value: JsonValue = serde_json::to_value(&payload).unwrap().into();
+        let parsed = EntityPayload::try_from((&EntityType::new(EntityType::FINANCE_LEDGER), value)).unwrap();
+        assert_eq!(parsed.entity_id().as_str(), "ledger-1");
+        assert_eq!(parsed.entity_type().as_str(), EntityType::FINANCE_LEDGER);
     }
 }
