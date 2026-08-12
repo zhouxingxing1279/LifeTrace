@@ -1,0 +1,62 @@
+name: Remove shopping order roadmap residue
+
+on:
+  pull_request:
+    branches:
+      - feature/beecount-domain-model
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-roadmap:
+    if: github.head_ref == 'chore/remove-shopping-orders-beecount'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout cleanup branch
+        uses: actions/checkout@v4
+        with:
+          ref: chore/remove-shopping-orders-beecount
+          fetch-depth: 0
+
+      - name: Remove EPIC-29 roadmap content
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("docs/roadmap.md")
+          text = path.read_text(encoding="utf-8")
+
+          updated, count = re.subn(
+              r"(?ms)^# EPIC-29：购物订单聚合与消费识别\n.*?(?=^# EPIC-30：本地加密相册与私密媒体保险库)",
+              "",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f"expected one EPIC-29 section, removed {count}")
+
+          updated = updated.replace("\nEPIC-29 购物订单聚合与消费识别\n", "\n")
+          updated = updated.replace(
+              "EPIC-29 在财务领域模型和账单对账能力稳定后即可并行推进。",
+              "",
+          )
+
+          if "EPIC-29" in updated or "epic-29" in updated:
+              raise SystemExit("EPIC-29 reference remains in docs/roadmap.md")
+
+          path.write_text(updated, encoding="utf-8")
+
+      - name: Commit roadmap cleanup
+        shell: bash
+        run: |
+          if git diff --quiet -- docs/roadmap.md; then
+            echo "No roadmap cleanup required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/roadmap.md
+          git commit -m "docs: remove EPIC-29 roadmap content"
+          git push origin HEAD:chore/remove-shopping-orders-beecount
