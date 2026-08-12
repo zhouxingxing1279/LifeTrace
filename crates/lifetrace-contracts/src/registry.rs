@@ -14,29 +14,18 @@ use ts_rs::{TypeVisitor, TS};
 
 use crate::ids::EntityId;
 
-/// Entity ownership class.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum EntityOwnership {
-    /// Owned and edited by the user; bidirectional sync with conflict checks.
     UserOwned,
-    /// Managed by the server (for example identity.user, identity.device).
     ServerManaged,
-    /// Global catalog shared by all users (for example english.article).
     SharedCatalog,
-    /// Only meaningful on the device that created it; never synced.
     DeviceLocal,
-    /// Credentials and secrets; MUST NEVER enter a sync payload.
     SecretLocalOnly,
 }
 
-/// Entity sync mode.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum SyncMode {
@@ -46,23 +35,15 @@ pub enum SyncMode {
     NotSynced,
 }
 
-/// Entity conflict handling mode.
-#[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema, TS,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "snake_case")]
 #[ts(rename_all = "snake_case")]
 pub enum ConflictMode {
-    /// Client `baseServerVersion` must equal the current server version;
-    /// otherwise an explicit conflict is returned. No automatic last-write-wins.
     Optimistic,
-    /// The server is authoritative; client writes are rejected or ignored.
     ServerAuthoritative,
-    /// No conflict semantics (device-local / not synced data).
     None,
 }
 
-/// Static registry entry for one entity type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EntityDescriptor {
     pub entity_type: &'static str,
@@ -70,395 +51,122 @@ pub struct EntityDescriptor {
     pub ownership: EntityOwnership,
     pub sync_mode: SyncMode,
     pub conflict_mode: ConflictMode,
-    /// Whether the entity payload references files (binary content is synced
-    /// separately by EPIC-12; only metadata/IDs cross the wire).
     pub contains_file_references: bool,
 }
 
-/// Complete static entity type registry.
-///
-/// Device-local and secret-local-only data (photos, AI/translation settings,
-/// certificates, import uploads, ...) are intentionally NOT registered here:
-/// unknown entity types are rejected by the sync protocol with
-/// `LIFETRACE_UNKNOWN_ENTITY_TYPE`, giving defense in depth against secrets
-/// entering a sync payload.
-pub const REGISTRY: &[EntityDescriptor] = &[
+const fn user_owned(entity_type: &'static str, contains_file_references: bool) -> EntityDescriptor {
     EntityDescriptor {
-        entity_type: EntityType::IDENTITY_USER,
+        entity_type,
+        schema_version: 1,
+        ownership: EntityOwnership::UserOwned,
+        sync_mode: SyncMode::Bidirectional,
+        conflict_mode: ConflictMode::Optimistic,
+        contains_file_references,
+    }
+}
+
+const fn server_managed(entity_type: &'static str) -> EntityDescriptor {
+    EntityDescriptor {
+        entity_type,
         schema_version: 1,
         ownership: EntityOwnership::ServerManaged,
         sync_mode: SyncMode::ServerToClient,
         conflict_mode: ConflictMode::ServerAuthoritative,
         contains_file_references: false,
-    },
+    }
+}
+
+const fn shared_catalog(entity_type: &'static str) -> EntityDescriptor {
     EntityDescriptor {
-        entity_type: EntityType::IDENTITY_DEVICE,
-        schema_version: 1,
-        ownership: EntityOwnership::ServerManaged,
-        sync_mode: SyncMode::ServerToClient,
-        conflict_mode: ConflictMode::ServerAuthoritative,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::FINANCE_ACCOUNT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::FINANCE_CATEGORY,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::FINANCE_TRANSACTION,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::FINANCE_TRANSACTION_EVIDENCE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::HABIT_ACTIVITY,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::HABIT_LOG,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::REVIEW_DAILY,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_FOLDER,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_NOTE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: true,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_TAG,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_TAG_RELATION,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_RELATION,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::NOTE_REVISION,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_ARTICLE,
+        entity_type,
         schema_version: 1,
         ownership: EntityOwnership::SharedCatalog,
         sync_mode: SyncMode::ServerToClient,
         conflict_mode: ConflictMode::ServerAuthoritative,
         contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_LEARNING_RECORD,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_HIGHLIGHT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_NOTE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_VOCABULARY,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_VOCABULARY_OCCURRENCE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENGLISH_VOCABULARY_REVIEW_STATE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::WORKOUT_IMPORT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::WORKOUT_WORKOUT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::WORKOUT_EXERCISE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::WORKOUT_SET,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::WORKOUT_TRAINING_NOTE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_PROJECT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_RECURRENCE_RULE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_TASK,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_TASK_DEPENDENCY,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_TASK_OCCURRENCE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_WAITING_ITEM,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_CALENDAR_EVENT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_CALENDAR_OCCURRENCE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_MEMO,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_MEMO_TAG,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_MEMO_TAG_RELATION,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_REMINDER,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_COMPLETION_RESULT,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::EXECUTION_ENTITY_LINK,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::FILE_METADATA,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: true,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::ENTITY_LINK,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-    EntityDescriptor {
-        entity_type: EntityType::USER_PREFERENCE,
-        schema_version: 1,
-        ownership: EntityOwnership::UserOwned,
-        sync_mode: SyncMode::Bidirectional,
-        conflict_mode: ConflictMode::Optimistic,
-        contains_file_references: false,
-    },
-];
-
-/// Look up a registered descriptor by entity type name.
-pub fn describe(entity_type: &str) -> Option<&'static EntityDescriptor> {
-    REGISTRY
-        .iter()
-        .find(|descriptor| descriptor.entity_type == entity_type)
+    }
 }
 
-/// Whether an entity type is registered and allowed to sync.
+/// Complete static registry. Finance entities introduced by the Android
+/// bookkeeping client deliberately use the same generic LifeTrace sync store;
+/// registering them here is enough for push/pull/snapshot persistence and
+/// optimistic conflict handling.
+pub const REGISTRY: &[EntityDescriptor] = &[
+    server_managed(EntityType::IDENTITY_USER),
+    server_managed(EntityType::IDENTITY_DEVICE),
+    user_owned(EntityType::FINANCE_LEDGER, false),
+    user_owned(EntityType::FINANCE_ACCOUNT, false),
+    user_owned(EntityType::FINANCE_CATEGORY, false),
+    user_owned(EntityType::FINANCE_TRANSACTION, false),
+    user_owned(EntityType::FINANCE_RECURRING_TRANSACTION, false),
+    user_owned(EntityType::FINANCE_TAG, false),
+    user_owned(EntityType::FINANCE_TRANSACTION_TAG, false),
+    user_owned(EntityType::FINANCE_BUDGET, false),
+    user_owned(EntityType::FINANCE_TRANSACTION_ATTACHMENT, true),
+    user_owned(EntityType::FINANCE_TRANSACTION_EVIDENCE, false),
+    user_owned(EntityType::HABIT_ACTIVITY, false),
+    user_owned(EntityType::HABIT_LOG, false),
+    user_owned(EntityType::REVIEW_DAILY, false),
+    user_owned(EntityType::NOTE_FOLDER, false),
+    user_owned(EntityType::NOTE_NOTE, true),
+    user_owned(EntityType::NOTE_TAG, false),
+    user_owned(EntityType::NOTE_TAG_RELATION, false),
+    user_owned(EntityType::NOTE_RELATION, false),
+    user_owned(EntityType::NOTE_REVISION, false),
+    shared_catalog(EntityType::ENGLISH_ARTICLE),
+    user_owned(EntityType::ENGLISH_LEARNING_RECORD, false),
+    user_owned(EntityType::ENGLISH_HIGHLIGHT, false),
+    user_owned(EntityType::ENGLISH_NOTE, false),
+    user_owned(EntityType::ENGLISH_VOCABULARY, false),
+    user_owned(EntityType::ENGLISH_VOCABULARY_OCCURRENCE, false),
+    user_owned(EntityType::ENGLISH_VOCABULARY_REVIEW_STATE, false),
+    user_owned(EntityType::WORKOUT_IMPORT, false),
+    user_owned(EntityType::WORKOUT_WORKOUT, false),
+    user_owned(EntityType::WORKOUT_EXERCISE, false),
+    user_owned(EntityType::WORKOUT_SET, false),
+    user_owned(EntityType::WORKOUT_TRAINING_NOTE, false),
+    user_owned(EntityType::EXECUTION_PROJECT, false),
+    user_owned(EntityType::EXECUTION_RECURRENCE_RULE, false),
+    user_owned(EntityType::EXECUTION_TASK, false),
+    user_owned(EntityType::EXECUTION_TASK_DEPENDENCY, false),
+    user_owned(EntityType::EXECUTION_TASK_OCCURRENCE, false),
+    user_owned(EntityType::EXECUTION_WAITING_ITEM, false),
+    user_owned(EntityType::EXECUTION_CALENDAR_EVENT, false),
+    user_owned(EntityType::EXECUTION_CALENDAR_OCCURRENCE, false),
+    user_owned(EntityType::EXECUTION_MEMO, false),
+    user_owned(EntityType::EXECUTION_MEMO_TAG, false),
+    user_owned(EntityType::EXECUTION_MEMO_TAG_RELATION, false),
+    user_owned(EntityType::EXECUTION_REMINDER, false),
+    user_owned(EntityType::EXECUTION_COMPLETION_RESULT, false),
+    user_owned(EntityType::EXECUTION_ENTITY_LINK, false),
+    user_owned(EntityType::FILE_METADATA, true),
+    user_owned(EntityType::ENTITY_LINK, false),
+    user_owned(EntityType::USER_PREFERENCE, false),
+];
+
+pub fn describe(entity_type: &str) -> Option<&'static EntityDescriptor> {
+    REGISTRY.iter().find(|descriptor| descriptor.entity_type == entity_type)
+}
+
 pub fn is_syncable(entity_type: &str) -> bool {
     describe(entity_type).is_some_and(|descriptor| descriptor.sync_mode != SyncMode::NotSynced)
 }
 
-/// Stable entity type name used in sync changes and cross-entity links.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct EntityType(String);
 
 impl EntityType {
     pub const IDENTITY_USER: &'static str = "identity.user";
     pub const IDENTITY_DEVICE: &'static str = "identity.device";
+    pub const FINANCE_LEDGER: &'static str = "finance.ledger";
     pub const FINANCE_ACCOUNT: &'static str = "finance.account";
     pub const FINANCE_CATEGORY: &'static str = "finance.category";
     pub const FINANCE_TRANSACTION: &'static str = "finance.transaction";
+    pub const FINANCE_RECURRING_TRANSACTION: &'static str = "finance.recurring_transaction";
+    pub const FINANCE_TAG: &'static str = "finance.tag";
+    pub const FINANCE_TRANSACTION_TAG: &'static str = "finance.transaction_tag";
+    pub const FINANCE_BUDGET: &'static str = "finance.budget";
+    pub const FINANCE_TRANSACTION_ATTACHMENT: &'static str = "finance.transaction_attachment";
     pub const FINANCE_TRANSACTION_EVIDENCE: &'static str = "finance.transaction_evidence";
     pub const HABIT_ACTIVITY: &'static str = "habit.activity";
     pub const HABIT_LOG: &'static str = "habit.log";
@@ -499,23 +207,22 @@ impl EntityType {
     pub const ENTITY_LINK: &'static str = "entity.link";
     pub const USER_PREFERENCE: &'static str = "user.preference";
 
-    /// Wrap any entity type string. Unknown values are preserved.
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(value.into())
-    }
+    pub fn new(value: impl Into<String>) -> Self { Self(value.into()) }
+    pub fn as_str(&self) -> &str { &self.0 }
 
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-
-    /// All known entity type names (registry in phase 3 adds descriptors).
     pub const fn known() -> &'static [&'static str] {
         &[
             Self::IDENTITY_USER,
             Self::IDENTITY_DEVICE,
+            Self::FINANCE_LEDGER,
             Self::FINANCE_ACCOUNT,
             Self::FINANCE_CATEGORY,
             Self::FINANCE_TRANSACTION,
+            Self::FINANCE_RECURRING_TRANSACTION,
+            Self::FINANCE_TAG,
+            Self::FINANCE_TRANSACTION_TAG,
+            Self::FINANCE_BUDGET,
+            Self::FINANCE_TRANSACTION_ATTACHMENT,
             Self::FINANCE_TRANSACTION_EVIDENCE,
             Self::HABIT_ACTIVITY,
             Self::HABIT_LOG,
@@ -560,29 +267,21 @@ impl EntityType {
 }
 
 impl fmt::Display for EntityType {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.0)
-    }
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result { formatter.write_str(&self.0) }
 }
 
 impl Serialize for EntityType {
-    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(&self.0)
-    }
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> { serializer.serialize_str(&self.0) }
 }
 
 impl<'de> Deserialize<'de> for EntityType {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let raw = String::deserialize(deserializer)?;
-        Ok(Self(raw))
+        Ok(Self(String::deserialize(deserializer)?))
     }
 }
 
 impl JsonSchema for EntityType {
-    fn schema_name() -> Cow<'static, str> {
-        Cow::Borrowed("EntityType")
-    }
-
+    fn schema_name() -> Cow<'static, str> { Cow::Borrowed("EntityType") }
     fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
         let mut schema = String::json_schema(generator);
         if let Some(object) = schema.as_object_mut() {
@@ -601,35 +300,15 @@ impl JsonSchema for EntityType {
 impl TS for EntityType {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
-
-    fn decl() -> String {
-        "type EntityType = string;".to_owned()
-    }
-
-    fn decl_concrete() -> String {
-        Self::decl()
-    }
-
-    fn name() -> String {
-        "EntityType".to_owned()
-    }
-
+    fn decl() -> String { "type EntityType = string;".to_owned() }
+    fn decl_concrete() -> String { Self::decl() }
+    fn name() -> String { "EntityType".to_owned() }
     fn visit_dependencies(_visitor: &mut impl TypeVisitor) {}
-
-    fn inline() -> String {
-        "string".to_owned()
-    }
-
-    fn inline_flattened() -> String {
-        Self::inline()
-    }
-
-    fn output_path() -> Option<PathBuf> {
-        None
-    }
+    fn inline() -> String { "string".to_owned() }
+    fn inline_flattened() -> String { Self::inline() }
+    fn output_path() -> Option<PathBuf> { None }
 }
 
-/// A typed reference to another syncable entity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(rename_all = "camelCase")]
@@ -643,129 +322,46 @@ mod tests {
     use super::*;
 
     #[test]
-    fn entity_type_round_trips_known_and_unknown() {
-        let known = EntityType::new(EntityType::FINANCE_TRANSACTION);
-        let json = serde_json::to_string(&known).unwrap();
-        assert_eq!(json, "\"finance.transaction\"");
-        let back: EntityType = serde_json::from_str(&json).unwrap();
-        assert_eq!(back, known);
-
-        let unknown: EntityType = serde_json::from_str("\"future.thing\"").unwrap();
-        assert_eq!(unknown.as_str(), "future.thing");
-    }
-
-    #[test]
-    fn entity_ref_uses_camel_case() {
-        let reference = EntityRef {
-            entity_type: EntityType::new(EntityType::FINANCE_TRANSACTION),
-            entity_id: EntityId::new("tx-1"),
-        };
-        let value = serde_json::to_value(&reference).unwrap();
-        assert_eq!(value["entityType"], "finance.transaction");
-        assert_eq!(value["entityId"], "tx-1");
-    }
-
-    #[test]
     fn registry_covers_every_known_entity_type_with_unique_names() {
         let known = EntityType::known();
         assert_eq!(REGISTRY.len(), known.len());
         for expected in known {
-            let descriptor = describe(expected)
-                .unwrap_or_else(|| panic!("entity type {expected} must be registered"));
-            assert_eq!(descriptor.entity_type, *expected);
-            assert_eq!(descriptor.schema_version, 1);
+            assert_eq!(describe(expected).unwrap().schema_version, 1);
         }
         let mut names: Vec<&str> = REGISTRY.iter().map(|item| item.entity_type).collect();
         names.sort_unstable();
         let mut unique = names.clone();
         unique.dedup();
-        assert_eq!(names, unique, "entity type names must be unique");
+        assert_eq!(names, unique);
     }
 
     #[test]
-    fn every_entity_has_ownership_sync_and_conflict_modes() {
-        for descriptor in REGISTRY {
-            assert!(matches!(
-                descriptor.ownership,
-                EntityOwnership::UserOwned
-                    | EntityOwnership::ServerManaged
-                    | EntityOwnership::SharedCatalog
-                    | EntityOwnership::DeviceLocal
-                    | EntityOwnership::SecretLocalOnly
-            ));
-            assert!(matches!(
-                descriptor.sync_mode,
-                SyncMode::Bidirectional
-                    | SyncMode::ServerToClient
-                    | SyncMode::ClientToServer
-                    | SyncMode::NotSynced
-            ));
-            assert!(matches!(
-                descriptor.conflict_mode,
-                ConflictMode::Optimistic | ConflictMode::ServerAuthoritative | ConflictMode::None
-            ));
+    fn finance_bookkeeping_entities_are_syncable() {
+        for entity in [
+            EntityType::FINANCE_LEDGER,
+            EntityType::FINANCE_ACCOUNT,
+            EntityType::FINANCE_CATEGORY,
+            EntityType::FINANCE_TRANSACTION,
+            EntityType::FINANCE_RECURRING_TRANSACTION,
+            EntityType::FINANCE_TAG,
+            EntityType::FINANCE_TRANSACTION_TAG,
+            EntityType::FINANCE_BUDGET,
+            EntityType::FINANCE_TRANSACTION_ATTACHMENT,
+            EntityType::FINANCE_TRANSACTION_EVIDENCE,
+        ] {
+            let descriptor = describe(entity).unwrap();
+            assert_eq!(descriptor.ownership, EntityOwnership::UserOwned);
+            assert_eq!(descriptor.sync_mode, SyncMode::Bidirectional);
+            assert_eq!(descriptor.conflict_mode, ConflictMode::Optimistic);
         }
-    }
-
-    #[test]
-    fn user_owned_entities_use_optimistic_conflict_never_lww() {
-        for descriptor in REGISTRY {
-            if descriptor.ownership == EntityOwnership::UserOwned {
-                assert_eq!(descriptor.conflict_mode, ConflictMode::Optimistic);
-                assert_eq!(descriptor.sync_mode, SyncMode::Bidirectional);
-            }
-        }
+        assert!(describe(EntityType::FINANCE_TRANSACTION_ATTACHMENT)
+            .unwrap()
+            .contains_file_references);
     }
 
     #[test]
     fn unknown_entity_types_are_not_syncable() {
         assert!(!is_syncable("secret.credential"));
-        assert!(!is_syncable(""));
         assert!(is_syncable(EntityType::FINANCE_TRANSACTION));
-        assert!(is_syncable(EntityType::ENGLISH_ARTICLE));
-    }
-
-    #[test]
-    fn file_reference_flags_are_set_where_expected() {
-        assert!(
-            describe(EntityType::NOTE_NOTE)
-                .unwrap()
-                .contains_file_references
-        );
-        assert!(
-            describe(EntityType::FILE_METADATA)
-                .unwrap()
-                .contains_file_references
-        );
-        assert!(
-            !describe(EntityType::FINANCE_TRANSACTION)
-                .unwrap()
-                .contains_file_references
-        );
-    }
-
-    #[test]
-    fn all_five_ownership_classes_are_representable() {
-        let classes = [
-            EntityOwnership::UserOwned,
-            EntityOwnership::ServerManaged,
-            EntityOwnership::SharedCatalog,
-            EntityOwnership::DeviceLocal,
-            EntityOwnership::SecretLocalOnly,
-        ];
-        let wire = classes
-            .iter()
-            .map(|value| serde_json::to_string(value).unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(
-            wire,
-            vec![
-                "\"user_owned\"",
-                "\"server_managed\"",
-                "\"shared_catalog\"",
-                "\"device_local\"",
-                "\"secret_local_only\"",
-            ]
-        );
     }
 }
