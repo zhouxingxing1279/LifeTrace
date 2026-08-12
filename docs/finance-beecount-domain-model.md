@@ -1,151 +1,90 @@
 # LifeTrace Finance — BeeCount-inspired domain expansion
 
-Status: execution plan
+Status: **implemented and verified**
+
 Branch: `feature/beecount-domain-model`
 Reference implementation: `TNT-Likely/BeeCount`
 Android client: `zhouxingxing1279/LifeTrace-finance`
 
-## 1. Hard architectural constraint
+## Architecture decision
 
-LifeTrace Cloud remains the only backend. This change **does not introduce a new finance cloud, authentication system, sync protocol, database service, or BeeCount Cloud dependency**.
+LifeTrace Cloud remains the **only backend**. This work does not introduce a new finance cloud, authentication system, sync protocol, database service, or BeeCount Cloud dependency.
 
-All new finance entities use the existing LifeTrace pipeline:
+The production path remains:
 
-`Android Room -> sync_outbox -> /api/v1/sync/push -> lifetrace-contracts registry/payload validation -> PostgreSQL sync_entities + sync_change_log -> /api/v1/sync/pull|snapshot -> Android Room`
+`Android Room -> sync_outbox -> /api/v1/sync/push -> lifetrace-contracts -> PostgreSQL sync_entities/sync_change_log -> /api/v1/sync/pull|snapshot -> Android Room`
 
-The existing authenticated principal, scopes, conflict handling, cursor, snapshot and tombstone semantics are retained.
+The existing authenticated principal, scopes, dependency checks, optimistic versions, conflicts, cursor, snapshot and tombstone semantics are reused unchanged.
 
-## 2. Goal
+## Implemented finance domain
 
-Reproduce the useful single-user bookkeeping domain of BeeCount while preserving LifeTrace wire conventions (`EntityMeta`, integer cents, ISO currency codes, typed entity registry, optimistic server versions).
+The existing registry now supports these ten finance entity types:
 
-### In scope
+- `finance.ledger`
+- `finance.account`
+- `finance.category`
+- `finance.transaction`
+- `finance.recurring_transaction`
+- `finance.tag`
+- `finance.transaction_tag`
+- `finance.budget`
+- `finance.transaction_attachment`
+- `finance.transaction_evidence`
 
-- ledgers/books
-- richer accounts
-- hierarchical categories
-- richer transactions and transfers
-- recurring transactions
-- tags and transaction-tag relations
-- budgets
-- transaction attachments/evidence metadata
-- multi-currency transaction snapshots
-- exclude-from-statistics and exclude-from-budget flags
-- hidden/archive ordering metadata
-- existing smart capture/import provenance
+New BeeCount-inspired entities (`ledger`, recurring transactions, tags, tag relations, budgets and attachment metadata) are strongly typed in `lifetrace-contracts` and registered as user-owned, bidirectional, optimistic-sync entities.
 
-### Explicitly out of scope for this pass
+Existing `finance.account`, `finance.category` and `finance.transaction` Rust DTOs deliberately keep their previous public field layout for desktop/source compatibility. Android can send newer forward fields such as `ledgerId`, credit-card metadata, recurrence links, statistics/budget exclusion flags and native-currency snapshots. Serde validation accepts the payload and LifeTrace Cloud persists the original JSON, so these forward fields round-trip without forcing older desktop callers to adopt new Rust struct members immediately.
 
-- BeeCount Cloud
-- BeeCount authentication
-- shared/family ledger collaboration and member mirror tables
-- BeeCount AI conversation/message persistence
-- exchange-rate cache as a cloud entity (derived cache remains client-local)
+## Data conventions
 
-## 3. Cloud entity model
+LifeTrace conventions take precedence over BeeCount implementation details:
 
-Existing entity types remain backward-compatible and are extended only with optional/defaultable fields where possible.
+- stable string `EntityId` values, not auto-increment IDs;
+- integer cents for money, never floating-point transaction amounts;
+- `amountCents` is the transaction/account-currency amount;
+- `nativeAmountCents` is the frozen ledger-base-currency snapshot;
+- `exchangeRate` is serialized as a decimal string;
+- tags use a normalized `finance.transaction_tag` relation;
+- transfers remain one transaction with `transactionType=transfer`, `accountId` and `toAccountId`;
+- attachment entities hold metadata/file references and reuse LifeTrace's file subsystem rather than creating finance-specific object storage.
 
-| Entity type | Purpose | Strategy |
-| --- | --- | --- |
-| `finance.ledger` | Book/ledger, base currency, month start day | new typed entity |
-| `finance.account` | Wallet/bank/credit/cash account | extend existing payload |
-| `finance.category` | expense/income hierarchy | extend existing payload |
-| `finance.transaction` | expense/income/transfer/refund | extend existing payload |
-| `finance.recurring_transaction` | recurring template/rule | new typed entity |
-| `finance.tag` | user tag | new typed entity |
-| `finance.transaction_tag` | many-to-many relation | new typed entity |
-| `finance.budget` | total/category budget | new typed entity |
-| `finance.transaction_attachment` | attachment metadata linked to a transaction | new typed entity |
-| `finance.transaction_evidence` | capture/import provenance | retain existing entity |
+## Compatibility
 
-All IDs are stable LifeTrace `EntityId` strings; the Android client must not introduce BeeCount auto-increment IDs as sync identity.
+- Existing v1 finance payloads remain readable.
+- Unknown Android forward fields are retained in the original sync JSON stored by Cloud.
+- New entity descriptors use the existing generic PostgreSQL sync repository; no finance business tables were added.
+- Existing push/pull/snapshot, conflict and tombstone algorithms were not forked.
+- Frozen v1 capabilities fixtures remain valid; historical entity types must stay a subset of the current registry.
 
-## 4. Field mapping decisions
+## Scope intentionally not copied from BeeCount
 
-### Ledger
+This pass does not add BeeCount Cloud, BeeCount authentication, shared/family ledger member mirror tables, AI conversation persistence or a separate cloud exchange-rate service. These features would require product-level collaboration/AI protocols rather than just bookkeeping-domain compatibility.
 
-`meta, name, currency, ledgerType, monthStartDay, sortOrder, isArchived`
+## Verification result
 
-For this pass `ledgerType` is `personal`; collaborative roles/member counts are intentionally excluded.
+Final code head before this documentation-only update: `98300e58ddccc6b1a305a04775251ac277917b8d`.
 
-### Account
+Relevant GitHub Actions results:
 
-Retain existing fields and add:
+- **EPIC-03 PostgreSQL #334 — success**
+  - contract tests
+  - Cloud tests
+  - Clippy production targets
+  - Docker build
+  - Compose PostgreSQL smoke test
+- **EPIC-05 Windows Sync #380 — success**
+  - Rustfmt
+  - contract tests
+  - pure sync-core tests
+  - desktop SQLite/adapter tests
+  - Clippy sync core + desktop library
+  - frontend build
+  - Windows core/desktop tests and frontend build
+  - Cloud PostgreSQL regression
+- **Browser Web #240 — success**
 
-`ledgerId, sortOrder, creditLimitCents, billingDay, paymentDueDay, bankName, note, isHidden`
+During verification, the existing Rust 1.88 formatting baseline was repaired with formatter-only changes in the affected desktop/cloud test files. No workflow diagnostics or temporary workflow permissions remain in the final PR.
 
-`last4` maps BeeCount `cardLastFour`. `openingBalanceCents` retains LifeTrace's integer-money convention rather than BeeCount `double initialBalance`.
+## Acceptance result
 
-### Category
-
-Retain `parentId`; add:
-
-`ledgerId, sortOrder, level, iconType, customIconFileId`
-
-The server does not persist a device-local file path. Custom icons refer to a LifeTrace file/entity ID when synchronized.
-
-### Transaction
-
-Retain all current transaction fields and add:
-
-`ledgerId, recurringTransactionId, excludeFromStats, excludeFromBudget, nativeAmountCents, nativeCurrency, exchangeRate, tag summary is NOT embedded`
-
-Tags are normalized through `finance.transaction_tag`. For transfers, the existing `transactionType=transfer`, `accountId`, `toAccountId` model is retained instead of creating a second transfer record type.
-
-Money stays integer cents on the wire. `nativeAmountCents` is the amount snapshot converted to the ledger base currency; account-local `amountCents` remains in `currency`.
-
-### Recurring transaction
-
-`meta, ledgerId, transactionType, amountCents, currency, categoryId, accountId, toAccountId, note, frequency, interval, dayOfMonth, dayOfWeek, monthOfYear, startDate, endDate, lastGeneratedDate, enabled`
-
-### Tag
-
-`meta, ledgerId, name, color, sortOrder, isArchived`
-
-### Transaction tag
-
-`meta, transactionId, tagId`
-
-### Budget
-
-`meta, ledgerId, budgetType(total|category), categoryId, amountCents, currency, period(monthly|weekly|yearly), startDay, enabled`
-
-### Transaction attachment
-
-`meta, transactionId, fileName, originalName, fileSize, width, height, sortOrder, fileId, sha256`
-
-This entity stores metadata only. Binary transport continues to use LifeTrace's existing file subsystem when available; no separate object-storage service is introduced here.
-
-## 5. Compatibility and migration rules
-
-1. Existing `finance.account/category/transaction/transaction_evidence` schema-v1 payloads must remain readable during rollout.
-2. New optional fields use sensible defaults so old data can be pulled by the new Android app.
-3. New typed entity descriptors are registered in `lifetrace-contracts::registry` and dispatched through `EntityPayload`.
-4. No new PostgreSQL business tables are required for these entities: the existing `sync_entities`/`sync_change_log` repository remains the source of sync persistence.
-5. Relationship dependencies are supplied in `SyncChangeV1.dependencies` where appropriate (ledger/account/category/transaction/tag), enabling the existing server dependency check.
-6. Android local profile IDs never replace cloud `meta.userId`; ownership still comes from authenticated principal.
-7. Deletions use existing tombstone semantics and server versions.
-
-## 6. Implementation order
-
-1. Extend `lifetrace-contracts` finance DTOs, entity constants, registry descriptors, payload dispatch and tests.
-2. Extend finance OpenAPI/JSON-schema exports only where generated/static contract artifacts require it.
-3. Keep `services/cloud` generic sync repository unchanged except for finance route exposure/tests where useful.
-4. Expand Android Room schema to v2 with a non-destructive v1->v2 migration.
-5. Expand Android DAO/repository and `SyncEngine.RemoteMapper` for all new entity types.
-6. Expand `LifeTraceContract.FINANCE_ENTITY_TYPES` so pull/snapshot includes the new entities.
-7. Add contract/migration/sync tests in both repositories.
-8. Run LifeTrace Rust/contract tests and Android/core tests in CI.
-9. Update this document with completion/test results before any merge to `main`.
-
-## 7. Acceptance criteria
-
-- Existing v1 Android database upgrades without data loss.
-- Existing LifeTrace finance data remains readable and syncable.
-- A ledger, account, nested category, transaction, transfer, recurring template, tag relation, budget and attachment metadata can round-trip through the existing LifeTrace sync service.
-- `excludeFromStats` changes statistics queries but not account balance semantics.
-- `excludeFromBudget` changes budget usage independently of `excludeFromStats`.
-- Hidden accounts remain part of balance/net-worth data but are excluded from normal account pickers.
-- No new cloud deployment/service is created.
-- CI/tests pass on both feature branches before merge.
+The Cloud side is ready for the paired Android implementation: the BeeCount-inspired bookkeeping entities synchronize through the existing LifeTrace Cloud and PostgreSQL sync repository without introducing a second backend.
