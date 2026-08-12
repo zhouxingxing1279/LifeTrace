@@ -22,7 +22,12 @@ fn memory_app() -> Router {
     }))
 }
 
-async fn request(app: Router, method: Method, uri: &str, token: Option<&str>) -> axum::response::Response {
+async fn request(
+    app: Router,
+    method: Method,
+    uri: &str,
+    token: Option<&str>,
+) -> axum::response::Response {
     let mut builder = Request::builder().method(method).uri(uri);
     if let Some(token) = token {
         builder = builder.header("authorization", format!("Bearer {token}"));

@@ -37,9 +37,7 @@ fn golden_push_success_parses() {
     let response: PushResponseV1 = serde_json::from_value(fixture("push-success.json")).unwrap();
     assert_eq!(response.latest_cursor.as_str(), "42");
     match &response.results[0] {
-        PushChangeResultV1::Accepted { server_version, .. } => {
-            assert_eq!(server_version.as_str(), "42");
-        }
+        PushChangeResultV1::Accepted { server_version, .. } => assert_eq!(server_version.as_str(), "42"),
         other => panic!("expected accepted, got {other:?}"),
     }
 }
@@ -73,10 +71,7 @@ fn golden_pull_response_parses() {
     let delete = &response.changes[1];
     assert_eq!(delete.operation.as_str(), ChangeOperation::DELETE);
     assert!(delete.tombstone.is_some());
-    assert_eq!(
-        delete.tombstone.as_ref().unwrap().server_version.as_str(),
-        "12"
-    );
+    assert_eq!(delete.tombstone.as_ref().unwrap().server_version.as_str(), "12");
 }
 
 #[test]
@@ -88,8 +83,7 @@ fn golden_tombstone_parses() {
 
 #[test]
 fn golden_snapshot_page_parses() {
-    let response: SnapshotResponseV1 =
-        serde_json::from_value(fixture("snapshot-page.json")).unwrap();
+    let response: SnapshotResponseV1 = serde_json::from_value(fixture("snapshot-page.json")).unwrap();
     assert_eq!(response.snapshot_cursor.as_str(), "100");
     assert_eq!(response.items.len(), 1);
     assert_eq!(response.next_page_token.as_deref(), Some("page-1"));
@@ -106,22 +100,28 @@ fn golden_error_response_parses() {
 
 #[test]
 fn golden_capabilities_parses() {
-    let capabilities: CapabilitiesResponseV1 =
-        serde_json::from_value(fixture("capabilities.json")).unwrap();
+    let capabilities: CapabilitiesResponseV1 = serde_json::from_value(fixture("capabilities.json")).unwrap();
     assert_eq!(capabilities.protocol_version, 1);
     assert_eq!(capabilities.maximum_push_batch_size, 500);
     assert_eq!(capabilities.maximum_atomic_group_size, 50);
     assert_eq!(capabilities.tombstone_retention_days, 90);
+    // Frozen v1 fixture intentionally keeps the historical capability list.
     assert_eq!(capabilities.supported_entity_types.len(), 44);
 }
 
 #[test]
-fn golden_capabilities_matches_registry() {
-    let capabilities: CapabilitiesResponseV1 =
-        serde_json::from_value(fixture("capabilities.json")).unwrap();
-    let registered: Vec<String> = lifetrace_contracts::registry::REGISTRY
+fn golden_capabilities_remain_a_supported_registry_subset() {
+    let capabilities: CapabilitiesResponseV1 = serde_json::from_value(fixture("capabilities.json")).unwrap();
+    let registered: std::collections::HashSet<&str> = lifetrace_contracts::registry::REGISTRY
         .iter()
-        .map(|descriptor| descriptor.entity_type.to_owned())
+        .map(|descriptor| descriptor.entity_type)
         .collect();
-    assert_eq!(capabilities.supported_entity_types, registered);
+    for entity_type in &capabilities.supported_entity_types {
+        assert!(
+            registered.contains(entity_type.as_str()),
+            "frozen capability {entity_type} must remain registered"
+        );
+    }
+    assert!(registered.contains(EntityType::FINANCE_LEDGER));
+    assert!(registered.contains(EntityType::FINANCE_BUDGET));
 }

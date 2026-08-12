@@ -590,32 +590,38 @@ pub fn save_category(connection: &Connection, dto: &Value) -> Result<(), String>
         .map(str::to_owned)
         .unwrap_or_else(|| Uuid::new_v4().to_string());
     let stamp = now();
-    connection.execute(
-        "INSERT INTO transaction_categories(
+    connection
+        .execute(
+            "INSERT INTO transaction_categories(
            id,user_id,name,category_type,parent_id,icon,color,is_system,is_archived,
            created_at,updated_at,deleted_at,version
          ) VALUES(?1,?2,?3,?4,NULL,?5,?6,0,0,?7,?7,NULL,1)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, category_type=excluded.category_type,
            icon=excluded.icon, color=excluded.color, is_archived=0, deleted_at=NULL,
            updated_at=excluded.updated_at, version=transaction_categories.version+1",
-        params![
-            id,
-            user_id,
-            name,
-            category_type,
-            optional_text(object, "icon"),
-            optional_text(object, "color"),
-            stamp,
-        ],
-    ).map(|_| ()).map_err(|error| error.to_string())
+            params![
+                id,
+                user_id,
+                name,
+                category_type,
+                optional_text(object, "icon"),
+                optional_text(object, "color"),
+                stamp,
+            ],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 pub fn delete_category(connection: &Connection, id: &str) -> Result<(), String> {
-    connection.execute(
-        "UPDATE transaction_categories SET is_archived=1, updated_at=?1, version=version+1
+    connection
+        .execute(
+            "UPDATE transaction_categories SET is_archived=1, updated_at=?1, version=version+1
          WHERE id=?2 AND is_system=0",
-        params![now(), id],
-    ).map(|_| ()).map_err(|error| error.to_string())
+            params![now(), id],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
 }
 
 fn existing_version(connection: &Connection, table: &str, id: &str) -> Result<i64, String> {
