@@ -35,6 +35,7 @@ fn client() -> SyncClientInfo {
 fn transaction_payload() -> Transaction {
     Transaction {
         meta: meta("tx-1"),
+        ledger_id: Some(EntityId::new("ledger-default")),
         transaction_type: TransactionType::new(TransactionType::EXPENSE),
         amount_cents: 12525,
         currency: CurrencyCode::cny(),
@@ -50,6 +51,12 @@ fn transaction_payload() -> Transaction {
         status: TransactionStatus::new(TransactionStatus::CONFIRMED),
         source_type: "manual".to_owned(),
         external_transaction_id: None,
+        recurring_transaction_id: None,
+        exclude_from_stats: false,
+        exclude_from_budget: false,
+        native_amount_cents: Some(12525),
+        native_currency: Some(CurrencyCode::cny()),
+        exchange_rate: Some("1".to_owned()),
     }
 }
 
@@ -83,6 +90,7 @@ fn sync_change_v1_round_trips_with_camel_case() {
     let payload = &json["payload"];
     assert_eq!(payload["amountCents"], 12525);
     assert_eq!(payload["transactionType"], "expense");
+    assert_eq!(payload["ledgerId"], "ledger-default");
 
     let back: SyncChangeV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, change);
@@ -180,10 +188,7 @@ fn pull_response_with_tombstone_round_trips() {
     let json = serde_json::to_value(&response).unwrap();
     assert_eq!(json["changes"][0]["operation"], "delete");
     assert_eq!(json["changes"][0]["tombstone"]["serverVersion"], "9");
-    assert_eq!(
-        json["changes"][0]["tombstone"]["deletedByDevice"],
-        "device-2"
-    );
+    assert_eq!(json["changes"][0]["tombstone"]["deletedByDevice"], "device-2");
     let back: PullResponseV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, response);
 }
@@ -207,7 +212,7 @@ fn snapshot_response_round_trips() {
     let json = serde_json::to_value(&response).unwrap();
     assert_eq!(json["snapshotCursor"], "100");
     assert_eq!(json["nextPageToken"], "page-2");
-    assert_eq!(json["completed"], false);
+    assert!(!json["completed"].as_bool().unwrap());
     let back: SnapshotResponseV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, response);
 }
@@ -222,6 +227,8 @@ fn capabilities_round_trip_with_defaults() {
     assert_eq!(json["tombstoneRetentionDays"], 90);
     let supported = json["supportedEntityTypes"].as_array().unwrap();
     assert!(supported.iter().any(|value| value == "finance.transaction"));
+    assert!(supported.iter().any(|value| value == "finance.ledger"));
+    assert!(supported.iter().any(|value| value == "finance.budget"));
     assert!(supported.iter().any(|value| value == "english.article"));
     let back: CapabilitiesResponseV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, capabilities);
@@ -230,9 +237,7 @@ fn capabilities_round_trip_with_defaults() {
 #[test]
 fn unknown_fields_are_ignored() {
     let mut json = serde_json::to_value(change()).unwrap();
-    json.as_object_mut()
-        .unwrap()
-        .insert("futureField".to_owned(), serde_json::json!({"x": 1}));
+    json.as_object_mut().unwrap().insert("futureField".to_owned(), serde_json::json!({"x": 1}));
     let back: SyncChangeV1 = serde_json::from_value(json).unwrap();
     assert_eq!(back, change());
 }
