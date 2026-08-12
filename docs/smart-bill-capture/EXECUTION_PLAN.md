@@ -74,6 +74,8 @@
 
 原始图片只存在于 Android MediaStore 或 app 临时缓存。LifeTrace Sync 不包含图片。
 
+如果用户在尚未配置 Vision API Key 时先分享截图，Android 会把临时缓存路径保存在 App 私有 `PendingShareStore`；该路径不会通过 exported Activity 的 Intent extra 暴露。保存 Vision 配置后一次性 consume 并继续识别，新的 pending 图片会清理旧临时文件。
+
 ## 3. BeeCount 架构映射
 
 LifeTrace Android 使用原生 Kotlin 重写以下职责，不复制 BeeCount Dart/Kotlin 源码：
@@ -94,6 +96,8 @@ BillCreationService            -> BillCreationService
 processed screenshot memory    -> ProcessedImageStore
 ```
 
+`PendingShareStore` 是 LifeTrace 为 Android exported 设置入口额外增加的私有安全交接层，不改变 BeeCount 主识别管线。
+
 ## 4. Android Vision Provider
 
 默认内置配置：
@@ -111,7 +115,8 @@ visionModel = glm-4v-flash
 - Key 不写 BuildConfig、源码、Room、Outbox 或 Cloud；
 - Provider 请求使用现有 OkHttp；
 - 图片以 Base64 放入 Vision `image_url` content；
-- 最大图片 10 MiB；支持 PNG/JPEG/WebP。
+- 最大图片 10 MiB；支持 PNG/JPEG/WebP；
+- 实际 HTTP 调用由 `AutoBillingService` 的 `Dispatchers.IO` 协程域发起，不阻塞主线程。
 
 ## 5. Screenshot Monitor
 
@@ -125,7 +130,8 @@ visionModel = glm-4v-flash
 - Android 13+ 使用 `READ_MEDIA_IMAGES`；
 - Android 12 及以下使用 `READ_EXTERNAL_STORAGE`；
 - 第一版为进程生命周期监听，不使用永久 foreground service；
-- 分享图片入口不依赖媒体读取权限，是稳定 fallback。
+- 分享图片入口不依赖媒体读取权限，是稳定 fallback；
+- MediaStore 按 `DATE_ADDED DESC` 排序并读取第一条，不在 sortOrder 拼接非标准 `LIMIT`。
 
 ## 6. 自动记账
 
@@ -203,7 +209,8 @@ Android 只同步最终正常财务实体，其他端继续使用既有 Finance 
 - 图片 Base64；
 - Vision API Key；
 - Provider 完整原始响应；
-- 已处理图片 hash 列表。
+- 已处理图片 hash 列表；
+- pending-share 本地文件路径。
 
 ## 11. 测试门禁
 
@@ -218,7 +225,7 @@ gradle --no-daemon :app:assembleRelease
 gradle --no-daemon :app:connectedDebugAndroidTest
 ```
 
-新增单测覆盖 bill guard、JSON 容错、金额/类型/时间/置信度、transfer 账户语义、非账单空数组以及截图文件名/路径检测。
+新增单测覆盖 bill guard、JSON 容错、金额/类型/时间/置信度、transfer 账户语义、非账单空数组以及截图文件名/路径检测；Android API 34 instrumentation 额外验证 Vision API Key 可以经 AndroidKeyStore 加密往返。
 
 `LifeTrace` 主仓库只有文档边界更新，不新增业务代码；合并前仍检查分支 diff 确保没有 Cloud Vision 残留。
 
