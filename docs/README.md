@@ -18,6 +18,7 @@
 docs/
 ├── README.md
 ├── roadmap.md
+├── phase-2-roadmap.md
 ├── project-completion-status-YYYY-MM-DD.md
 ├── windows-release.md
 ├── epic-xx/
@@ -43,6 +44,12 @@ epic-xx/
 ```
 
 只创建当前 Epic 实际需要的文件，不要求每个目录包含全部类型。
+
+## 产品规划入口
+
+- `docs/roadmap.md`：LifeTrace 一期完整产品与开发路线图；覆盖基础架构、多端同步、核心业务模块、云端服务和轻量 AI 管家。
+- `docs/phase-2-roadmap.md`：LifeTrace 二期产品与开发路线图；重点将一期已有能力深化为可长期使用的完整业务闭环。
+- `docs/epic-33/README.md`：二期 EPIC-33“英语学习闭环 2.0”的产品范围与规划权威入口。
 
 ## 当前重点规划入口
 
