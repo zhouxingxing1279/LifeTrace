@@ -81,37 +81,6 @@ pub struct TransactionEvidence {
     pub confidence: Option<f64>,
 }
 
-/// One bill candidate extracted from a payment screenshot.
-///
-/// Capture results intentionally contain human-readable account/category hints
-/// instead of durable entity IDs. Every client resolves those hints against its
-/// own synchronized finance data before creating a transaction.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub struct FinanceCaptureBill {
-    pub amount_cents: i64,
-    pub currency: CurrencyCode,
-    pub transaction_type: TransactionType,
-    pub merchant: Option<String>,
-    pub item: Option<String>,
-    pub occurred_at: Option<UtcTimestamp>,
-    pub account_hint: Option<String>,
-    pub category_hint: Option<String>,
-    pub external_transaction_id: Option<String>,
-    pub confidence: Option<f64>,
-}
-
-/// Response returned by the command-style image capture API.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, TS)]
-#[serde(rename_all = "camelCase")]
-#[ts(rename_all = "camelCase")]
-pub struct FinanceCaptureResponse {
-    pub provider: String,
-    pub model: String,
-    pub bills: Vec<FinanceCaptureBill>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -162,30 +131,5 @@ mod tests {
         assert!(json.get("amount").is_none(), "no float amount on the wire");
         let back: Transaction = serde_json::from_value(json).unwrap();
         assert_eq!(back, transaction);
-    }
-
-    #[test]
-    fn finance_capture_wire_is_stable_and_uses_hints() {
-        let response = FinanceCaptureResponse {
-            provider: "zhipu".to_owned(),
-            model: "glm-4v-flash".to_owned(),
-            bills: vec![FinanceCaptureBill {
-                amount_cents: 2850,
-                currency: CurrencyCode::cny(),
-                transaction_type: TransactionType::new(TransactionType::EXPENSE),
-                merchant: Some("瑞幸咖啡".to_owned()),
-                item: None,
-                occurred_at: Some(stamp()),
-                account_hint: Some("招商银行储蓄卡".to_owned()),
-                category_hint: Some("餐饮".to_owned()),
-                external_transaction_id: None,
-                confidence: Some(0.92),
-            }],
-        };
-        let json = serde_json::to_value(&response).unwrap();
-        assert_eq!(json["bills"][0]["amountCents"], 2850);
-        assert_eq!(json["bills"][0]["transactionType"], "expense");
-        assert_eq!(json["bills"][0]["accountHint"], "招商银行储蓄卡");
-        assert!(json["bills"][0].get("accountId").is_none());
     }
 }
