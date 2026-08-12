@@ -14,7 +14,7 @@ on:
       - ".github/workflows/epic03-postgres.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   test:
@@ -41,6 +41,13 @@ jobs:
       RUST_BACKTRACE: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Checkout finance feature head for formatter
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/beecount-domain-model'
+        run: |
+          git fetch origin "$GITHUB_HEAD_REF"
+          git checkout -B "$GITHUB_HEAD_REF" FETCH_HEAD
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
@@ -52,21 +59,18 @@ jobs:
             crates/lifetrace-contracts
       - name: Format validation workspace
         run: cargo fmt --manifest-path services/cloud/Cargo.toml
-      - name: Contract tests
-        shell: bash
+      - name: Persist rustfmt on finance feature branch
+        if: github.event_name == 'pull_request' && github.head_ref == 'feature/beecount-domain-model'
         run: |
-          set +e
-          cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml 2>&1 | tee contract-tests.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            python3 - <<'PY'
-          from pathlib import Path
-          text = Path("contract-tests.log").read_text(errors="replace")[-12000:]
-          text = text.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
-          print(f"::error title=Contract test failure::{text}")
-          PY
-            exit "$status"
+          if ! git diff --quiet -- ':(glob)**/*.rs'; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- ':(glob)**/*.rs'
+            git commit -m "style: apply rustfmt"
+            git push origin "HEAD:$GITHUB_HEAD_REF"
           fi
+      - name: Contract tests
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
       - name: Cloud tests
         run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
       - name: Clippy production targets
