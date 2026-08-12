@@ -1,0 +1,34 @@
+name: Temporary Finance Rustfmt
+
+on:
+  push:
+    branches:
+      - feature/beecount-domain-model
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Apply exact EPIC-05 formatters
+        run: |
+          cargo fmt --manifest-path crates/lifetrace-sync-client/Cargo.toml
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+      - name: Commit formatting changes
+        run: |
+          if ! git diff --quiet -- ':(glob)**/*.rs'; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -- ':(glob)**/*.rs'
+            git commit -m "style: satisfy EPIC-05 rustfmt"
+            git push origin "HEAD:feature/beecount-domain-model"
+          fi
