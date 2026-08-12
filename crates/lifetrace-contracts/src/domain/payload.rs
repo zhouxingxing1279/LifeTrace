@@ -209,6 +209,7 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
                 .and_then(|meta| meta.get("id"))
                 .and_then(|id| id.as_str())
                 .filter(|id| !id.is_empty())
+                .map(str::to_owned)
                 .ok_or_else(|| format!("invalid {entity_type} payload: meta.id is required"))?;
             Ok(EntityPayload::RegisteredJson {
                 entity_type,
