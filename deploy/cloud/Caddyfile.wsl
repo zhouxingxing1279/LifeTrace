@@ -2,10 +2,15 @@
 # Plain HTTP on :8080. No public domain, no TLS.
 {
     admin off
+    log {
+        output stdout
+        format console
+    }
 }
 
 :8080 {
     encode zstd gzip
+    log
 
     # BeeCount Cloud exposes /ready directly; delegate readiness to LifeTrace.
     handle /ready {
