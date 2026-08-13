@@ -15,9 +15,9 @@ use crate::beecount_collaboration::{
 use crate::beecount_compat::{
     beecount_payload, beecount_wire_id, canonical_payload, clamp_client_updated_at,
     incoming_clock_wins, lifetrace_entity_id, BeeCountBoundaryError, BeeCountConflictSample,
-    BeeCountEntityKind, BeeCountScope, BeeCountSyncChangeOut, BeeCountSyncFullResponse,
-    BeeCountSyncLedgerOut, BeeCountSyncPullResponse, BeeCountSyncPushRequest,
-    BeeCountSyncPushResponse, USER_GLOBAL_LEDGER_SENTINEL,
+    BeeCountEntityKind, BeeCountReadLedgerOut, BeeCountScope, BeeCountSyncChangeOut,
+    BeeCountSyncFullResponse, BeeCountSyncLedgerOut, BeeCountSyncPullResponse,
+    BeeCountSyncPushRequest, BeeCountSyncPushResponse, USER_GLOBAL_LEDGER_SENTINEL,
 };
 use crate::error::ApiError;
 
@@ -447,6 +447,7 @@ impl BeeCountSyncService {
                         "source": "lifetrace-postgresql",
                         "ledgerName": payload.get("name"),
                         "currency": payload.get("currency"),
+                        "monthStartDay": payload.get("monthStartDay"),
                     }),
                     role: row
                         .try_get::<Option<String>, _>("role")
@@ -456,6 +457,83 @@ impl BeeCountSyncService {
                 })
             })
             .collect()
+    }
+
+    /// `GET /api/v1/read/ledgers` facade: same ledger access as the sync
+    /// listing, enriched with the transaction stats the stock BeeCount client
+    /// expects on the read namespace.
+    pub async fn read_ledgers(
+        &self,
+        user_id: &UserId,
+    ) -> Result<Vec<BeeCountReadLedgerOut>, ApiError> {
+        let base = self.ledgers(user_id).await?;
+        let mut out = Vec::with_capacity(base.len());
+        for ledger in base {
+            let ledger_id = ledger.ledger_id.clone();
+            let stats = sqlx::query(
+                "SELECT \
+                   COALESCE(SUM(CASE WHEN payload->>'transactionType' = 'income' \
+                                     THEN (payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
+                     AS income_cents, \
+                   COALESCE(SUM(CASE WHEN payload->>'transactionType' = 'expense' \
+                                     THEN (payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
+                     AS expense_cents, \
+                   COUNT(*)::bigint AS tx_count \
+                 FROM sync_entities \
+                 WHERE entity_type='finance.transaction' AND is_deleted=FALSE \
+                   AND payload->>'beecountLedgerId' = $1",
+            )
+            .bind(&ledger_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_error)?;
+            let income_cents: i64 = stats.try_get("income_cents").unwrap_or(0).max(0);
+            let expense_cents: i64 = stats.try_get("expense_cents").unwrap_or(0).max(0);
+            let transaction_count: i64 = stats.try_get("tx_count").unwrap_or(0).max(0);
+
+            let member_count: i64 = sqlx::query_scalar(
+                "SELECT COUNT(*)::BIGINT FROM beecount_ledger_members WHERE ledger_id=$1",
+            )
+            .bind(&ledger_id)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(db_error)?;
+
+            let metadata = &ledger.metadata;
+            let ledger_name = metadata
+                .get("ledgerName")
+                .and_then(Value::as_str)
+                .unwrap_or(&ledger_id)
+                .to_owned();
+            let currency = metadata
+                .get("currency")
+                .and_then(Value::as_str)
+                .unwrap_or("CNY")
+                .to_owned();
+            let month_start_day = metadata
+                .get("monthStartDay")
+                .and_then(Value::as_i64)
+                .unwrap_or(1);
+            let income_total = income_cents as f64 / 100.0;
+            let expense_total = expense_cents as f64 / 100.0;
+
+            out.push(BeeCountReadLedgerOut {
+                ledger_id,
+                ledger_name,
+                currency,
+                month_start_day,
+                transaction_count,
+                income_total,
+                expense_total,
+                balance: income_total - expense_total,
+                exported_at: None,
+                updated_at: ledger.updated_at.unwrap_or_else(Utc::now),
+                role: ledger.role,
+                is_shared: member_count > 1,
+                member_count,
+            });
+        }
+        Ok(out)
     }
 
     pub async fn full(

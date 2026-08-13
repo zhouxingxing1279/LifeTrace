@@ -19,9 +19,9 @@ use uuid::Uuid;
 use crate::auth::security::{PeerAddr, RequestContext};
 use crate::auth::AuthenticatedPrincipal;
 use crate::beecount_compat::{
-    BeeCountEntityKind, BeeCountScope, BeeCountSyncFullResponse, BeeCountSyncLedgerOut,
-    BeeCountSyncPullResponse, BeeCountSyncPushRequest, BeeCountSyncPushResponse,
-    USER_GLOBAL_LEDGER_SENTINEL,
+    BeeCountEntityKind, BeeCountReadLedgerOut, BeeCountScope, BeeCountSyncFullResponse,
+    BeeCountSyncLedgerOut, BeeCountSyncPullResponse, BeeCountSyncPushRequest,
+    BeeCountSyncPushResponse, USER_GLOBAL_LEDGER_SENTINEL,
 };
 use crate::beecount_sync::BeeCountSyncService;
 use crate::error::ApiError;
@@ -40,6 +40,31 @@ pub fn router() -> Router<AppState> {
         .route(&format!("{PREFIX}/sync/pull"), get(sync_pull))
         .route(&format!("{PREFIX}/sync/ledgers"), get(sync_ledgers))
         .route(&format!("{PREFIX}/sync/full"), get(sync_full))
+        .route(&format!("{PREFIX}/version"), get(version))
+        .route(&format!("{PREFIX}/read/ledgers"), get(read_ledgers))
+}
+
+/// Stock BeeCount clients probe `GET /api/v1/version` on startup; mirror the
+/// legacy BeeCount Cloud response so the compatibility check passes.
+async fn version() -> Json<serde_json::Value> {
+    Json(serde_json::json!({
+        "name": "BeeCount Cloud",
+        "version": "1.6.3",
+    }))
+}
+
+/// Read-namespace ledger listing used by stock BeeCount clients
+/// (`GET /api/v1/read/ledgers`).
+async fn read_ledgers(
+    State(state): State<AppState>,
+    principal: AuthenticatedPrincipal,
+) -> Result<Json<Vec<BeeCountReadLedgerOut>>, ApiError> {
+    ensure_beecount_principal(&principal)?;
+    principal.require_scope("sync:read")?;
+    BeeCountSyncService::new(state.pool.clone())
+        .read_ledgers(&principal.user_id)
+        .await
+        .map(Json)
 }
 
 #[allow(dead_code)]

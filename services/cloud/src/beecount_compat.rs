@@ -161,6 +161,25 @@ pub struct BeeCountSyncLedgerOut {
     pub role: String,
 }
 
+/// Read-namespace ledger row exposed by the original BeeCount Cloud
+/// `GET /api/v1/read/ledgers` endpoint (OpenAPI `ReadLedgerOut`).
+#[derive(Debug, Clone, Serialize)]
+pub struct BeeCountReadLedgerOut {
+    pub ledger_id: String,
+    pub ledger_name: String,
+    pub currency: String,
+    pub month_start_day: i64,
+    pub transaction_count: i64,
+    pub income_total: f64,
+    pub expense_total: f64,
+    pub balance: f64,
+    pub exported_at: Option<DateTime<Utc>>,
+    pub updated_at: DateTime<Utc>,
+    pub role: String,
+    pub is_shared: bool,
+    pub member_count: i64,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct BeeCountSyncFullResponse {
     pub ledger_id: String,
