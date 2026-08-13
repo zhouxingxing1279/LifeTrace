@@ -15,3 +15,8 @@
         file_server
     }
 }
+
+{$BEECOUNT_DOMAIN:finance.8-148-75-45.sslip.io} {
+    encode zstd gzip
+    reverse_proxy beecount-cloud:8080
+}

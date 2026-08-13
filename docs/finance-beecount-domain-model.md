@@ -8,7 +8,11 @@ Android client: `zhouxingxing1279/LifeTrace-finance`
 
 ## Architecture decision
 
-LifeTrace Cloud remains the **only backend**. This work does not introduce a new finance cloud, authentication system, sync protocol, database service, or BeeCount Cloud dependency.
+LifeTrace Cloud remains the **only backend used by native LifeTrace clients**.
+The optional production deployment now also includes BeeCount Cloud as a
+protocol-compatibility boundary for the already-built BeeCount iOS application;
+see `docs/beecount-cloud-integration/`. It has isolated persistence and does not
+replace or fork the LifeTrace sync path described below.
 
 The production path remains:
 
@@ -58,7 +62,12 @@ LifeTrace conventions take precedence over BeeCount implementation details:
 
 ## Scope intentionally not copied from BeeCount
 
-This pass does not add BeeCount Cloud, BeeCount authentication, shared/family ledger member mirror tables, AI conversation persistence or a separate cloud exchange-rate service. These features would require product-level collaboration/AI protocols rather than just bookkeeping-domain compatibility.
+This domain-model pass does not reimplement BeeCount's sync protocol, shared
+ledger mirror tables, AI conversation persistence or a separate cloud
+exchange-rate service. The isolated compatibility container remains the
+BeeCount protocol owner. Phase 2 now adds a Rust read adapter and LifeTrace Web
+view without copying BeeCount rows into LifeTrace PostgreSQL; bidirectional
+writes and unified persistence remain Phase 3 work.
 
 ## Verification result
 

@@ -44,6 +44,7 @@ pub fn supported_app(app_id: &str) -> bool {
             | AppId::NOTES_ANDROID
             | AppId::ENGLISH_ANDROID
             | AppId::HABITS_ANDROID
+            | AppId::BEECOUNT
             | AppId::WEB
     )
 }
@@ -86,6 +87,17 @@ pub fn allowed_scopes(app_id: &str) -> BTreeSet<String> {
             "habits:write",
             "reviews:read",
             "reviews:write",
+        ],
+        AppId::BEECOUNT => &[
+            "account:read",
+            "devices:read",
+            "devices:write",
+            "sync:read",
+            "sync:write",
+            "finance:read",
+            "finance:write",
+            "files:read",
+            "files:write",
         ],
         AppId::WEB => ALL_SCOPES,
         _ => &[],

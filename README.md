@@ -159,6 +159,12 @@ npm run dev
 docker compose -f deploy/cloud/docker-compose.local.yml --profile cloud up -d --build
 ```
 
+生产环境可同时启用 BeeCount Cloud 兼容入口，让现成 BeeCount iOS 客户端连接
+同一台服务器。配置与数据边界见
+[`docs/beecount-cloud-integration/deployment.md`](docs/beecount-cloud-integration/deployment.md)。
+启用第二阶段只读适配器后，LifeTrace 浏览器端可在
+`/finance/beecount` 内直接查看 BeeCount 账本、交易、账户、分类、标签和预算。
+
 启动浏览器客户端：
 
 ```powershell

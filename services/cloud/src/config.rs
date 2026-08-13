@@ -1,6 +1,26 @@
 //! Strongly typed cloud and authentication configuration.
 
-use std::net::SocketAddr;
+use std::fmt;
+use std::net::{IpAddr, SocketAddr};
+
+#[derive(Clone)]
+pub struct SecretString(String);
+
+impl SecretString {
+    pub fn new(value: impl Into<String>) -> Self {
+        Self(value.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for SecretString {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("SecretString([REDACTED])")
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -57,6 +77,15 @@ pub struct Config {
     pub maintenance_interval_seconds: u64,
     pub graceful_shutdown_seconds: u64,
     pub retention_entries: usize,
+
+    pub beecount_adapter_enabled: bool,
+    pub beecount_adapter_base_url: String,
+    pub beecount_adapter_email: Option<String>,
+    pub beecount_adapter_password: Option<SecretString>,
+    pub beecount_adapter_lifetrace_user_id: Option<String>,
+    pub beecount_adapter_timeout_seconds: u64,
+    pub beecount_adapter_max_response_bytes: usize,
+    pub beecount_attachment_max_upload_bytes: usize,
 }
 
 impl Default for Config {
@@ -110,6 +139,14 @@ impl Default for Config {
             maintenance_interval_seconds: 300,
             graceful_shutdown_seconds: 10,
             retention_entries: 1000,
+            beecount_adapter_enabled: false,
+            beecount_adapter_base_url: "http://beecount-cloud:8080/".to_owned(),
+            beecount_adapter_email: None,
+            beecount_adapter_password: None,
+            beecount_adapter_lifetrace_user_id: None,
+            beecount_adapter_timeout_seconds: 10,
+            beecount_adapter_max_response_bytes: 8 * 1024 * 1024,
+            beecount_attachment_max_upload_bytes: 64 * 1024 * 1024,
         }
     }
 }
@@ -213,6 +250,25 @@ impl Config {
         c.graceful_shutdown_seconds =
             env_u64("GRACEFUL_SHUTDOWN_SECONDS", c.graceful_shutdown_seconds);
         c.retention_entries = env_usize("LIFETRACE_RETENTION_ENTRIES", c.retention_entries);
+        c.beecount_adapter_enabled =
+            env_bool("BEECOUNT_ADAPTER_ENABLED", c.beecount_adapter_enabled);
+        c.beecount_adapter_base_url =
+            env_string("BEECOUNT_ADAPTER_BASE_URL", &c.beecount_adapter_base_url);
+        c.beecount_adapter_email = env_var("BEECOUNT_ADAPTER_EMAIL");
+        c.beecount_adapter_password = env_var("BEECOUNT_ADAPTER_PASSWORD").map(SecretString::new);
+        c.beecount_adapter_lifetrace_user_id = env_var("BEECOUNT_ADAPTER_LIFETRACE_USER_ID");
+        c.beecount_adapter_timeout_seconds = env_u64(
+            "BEECOUNT_ADAPTER_TIMEOUT_SECONDS",
+            c.beecount_adapter_timeout_seconds,
+        );
+        c.beecount_adapter_max_response_bytes = env_usize(
+            "BEECOUNT_ADAPTER_MAX_RESPONSE_BYTES",
+            c.beecount_adapter_max_response_bytes,
+        );
+        c.beecount_attachment_max_upload_bytes = env_usize(
+            "BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES",
+            c.beecount_attachment_max_upload_bytes,
+        );
         c
     }
 
@@ -246,6 +302,12 @@ impl Config {
         if self.auth_refresh_idle_ttl_seconds > self.auth_refresh_absolute_ttl_seconds {
             return Err("refresh idle TTL must not exceed absolute TTL".to_owned());
         }
+        if !(1024..=128 * 1024 * 1024).contains(&self.beecount_attachment_max_upload_bytes) {
+            return Err(
+                "BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES must be between 1 KiB and 128 MiB".to_owned(),
+            );
+        }
+        self.validate_beecount_adapter()?;
         if self.is_production() {
             if self.dev_auth_enabled {
                 return Err("production must not enable DEV_AUTH".to_owned());
@@ -279,6 +341,66 @@ impl Config {
                     "production must not use the console password reset notifier".to_owned(),
                 );
             }
+        }
+        Ok(())
+    }
+
+    fn validate_beecount_adapter(&self) -> Result<(), String> {
+        if !self.beecount_adapter_enabled {
+            return Ok(());
+        }
+        if self
+            .beecount_adapter_email
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+            || self
+                .beecount_adapter_password
+                .as_ref()
+                .map(SecretString::expose)
+                .unwrap_or_default()
+                .is_empty()
+            || self
+                .beecount_adapter_lifetrace_user_id
+                .as_deref()
+                .unwrap_or_default()
+                .is_empty()
+        {
+            return Err(
+                "enabled BeeCount adapter requires email, password and bound LifeTrace user ID"
+                    .to_owned(),
+            );
+        }
+        if self.beecount_adapter_timeout_seconds == 0
+            || self.beecount_adapter_max_response_bytes < 1024
+        {
+            return Err("BeeCount adapter timeout and response limit must be positive".to_owned());
+        }
+        let url = url::Url::parse(&self.beecount_adapter_base_url)
+            .map_err(|_| "BEECOUNT_ADAPTER_BASE_URL must be an absolute URL".to_owned())?;
+        if !matches!(url.path(), "" | "/")
+            || url.query().is_some()
+            || url.fragment().is_some()
+            || !url.username().is_empty()
+            || url.password().is_some()
+        {
+            return Err(
+                "BEECOUNT_ADAPTER_BASE_URL cannot contain a path, credentials, query or fragment"
+                    .to_owned(),
+            );
+        }
+        let private_http = url.scheme() == "http"
+            && url.host_str().is_some_and(|host| {
+                host == "beecount-cloud"
+                    || host == "localhost"
+                    || host
+                        .parse::<IpAddr>()
+                        .is_ok_and(|address| address.is_loopback())
+            });
+        if !private_http {
+            return Err(
+                "BeeCount adapter requires private beecount-cloud/loopback HTTP".to_owned(),
+            );
         }
         Ok(())
     }
@@ -369,5 +491,61 @@ mod tests {
             ..Config::default()
         };
         assert!(config.validate().unwrap_err().contains("PEPPER"));
+    }
+
+    #[test]
+    fn beecount_adapter_requires_credentials_and_user_binding() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            beecount_adapter_enabled: true,
+            ..Config::default()
+        };
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("email, password and bound LifeTrace user ID"));
+    }
+
+    #[test]
+    fn beecount_adapter_allows_private_docker_http() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            beecount_adapter_enabled: true,
+            beecount_adapter_email: Some("bridge@example.com".to_owned()),
+            beecount_adapter_password: Some(SecretString::new("secret")),
+            beecount_adapter_lifetrace_user_id: Some("user-a".to_owned()),
+            ..Config::default()
+        };
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn beecount_adapter_rejects_public_plaintext_credentials() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            beecount_adapter_enabled: true,
+            beecount_adapter_base_url: "http://finance.example.com".to_owned(),
+            beecount_adapter_email: Some("bridge@example.com".to_owned()),
+            beecount_adapter_password: Some(SecretString::new("secret")),
+            beecount_adapter_lifetrace_user_id: Some("user-a".to_owned()),
+            ..Config::default()
+        };
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("requires private beecount-cloud/loopback HTTP"));
+    }
+
+    #[test]
+    fn beecount_attachment_limit_is_bounded() {
+        let config = Config {
+            database_url: Some("postgres://user:password@localhost/lifetrace".to_owned()),
+            beecount_attachment_max_upload_bytes: 129 * 1024 * 1024,
+            ..Config::default()
+        };
+        assert!(config
+            .validate()
+            .unwrap_err()
+            .contains("BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES"));
     }
 }

@@ -1,5 +1,7 @@
 //! Sync protocol v1 endpoints with application-scope authorization.
 
+use std::collections::BTreeSet;
+
 use axum::extract::State;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::routing::{get, post};
@@ -14,6 +16,7 @@ use lifetrace_contracts::{EntityType, ErrorCode};
 use crate::auth::scope;
 use crate::auth::security::cookie_value;
 use crate::auth::{AuthCredential, AuthenticatedPrincipal};
+use crate::beecount_compat::{beecount_wire_id, USER_GLOBAL_LEDGER_SENTINEL};
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -153,11 +156,89 @@ async fn push(
         // processor, which returns the stable per-item UNKNOWN_ENTITY_TYPE
         // rejection required by the sync contract.
     }
-    state
-        .store
-        .push(&principal.user_id, &request)
-        .await
-        .map(Json)
+    let notify_beecount = request
+        .changes
+        .iter()
+        .any(|change| change.entity_type.as_str().starts_with("finance."));
+    let notify_user_global = request.changes.iter().any(|change| {
+        matches!(
+            change.entity_type.as_str(),
+            "finance.account" | "finance.category" | "finance.tag"
+        )
+    });
+    let response = state.store.push(&principal.user_id, &request).await?;
+    if state.database_enabled && notify_beecount {
+        publish_native_sync_change(&state, &principal, notify_user_global).await;
+    }
+    Ok(Json(response))
+}
+
+async fn publish_native_sync_change(
+    state: &AppState,
+    principal: &AuthenticatedPrincipal,
+    notify_user_global: bool,
+) {
+    let Ok(user_uuid) = uuid::Uuid::parse_str(principal.user_id.as_str()) else {
+        return;
+    };
+    let Ok(server_cursor) = sqlx::query_scalar::<_, i64>(
+        "SELECT COALESCE(MAX(cursor),0)::BIGINT FROM sync_change_log WHERE user_id=$1",
+    )
+    .bind(user_uuid)
+    .fetch_one(&state.pool)
+    .await
+    else {
+        return;
+    };
+    let mut ledger_ids = BTreeSet::new();
+    if notify_user_global {
+        ledger_ids.insert(USER_GLOBAL_LEDGER_SENTINEL.to_owned());
+    }
+    if let Ok(rows) = sqlx::query_as::<_, (String, Option<String>)>(
+        "SELECT entity_id,payload->>'beecountLedgerId' FROM sync_entities \
+         WHERE user_id=$1 AND entity_type='finance.ledger' AND is_deleted=FALSE",
+    )
+    .bind(user_uuid)
+    .fetch_all(&state.pool)
+    .await
+    {
+        for (entity_id, legacy_id) in rows {
+            ledger_ids.insert(legacy_id.unwrap_or_else(|| beecount_wire_id(&entity_id)));
+        }
+    }
+    let now = chrono::Utc::now();
+    for ledger_id in ledger_ids {
+        if ledger_id == USER_GLOBAL_LEDGER_SENTINEL {
+            state.beecount_realtime.publish_sync_change(
+                &principal.user_id,
+                &ledger_id,
+                server_cursor,
+                now,
+            );
+            continue;
+        }
+        let users = crate::beecount_collaboration::member_user_ids(&state.pool, &ledger_id)
+            .await
+            .unwrap_or_else(|_| Vec::new());
+        if users.is_empty() {
+            state.beecount_realtime.publish_sync_change(
+                &principal.user_id,
+                &ledger_id,
+                server_cursor,
+                now,
+            );
+        } else {
+            for user_id in users {
+                state.beecount_realtime.publish(
+                    &user_id.to_string(),
+                    serde_json::json!({
+                        "type":"sync_change","ledgerId":ledger_id,
+                        "serverCursor":server_cursor,"serverTimestamp":now,
+                    }),
+                );
+            }
+        }
+    }
 }
 
 async fn pull(

@@ -3,6 +3,7 @@ import test from "node:test";
 import "../web-client/src/bootstrap";
 import {
   AuthApi,
+  BeeCountFinanceApi,
   CloudConflictError,
   CloudDataStore,
   amountToCents,
@@ -80,6 +81,22 @@ test("initial load comes from cloud snapshot without an outbox", async () => {
   assert.equal(state.cursor, "12");
   assert.equal(state.entities["note.note"]?.[note.meta.id]?.title, "云端笔记");
   assert.equal("outbox" in state, false);
+});
+
+test("BeeCount finance client uses cookie auth and encodes upstream ledger ids", async () => {
+  const requests: Array<{ url: string; credentials?: RequestCredentials }> = [];
+  const api = new BeeCountFinanceApi(async (input, init) => {
+    requests.push({ url: String(input), credentials: init?.credentials });
+    return response({ source: "beecount-cloud", readOnly: true });
+  });
+  await api.status();
+  await api.ledgers();
+  await api.snapshot("ledger/a b", 999, -5);
+  assert.deepEqual(requests, [
+    { url: "/api/v1/integrations/beecount/status", credentials: "include" },
+    { url: "/api/v1/integrations/beecount/ledgers", credentials: "include" },
+    { url: "/api/v1/integrations/beecount/ledgers/ledger%2Fa%20b/snapshot?limit=500&offset=0", credentials: "include" },
+  ]);
 });
 
 test("upsert changes memory only after cloud acceptance", async () => {

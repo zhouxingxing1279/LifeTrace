@@ -5,6 +5,12 @@
 
 pub mod api_rate_limit;
 pub mod auth;
+pub mod beecount_adapter;
+pub mod beecount_attachments;
+pub mod beecount_collaboration;
+pub mod beecount_compat;
+pub mod beecount_realtime;
+pub mod beecount_sync;
 pub mod config;
 pub mod error;
 pub mod mail;

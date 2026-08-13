@@ -58,6 +58,16 @@ epic-xx/
 - `docs/epic-30/README.md`：本地加密相册与私密媒体保险库；严格 `local-only`，不参与远程相册同步。
 - `docs/epic-31/README.md`：普通相册 Android ↔ Windows 设备直连同步；LAN / P2P 优先，TURN 兜底，云端不持久化照片。
 
+## BeeCount iOS 兼容服务
+
+- `docs/beecount-cloud-integration/implementation-plan.md`：部署级协议兼容架构与数据边界；
+- `docs/beecount-cloud-integration/deployment.md`：生产配置、验证、备份与 iOS 连接步骤；
+- `docs/beecount-cloud-integration/validation-report.md`：自动化验证结果与环境限制。
+- `docs/beecount-cloud-integration/phase-2-execution-plan.md`：只读财务适配器、鉴权隔离和接口契约。
+- `docs/beecount-cloud-integration/phase-3-execution-plan.md`：BeeCount 原版客户端协议兼容、PostgreSQL 统一存储、迁移切换与回滚方案。
+- `docs/beecount-cloud-integration/phase-4-execution-report.md`：附件/分类图标、WebSocket 实时同步、验证结果与下一批门禁。
+- `docs/beecount-cloud-integration/phase-5-execution-report.md`：Profile/头像、设备、共享账本成员/邀请/转让、共享同步权限与验证结果。
+
 ## EPIC-17 文档
 
 安全、隐私与数据生命周期的权威文档位于 `docs/epic-17/`：

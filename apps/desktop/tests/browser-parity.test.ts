@@ -4,8 +4,10 @@ import test from "node:test";
 import {
   ENTITY_TYPES, REQUESTED_SCOPES, createBrowserFetch, createDailyReview,
   createHabitActivity, createHabitLog, createTrainingNote, createWorkout,
+  type BeeCountTransaction,
 } from "../web-client/src/core";
 import { NAV_GROUPS, ROUTES, SECONDARY_NAV } from "../web-client/src/navigation";
+import { filterBeeCountTransactions } from "../web-client/src/pages/BeeCountFinancePage";
 
 function jsonResponse(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
@@ -28,11 +30,36 @@ test("browser fetch preserves the global receiver before entering Chromium netwo
 
 test("browser navigation keeps every application module except photos", () => {
   const routes = [...NAV_GROUPS.flatMap((group) => group.items), ...SECONDARY_NAV].map((item) => item.route);
-  for (const required of ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/import", "/devices", "/settings"]) {
+  for (const required of ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import", "/devices", "/settings"]) {
     assert.ok(routes.includes(required as never), required);
     assert.ok(ROUTES.has(required as never), required);
   }
   assert.equal(routes.some((route) => route.includes("photo") || route.includes("vault")), false);
+});
+
+test("BeeCount cloud transaction view filters the current page by type and metadata", () => {
+  const items: BeeCountTransaction[] = [{
+    id: "beecount:tx-1",
+    externalTransactionId: "tx-1",
+    transactionType: "expense",
+    amountCents: 2350,
+    currency: "CNY",
+    occurredAt: "2026-08-13T04:05:06Z",
+    localDate: "2026-08-13",
+    status: "confirmed",
+    sourceType: "beecount-cloud",
+    note: "午餐",
+    accountName: "微信",
+    categoryName: "餐饮",
+    tags: ["工作日"],
+    tagIds: ["beecount:tag-1"],
+    attachments: [],
+    excludeFromStats: false,
+    excludeFromBudget: false,
+    readOnly: true,
+  }];
+  assert.equal(filterBeeCountTransactions(items, "工作日", "expense").length, 1);
+  assert.equal(filterBeeCountTransactions(items, "微信", "income").length, 0);
 });
 
 test("browser sync registry includes all non-photo product domains", () => {

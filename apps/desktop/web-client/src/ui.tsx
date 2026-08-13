@@ -61,6 +61,7 @@ export function FinanceTabs() {
     { route: "/finance/categories", label: "分类" },
     { route: "/finance/budgets", label: "预算" },
     { route: "/finance/import", label: "导入与对账" },
+    { route: "/finance/beecount", label: "BeeCount 云账本" },
   ]} />;
 }
 

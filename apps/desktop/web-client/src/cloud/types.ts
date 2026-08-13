@@ -100,6 +100,136 @@ export interface PushResult {
   serverDeleted?: boolean; reason?: string; message?: string;
 }
 
+export interface BeeCountIntegrationStatus {
+  enabled: boolean;
+  readOnly: true;
+  source: "beecount-cloud";
+  upstreamReachable: boolean;
+  upstreamVersion?: unknown;
+}
+
+export interface BeeCountLedger {
+  id: string;
+  sourceId: string;
+  name: string;
+  currency: string;
+  monthStartDay: number;
+  transactionCount: number;
+  incomeTotalCents: number;
+  expenseTotalCents: number;
+  balanceCents: number;
+  updatedAt?: string | null;
+  role?: string;
+  isShared?: boolean;
+  memberCount?: number;
+  readOnly: true;
+}
+
+export interface BeeCountLedgerList {
+  source: "beecount-cloud";
+  readOnly: true;
+  items: BeeCountLedger[];
+  fetchedAt: string;
+}
+
+export interface BeeCountLedgerSnapshot {
+  source: "beecount-cloud";
+  readOnly: true;
+  fetchedAt: string;
+  ledger: BeeCountLedger;
+  transactions: { items: BeeCountTransaction[]; total: number; limit: number; offset: number };
+  accounts: BeeCountAccount[];
+  categories: BeeCountCategory[];
+  tags: BeeCountTag[];
+  budgets: BeeCountBudget[];
+}
+
+export interface BeeCountTransaction {
+  id: string;
+  externalTransactionId: string;
+  transactionType: string;
+  amountCents: number;
+  nativeAmountCents?: number | null;
+  currency: string;
+  occurredAt: string;
+  localDate?: string | null;
+  status: "confirmed";
+  sourceType: "beecount-cloud";
+  note?: string | null;
+  ledgerId?: string | null;
+  ledgerName?: string | null;
+  accountId?: string | null;
+  toAccountId?: string | null;
+  categoryId?: string | null;
+  accountName?: string | null;
+  fromAccountName?: string | null;
+  toAccountName?: string | null;
+  categoryName?: string | null;
+  tags: string[];
+  tagIds: string[];
+  attachments: Array<Record<string, unknown>>;
+  excludeFromStats: boolean;
+  excludeFromBudget: boolean;
+  readOnly: true;
+}
+
+export interface BeeCountAccount {
+  id: string;
+  sourceId: string;
+  name: string;
+  accountType?: string | null;
+  currency?: string | null;
+  openingBalanceCents?: number | null;
+  balanceCents?: number | null;
+  incomeTotalCents?: number | null;
+  expenseTotalCents?: number | null;
+  transactionCount?: number | null;
+  hidden?: boolean;
+  note?: string | null;
+  source: "beecount-cloud";
+  readOnly: true;
+}
+
+export interface BeeCountCategory {
+  id: string;
+  sourceId: string;
+  name: string;
+  categoryType: string;
+  level?: number | null;
+  sortOrder?: number | null;
+  icon?: string | null;
+  parentName?: string | null;
+  transactionCount?: number | null;
+  source: "beecount-cloud";
+  readOnly: true;
+}
+
+export interface BeeCountTag {
+  id: string;
+  sourceId: string;
+  name: string;
+  color?: string | null;
+  transactionCount?: number | null;
+  incomeTotalCents?: number | null;
+  expenseTotalCents?: number | null;
+  source: "beecount-cloud";
+  readOnly: true;
+}
+
+export interface BeeCountBudget {
+  id: string;
+  sourceId: string;
+  budgetType: string;
+  categoryId?: string | null;
+  categoryName?: string | null;
+  amountCents: number;
+  period: string;
+  startDay: number;
+  enabled: boolean;
+  source: "beecount-cloud";
+  readOnly: true;
+}
+
 export const REQUESTED_SCOPES = [
   "account:read", "account:write", "devices:read", "devices:write",
   "sessions:read", "sessions:write", "sync:read", "sync:write",

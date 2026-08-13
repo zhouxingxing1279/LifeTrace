@@ -4,6 +4,7 @@ import {
   type CloudConflict, type CloudState, type DeviceInstallation, type EntityType,
   type FetchLike, type JsonEntity, type ManagedSession, type PullResponse,
   type PushResult, type SnapshotResponse, type SyncChange, type WebSession,
+  type BeeCountIntegrationStatus, type BeeCountLedgerList, type BeeCountLedgerSnapshot,
 } from "./types";
 import { API_BASE } from "./base";
 import { browserFetch } from "./http";
@@ -122,6 +123,45 @@ export class AuthApi {
 
   async revokeSession(sessionId: string, csrfToken: string): Promise<void> {
     await this.request(`/api/v1/auth/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", body: "{}" }, csrfToken);
+  }
+}
+
+export class BeeCountFinanceApi {
+  private readonly fetcher: FetchLike;
+
+  constructor(fetcher: FetchLike = browserFetch) {
+    this.fetcher = bindFetch(fetcher);
+  }
+
+  private async get<T>(path: string): Promise<T> {
+    let response: Response;
+    try {
+      response = await this.fetcher(apiUrl(path), { method: "GET", credentials: "include" });
+    } catch (cause) {
+      logTransportFailure("beecount-finance", path, cause);
+      throw cloudTransportError(cause, "无法连接 BeeCount 财务适配器");
+    }
+    const payload = await readJson(response);
+    if (!response.ok) {
+      const error = new Error(errorMessage(payload, `BeeCount 财务读取失败 (${response.status})`));
+      logHttpFailure("beecount-finance", path, response, error);
+      throw error;
+    }
+    return payload as T;
+  }
+
+  status(): Promise<BeeCountIntegrationStatus> {
+    return this.get("/api/v1/integrations/beecount/status");
+  }
+
+  ledgers(): Promise<BeeCountLedgerList> {
+    return this.get("/api/v1/integrations/beecount/ledgers");
+  }
+
+  snapshot(ledgerId: string, limit = 200, offset = 0): Promise<BeeCountLedgerSnapshot> {
+    const safeLimit = Math.max(1, Math.min(500, Math.trunc(limit)));
+    const safeOffset = Math.max(0, Math.trunc(offset));
+    return this.get(`/api/v1/integrations/beecount/ledgers/${encodeURIComponent(ledgerId)}/snapshot?limit=${safeLimit}&offset=${safeOffset}`);
   }
 }
 

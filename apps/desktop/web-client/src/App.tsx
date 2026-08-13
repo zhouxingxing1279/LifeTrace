@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   BarChart3, BookOpen, Bot, CalendarDays, Check, ChevronRight, CircleDollarSign,
-  Dumbbell, FileUp, Home, Languages, Menu, NotebookPen, RefreshCw, Search,
+  Cloud, Dumbbell, FileUp, Home, Languages, Menu, NotebookPen, RefreshCw, Search,
   Settings, ShieldCheck, Smartphone, WalletCards,
 } from "lucide-react";
 import { AuthApi, CloudDataStore, EMPTY_CLOUD_STATE, formatMoney, searchEntities, type CloudState, type JsonEntity, type WebSession } from "./core";
 import { AuthScreen } from "./AuthScreen";
 import { AccountsPage, BudgetsPage, CategoriesPage, FinanceOverview, ImportPage, TransactionsPage } from "./pages/FinancePages";
+import { BeeCountFinancePage } from "./pages/BeeCountFinancePage";
 import { NotesPage } from "./pages/NotesPage";
 import { ArticlesPage, EnglishStatsPage, VocabularyPage } from "./pages/EnglishPages";
 import { DevicesPage } from "./pages/DevicesPage";
@@ -18,7 +19,7 @@ const ICONS: Record<NavItem["icon"], typeof Home> = {
   home: Home, bot: Bot, check: Check, languages: Languages, dumbbell: Dumbbell,
   note: NotebookPen, calendar: CalendarDays, review: BookOpen, chart: BarChart3,
   money: CircleDollarSign, wallet: WalletCards, upload: FileUp, devices: Smartphone,
-  settings: Settings, search: Search,
+  cloud: Cloud, settings: Settings, search: Search,
 };
 
 export default function App() {
@@ -155,6 +156,7 @@ export default function App() {
         {route === "/finance/categories" && <CategoriesPage {...common} />}
         {route === "/finance/budgets" && <BudgetsPage {...common} />}
         {route === "/finance/import" && <ImportPage {...common} />}
+        {route === "/finance/beecount" && <BeeCountFinancePage privacy={privacy} online={online} />}
         {route === "/notes" && <NotesPage {...common} />}
         {route === "/english/articles" && <ArticlesPage {...common} />}
         {route === "/english/vocabulary" && <VocabularyPage {...common} />}

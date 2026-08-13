@@ -15,6 +15,7 @@ export type Route =
   | "/finance/categories"
   | "/finance/budgets"
   | "/finance/import"
+  | "/finance/beecount"
   | "/devices"
   | "/settings"
   | "/search";
@@ -22,7 +23,7 @@ export type Route =
 export interface NavItem {
   route: Route;
   label: string;
-  icon: "home" | "bot" | "check" | "languages" | "dumbbell" | "note" | "calendar" | "review" | "chart" | "money" | "wallet" | "upload" | "devices" | "settings" | "search";
+  icon: "home" | "bot" | "check" | "languages" | "dumbbell" | "note" | "calendar" | "review" | "chart" | "money" | "wallet" | "upload" | "cloud" | "devices" | "settings" | "search";
 }
 
 export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
@@ -42,6 +43,7 @@ export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
     { route: "/finance", label: "财务概览", icon: "chart" },
     { route: "/finance/transactions", label: "账单管理", icon: "money" },
     { route: "/finance/accounts", label: "账户管理", icon: "wallet" },
+    { route: "/finance/beecount", label: "BeeCount 云账本", icon: "cloud" },
     { route: "/finance/import", label: "账单导入", icon: "upload" },
   ] },
 ];
@@ -55,7 +57,7 @@ export const ROUTES = new Set<Route>([
   "/", "/assistant", "/habits", "/english/articles", "/english/vocabulary",
   "/english/stats", "/fitness", "/notes", "/calendar", "/review", "/finance",
   "/finance/transactions", "/finance/accounts", "/finance/categories",
-  "/finance/budgets", "/finance/import", "/devices", "/settings", "/search",
+  "/finance/budgets", "/finance/import", "/finance/beecount", "/devices", "/settings", "/search",
 ]);
 
 export const PAGE_COPY: Record<Route, [string, string]> = {
@@ -75,6 +77,7 @@ export const PAGE_COPY: Record<Route, [string, string]> = {
   "/finance/categories": ["收支分类", "维护可复用的收入和支出分类。"],
   "/finance/budgets": ["预算管理", "用月度预算控制消费节奏。"],
   "/finance/import": ["账单导入", "从微信、支付宝和通用 CSV 批量导入账单。"],
+  "/finance/beecount": ["BeeCount 云账本", "在 LifeTrace 中查看 BeeCount iOS 与 Web 端同步的账本数据。"],
   "/devices": ["设备与会话", "管理登录设备、活动会话和账号安全。"],
   "/settings": ["数据与设置", "管理云端同步、界面偏好和账号设置。"],
   "/search": ["全局搜索", "搜索账单、笔记、训练、英语和坚持记录。"],
