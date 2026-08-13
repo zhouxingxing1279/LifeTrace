@@ -2,13 +2,12 @@
 # an unprivileged user.
 FROM rust:1.88-slim AS builder
 WORKDIR /build
-ENV CARGO_NET_RETRY=10 \
-    CARGO_HTTP_TIMEOUT=600
+ENV CARGO_NET_RETRY=3 \
+    CARGO_HTTP_TIMEOUT=60 \
+    CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 COPY crates ./crates
 COPY services/cloud ./services/cloud
 RUN cargo build --release \
-    --config 'source.crates-io.replace-with="rsproxy-sparse"' \
-    --config 'source.rsproxy-sparse.registry="sparse+https://rsproxy.cn/index/"' \
     --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-cloud \
     --bin mail_worker
