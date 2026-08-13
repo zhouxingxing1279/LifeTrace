@@ -25,7 +25,9 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cargo build --offline --locked --release \
     --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-cloud \
-    --bin mail_worker
+    --bin mail_worker \
+    --bin lifetrace-migrate \
+    --bin lifetrace-admin
 
 FROM debian:bookworm-slim
 RUN sed -i \
@@ -39,6 +41,8 @@ RUN sed -i \
 WORKDIR /app
 COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
 COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker
+COPY --from=builder /build/services/cloud/target/release/lifetrace-migrate /app/lifetrace-migrate
+COPY --from=builder /build/services/cloud/target/release/lifetrace-admin /app/lifetrace-admin
 USER lifetrace
 EXPOSE 8787
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
