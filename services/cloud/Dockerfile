@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Multi-stage build. The runtime image contains no Rust toolchain and runs as
 # an unprivileged user.
 FROM rust:1.88-slim AS builder
@@ -7,7 +8,21 @@ ENV CARGO_NET_RETRY=3 \
     CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 COPY crates ./crates
 COPY services/cloud ./services/cloud
-RUN cargo build --release \
+
+# Keep Cargo's registry/git cache across BuildKit invocations. Fetching is kept
+# separate from compilation so transient network failures do not discard crates
+# that were already downloaded; the actual release build then runs offline.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    sh -ec 'for attempt in 1 2 3 4 5; do \
+      cargo fetch --locked --manifest-path services/cloud/Cargo.toml && exit 0; \
+      echo "cargo fetch failed (attempt ${attempt}/5), retrying in 5s..." >&2; \
+      sleep 5; \
+    done; exit 1'
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    cargo build --offline --locked --release \
     --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-cloud \
     --bin mail_worker
