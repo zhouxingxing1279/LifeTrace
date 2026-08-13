@@ -1,15 +1,23 @@
-# 生产示例：EPIC-04 完成前不得公网部署。
+# Production example. The Cloud image is built by GitHub Actions and published
+# to GHCR so production hosts only need to pull and run the image.
 services:
   lifetrace-cloud:
-    image: lifetrace-cloud:${TAG:-latest}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
     environment: &cloud_environment
       LIFETRACE_ENV: production
+      LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
       DATABASE_URL: ${DATABASE_URL}
+      MIGRATION_ON_STARTUP: "false"
       CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
       PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY}
       MAIL_CREDENTIAL_KEY: ${MAIL_CREDENTIAL_KEY}
       DEV_AUTH_ENABLED: "false"
       AUTH_PASSWORD_MIN_LENGTH: "${AUTH_PASSWORD_MIN_LENGTH:-9}"
+      AUTH_PASSWORD_PEPPER: ${AUTH_PASSWORD_PEPPER}
+      AUTH_TOKEN_HASH_PEPPER: ${AUTH_TOKEN_HASH_PEPPER}
+      AUTH_COOKIE_SECURE: "true"
+      AUTH_RESET_NOTIFIER: ${AUTH_RESET_NOTIFIER:-disabled}
+      PUBLIC_WEB_BASE_URL: ${PUBLIC_WEB_BASE_URL}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
@@ -19,7 +27,7 @@ services:
     restart: unless-stopped
 
   lifetrace-mail-worker:
-    image: lifetrace-cloud:${TAG:-latest}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
     entrypoint: ["/app/mail_worker"]
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1"]
