@@ -2,8 +2,9 @@
 # an unprivileged user.
 FROM rust:1.88-slim AS builder
 WORKDIR /build
-ENV CARGO_NET_RETRY=3 \
-    CARGO_HTTP_TIMEOUT=60 \
+ENV CARGO_NET_RETRY=5 \
+    CARGO_HTTP_TIMEOUT=600 \
+    CARGO_HTTP_LOW_SPEED_LIMIT=1 \
     CARGO_REGISTRIES_CRATES_IO_PROTOCOL=sparse
 COPY crates ./crates
 COPY services/cloud ./services/cloud
