@@ -13,10 +13,14 @@ RUN cargo build --release \
     --bin mail_worker
 
 FROM debian:bookworm-slim
-RUN useradd --create-home --uid 10001 lifetrace \
-    && apt-get update \
+RUN sed -i \
+        -e 's|deb.debian.org/debian-security|mirrors.aliyun.com/debian-security|g' \
+        -e 's|deb.debian.org/debian|mirrors.aliyun.com/debian|g' \
+        /etc/apt/sources.list.d/debian.sources \
+    && apt-get -o Acquire::Retries=3 update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 lifetrace
 WORKDIR /app
 COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
 COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker
