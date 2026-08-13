@@ -1,0 +1,86 @@
+name: lifetrace-prod
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lifetrace
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: lifetrace
+    volumes:
+      - lifetrace_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifetrace -d lifetrace"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks:
+      - lifetrace
+
+  lifetrace-cloud:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8787/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks:
+      - lifetrace
+
+  lifetrace-mail-worker:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/mail_worker"]
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - lifetrace
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
+      - ../../apps/desktop/dist-browser:/srv:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      lifetrace-cloud:
+        condition: service_healthy
+    networks:
+      - lifetrace
+
+volumes:
+  lifetrace_pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  lifetrace:
+    name: lifetrace-prod
