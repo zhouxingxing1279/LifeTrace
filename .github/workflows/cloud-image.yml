@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - agent/beecount-backend-cutover
     paths:
       - "services/cloud/**"
       - "crates/**"

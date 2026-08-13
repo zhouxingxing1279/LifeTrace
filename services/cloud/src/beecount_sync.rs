@@ -412,7 +412,7 @@ impl BeeCountSyncService {
                        AND t.is_deleted=FALSE \
                        AND COALESCE(t.payload->>'beecountLedgerId','') = \
                            COALESCE(e.payload->>'beecountLedgerId',substring(e.entity_id from 10))) \
-                    ) AS tx_count \
+                    AS tx_count \
              FROM sync_entities e \
              LEFT JOIN beecount_shared_ledgers s ON s.storage_user_id=e.user_id \
                AND s.ledger_id=COALESCE(e.payload->>'beecountLedgerId', \
