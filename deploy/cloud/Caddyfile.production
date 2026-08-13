@@ -1,0 +1,17 @@
+8-148-75-45.sslip.io {
+    encode zstd gzip
+
+    handle /api/* {
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    handle /health/* {
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
+}
