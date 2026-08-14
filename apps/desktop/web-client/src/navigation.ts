@@ -2,6 +2,7 @@ export type Route =
   | "/"
   | "/assistant"
   | "/execution"
+  | "/execution/control"
   | "/habits"
   | "/english/articles"
   | "/english/vocabulary"
@@ -52,8 +53,8 @@ export interface NavGroup {
 
 /*
  * Sidebar IA intentionally exposes destinations, not every sub-route.
- * Finance and English detail routes live inside their own local tab bars,
- * so the global navigation stays readable as LifeTrace grows.
+ * Finance, English and Execution detail routes live inside their own local
+ * navigation, so the global navigation stays readable as LifeTrace grows.
  */
 export const NAV_GROUPS: NavGroup[] = [
   {
@@ -102,7 +103,7 @@ export const MOBILE_NAV: NavItem[] = [
 ];
 
 export const ROUTES = new Set<Route>([
-  "/", "/assistant", "/execution", "/habits", "/english/articles", "/english/vocabulary",
+  "/", "/assistant", "/execution", "/execution/control", "/habits", "/english/articles", "/english/vocabulary",
   "/english/stats", "/fitness", "/notes", "/calendar", "/review", "/finance",
   "/finance/transactions", "/finance/accounts", "/finance/categories",
   "/finance/budgets", "/finance/import", "/finance/beecount", "/devices", "/settings", "/search",
@@ -112,13 +113,14 @@ export const PAGE_COPY: Record<Route, [string, string]> = {
   "/": ["今日总览", "把今天真正需要关注的任务、坚持、训练、学习、财务和复盘集中在一个工作台。"],
   "/assistant": ["AI 管家", "基于当前云端记录生成摘要、趋势和可执行建议。"],
   "/execution": ["计划与待办", "从快速收集到今天执行，把任务、计划、备忘和完成历史放在同一个闭环里。"],
+  "/execution/control": ["执行控制台", "管理等待事项、提醒、任务依赖与重复日历例外，不把外部依赖混进普通待办。"],
   "/habits": ["坚持项目", "管理长期项目，关注完成率、累计量与真实趋势。"],
   "/english/articles": ["英语学习", "阅读、总结、高亮、生词与长期能力成长。"],
   "/english/vocabulary": ["生词本", "集中复习阅读中积累的词汇。"],
   "/english/stats": ["英语统计", "查看阅读、总结与词汇积累。"],
   "/fitness": ["健身训练", "记录训练、动作、组数和训练笔记。"],
   "/notes": ["笔记", "记录想法、知识与复盘，并跨设备同步。"],
-  "/calendar": ["生活日历", "坚持、训练、账单、英语和复盘都落在具体的一天里。"],
+  "/calendar": ["生活日历", "坚持、训练、账单、英语、复盘和执行时间块都落在具体的一天里。"],
   "/review": ["每日复盘", "每天两分钟，看清今天并为明天留下重点。"],
   "/finance": ["财务中心", "从资产、收支、预算和账本四个维度看清自己的钱。"],
   "/finance/transactions": ["账单管理", "搜索、筛选、编辑并维护全部收支记录。"],
@@ -144,6 +146,7 @@ export function navigate(route: Route): void {
 
 export function routeIsActive(current: Route, target: Route): boolean {
   if (target === "/") return current === "/";
+  if (target === "/execution") return current === "/execution" || current.startsWith("/execution/");
   if (target === "/finance") return current === "/finance" || current.startsWith("/finance/");
   if (target === "/english/articles") return current === "/english/articles" || current.startsWith("/english/");
   return current === target;
