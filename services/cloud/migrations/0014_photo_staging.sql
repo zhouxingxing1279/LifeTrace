@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS photo_staging_items (
     captured_at TIMESTAMPTZ,
     storage_name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    expires_at TIMESTAMPTZ NOT NULL
+    expires_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS photo_staging_items_user_created_idx
