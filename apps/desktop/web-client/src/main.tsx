@@ -16,6 +16,7 @@ import "./web-auth.css";
 import "./web-workspaces.css";
 import "./web-beecount.css";
 import "./web-features.css";
+import "./web-photo-challenge.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
