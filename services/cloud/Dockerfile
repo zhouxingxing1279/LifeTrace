@@ -37,7 +37,9 @@ RUN sed -i \
     && apt-get -o Acquire::Retries=3 update \
     && apt-get install -y --no-install-recommends ca-certificates curl \
     && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 10001 lifetrace
+    && useradd --create-home --uid 10001 lifetrace \
+    && mkdir -p /data/photo-staging \
+    && chown -R lifetrace:lifetrace /data
 WORKDIR /app
 COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
 COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker
