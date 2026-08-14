@@ -1,0 +1,123 @@
+# WSL-only local test stack for the LifeTrace + BeeCount unified backend.
+#
+# - Uses the prebuilt GHCR cloud image; never builds locally.
+# - Runs a fresh PostgreSQL test volume (does not touch production volumes).
+# - Runs the legacy BeeCount Cloud only as an isolated rollback/reference
+#   source; Caddy never routes stock BeeCount clients to it.
+# - MIGRATION_ON_STARTUP is disabled; migrations are run explicitly via
+#   /app/lifetrace-migrate.
+name: lifetrace-wsl
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lifetrace}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-lifetrace}
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - lifetrace_wsl_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lifetrace} -d ${POSTGRES_DB:-lifetrace}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  lifetrace-cloud:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    environment: &cloud_environment
+      LIFETRACE_ENV: development
+      LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
+      DATABASE_URL: postgres://${POSTGRES_USER:-lifetrace}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-lifetrace}
+      DATABASE_MIN_CONNECTIONS: "2"
+      DATABASE_MAX_CONNECTIONS: "10"
+      MIGRATION_ON_STARTUP: "false"
+      DEV_AUTH_ENABLED: "true"
+      AUTH_REGISTRATION_MODE: ${AUTH_REGISTRATION_MODE:-open}
+      AUTH_PASSWORD_MIN_LENGTH: "${AUTH_PASSWORD_MIN_LENGTH:-8}"
+      # Local testing only: effectively disable login throttling and lockout.
+      AUTH_LOGIN_ACCOUNT_LIMIT: "${AUTH_LOGIN_ACCOUNT_LIMIT:-1000000}"
+      AUTH_LOGIN_IP_LIMIT: "${AUTH_LOGIN_IP_LIMIT:-1000000}"
+      AUTH_LOGIN_WINDOW_SECONDS: "${AUTH_LOGIN_WINDOW_SECONDS:-1}"
+      AUTH_LOCKOUT_SECONDS: "${AUTH_LOCKOUT_SECONDS:-0}"
+      AUTH_COOKIE_NAME: ${AUTH_COOKIE_NAME:-lifetrace_session}
+      DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-dev-token}
+      DEV_AUTH_USER_ID: ${DEV_AUTH_USER_ID:-dev-user}
+      DEV_AUTH_DEVICE_ID: ${DEV_AUTH_DEVICE_ID:-dev-device}
+      CURSOR_SIGNING_KEY: ${CURSOR_SIGNING_KEY}
+      PAGE_TOKEN_SIGNING_KEY: ${PAGE_TOKEN_SIGNING_KEY}
+      AUTH_PASSWORD_PEPPER: ${AUTH_PASSWORD_PEPPER}
+      AUTH_TOKEN_HASH_PEPPER: ${AUTH_TOKEN_HASH_PEPPER}
+      MAIL_CREDENTIAL_KEY: ${MAIL_CREDENTIAL_KEY}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:1420,http://127.0.0.1:1420,http://localhost:8080,http://127.0.0.1:8080,http://localhost:5180,http://127.0.0.1:5180}
+      BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES: ${BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES:-67108864}
+    ports:
+      - "${CLOUD_BIND_ADDRESS:-127.0.0.1}:${CLOUD_HOST_PORT:-8787}:8787"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8787/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  lifetrace-mail-worker:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/mail_worker"]
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
+  # Local reverse proxy for stock BeeCount paths. Plain HTTP on :8080 only.
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "${CADDY_BIND_ADDRESS:-127.0.0.1}:${CADDY_HOST_PORT:-8080}:8080"
+    volumes:
+      - ./Caddyfile.wsl:/etc/caddy/Caddyfile:ro
+    depends_on:
+      lifetrace-cloud:
+        condition: service_healthy
+
+  # Legacy BeeCount Cloud kept strictly isolated: no published port, never
+  # reached by Caddy. It exists only as a rollback/reference data source.
+  beecount-cloud:
+    image: ${BEECOUNT_CLOUD_IMAGE:-sunxiao0721/beecount-cloud:latest}
+    environment:
+      APP_ENV: production
+      TZ: ${TZ:-Asia/Shanghai}
+      SCHEDULER_TIMEZONE: ${TZ:-Asia/Shanghai}
+      CORS_ORIGINS: "http://localhost:8080"
+      REGISTRATION_ENABLED: "false"
+      BOOTSTRAP_ADMIN_EMAIL: "${BEECOUNT_ADMIN_EMAIL:-}"
+      BOOTSTRAP_ADMIN_PASSWORD: "${BEECOUNT_ADMIN_PASSWORD:-}"
+      EMBEDDING_API_KEY: "${BEECOUNT_EMBEDDING_API_KEY:-}"
+    volumes:
+      - beecount_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+volumes:
+  lifetrace_wsl_pgdata:
+  beecount_data:

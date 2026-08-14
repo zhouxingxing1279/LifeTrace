@@ -1,0 +1,40 @@
+# WSL-only local BeeCount compatibility proxy.
+# Plain HTTP on :8080. No public domain, no TLS.
+{
+    admin off
+    log {
+        output stdout
+        format console
+    }
+}
+
+:8080 {
+    encode zstd gzip
+    log
+
+    # BeeCount Cloud exposes /ready directly; delegate readiness to LifeTrace.
+    handle /ready {
+        rewrite * /health/ready
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    # Every stock BeeCount REST endpoint lives under /api/v1; translate it into
+    # the internal compatibility namespace before proxying to LifeTrace.
+    handle /api/v1/* {
+        uri replace /api/v1/ /api/v1/integrations/beecount/compat/
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    # Some BeeCount builds use /ws directly; newer builds use /api/v1/ws
+    # (covered by the /api/v1/* rule above).
+    handle /ws {
+        rewrite * /api/v1/integrations/beecount/compat/ws
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    handle /health/* {
+        reverse_proxy lifetrace-cloud:8787
+    }
+
+    respond 404
+}

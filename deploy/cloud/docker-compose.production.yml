@@ -59,9 +59,10 @@ services:
     networks:
       - lifetrace
 
-  # BeeCount protocol compatibility service for the prebuilt BeeCount iOS app.
-  # It deliberately has its own data volume: LifeTrace clients continue to use
-  # the Rust sync API while the stock iOS client uses BeeCount's native API.
+  # Legacy BeeCount Cloud is retained only as an isolated rollback/data-export
+  # source. Caddy no longer sends stock BeeCount clients here after the unified
+  # Rust backend cutover. Keep this service until legacy data migration and
+  # reconciliation have been signed off, then it can be removed safely.
   beecount-cloud:
     image: ${BEECOUNT_CLOUD_IMAGE:-sunxiao0721/beecount-cloud:latest}
     restart: unless-stopped
@@ -101,10 +102,6 @@ services:
     depends_on:
       lifetrace-cloud:
         condition: service_healthy
-      beecount-cloud:
-        # Do not make the existing LifeTrace site unavailable when the optional
-        # compatibility service is still migrating or temporarily unhealthy.
-        condition: service_started
     networks:
       - lifetrace
 
