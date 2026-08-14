@@ -72,7 +72,7 @@ export function PhotoChallengePage() {
     <Panel eyebrow="PROGRESS" title="约定进度">
       <div className="pc-admin-progress-copy"><strong>{progress}%</strong><span>{stats?.highScoreCount ?? 0} 张合格照片</span></div>
       <div className="pc-admin-progress"><i style={{ width: `${progress}%` }} /></div>
-      <p className="lt-panel-note">电脑端 LifeTrace 会自动拉取暂存原图并写入现有本地相册。只有本地落盘和相册入库成功后，云端原图才会被删除。</p>
+      <p className="lt-panel-note">电脑端 LifeTrace 会自动拉取暂存原图并写入现有本地相册。默认情况下未被电脑确认接收的原图不会自动过期；只有本地落盘和相册入库成功后，云端原图才会被删除。</p>
     </Panel>
 
     <Panel eyebrow="RECENT" title="最近评分">
@@ -86,7 +86,7 @@ export function PhotoChallengePage() {
             <div className="pc-admin-photo-title"><strong>{entry.fileName || "照片"}</strong>{entry.qualified ? <span><Trophy />90+</span> : <span><CheckCircle2 />已评分</span>}</div>
             <p>{entry.feedback}</p>
             <small>{formatTime(entry.scoredAt)} · {entry.model}</small>
-            <span className={`pc-cloud-pill ${entry.stagingPending ? "pending" : "saved"}`}><Cloud />{entry.stagingPending ? "等待电脑保存" : "原图已转存本地"}</span>
+            <span className={`pc-cloud-pill ${entry.stagingPending ? "pending" : "saved"}`}><Cloud />{entry.stagingPending ? "等待电脑保存" : "云端原图已清除"}</span>
           </div>
         </article>)}
         {!loading && !data?.entries.length && <Empty title="还没有评分照片" description="她在摄影挑战 PWA 中提交第一张照片后，这里会出现评分和原图转存状态。" />}
