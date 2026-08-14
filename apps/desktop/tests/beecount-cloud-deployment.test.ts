@@ -3,17 +3,22 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const composePath = "../../deploy/cloud/docker-compose.production.yml";
+const wslComposePath = "../../deploy/cloud/docker-compose.wsl.yml";
 const caddyPath = "../../deploy/cloud/Caddyfile.production";
 
-test("legacy BeeCount Cloud stays private as a rollback/data-export source", async () => {
-  const compose = await readFile(composePath, "utf8");
-  const service = compose.match(/\n  beecount-cloud:\n([\s\S]*?)\n  caddy:/)?.[1] ?? "";
+test("legacy BeeCount Cloud is absent from active deployment stacks", async () => {
+  const [production, wsl] = await Promise.all([
+    readFile(composePath, "utf8"),
+    readFile(wslComposePath, "utf8"),
+  ]);
 
-  assert.match(service, /sunxiao0721\/beecount-cloud/);
-  assert.match(service, /beecount_data:\/data/);
-  assert.match(service, /127\.0\.0\.1:8080\/ready/);
-  assert.match(service, /REGISTRATION_ENABLED: "false"/);
-  assert.doesNotMatch(service, /^\s+ports:/m);
+  for (const compose of [production, wsl]) {
+    assert.doesNotMatch(compose, /sunxiao0721\/beecount-cloud/);
+    assert.doesNotMatch(compose, /^\s{2}beecount-cloud:/m);
+    assert.doesNotMatch(compose, /beecount_data:\/data/);
+  }
+
+  assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-web:main/);
 });
 
 test("Caddy cuts stock BeeCount traffic over to the unified LifeTrace backend", async () => {
