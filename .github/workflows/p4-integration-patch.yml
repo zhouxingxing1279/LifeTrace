@@ -1,0 +1,157 @@
+name: P4 Integration Patch
+
+on:
+  push:
+    branches: [execution-workspace-p4]
+    paths:
+      - ".github/workflows/p4-integration-patch.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: execution-workspace-p4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Apply checked source transformations
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=1):
+              p = Path(path)
+              text = p.read_text()
+              found = text.count(old)
+              if found < count:
+                  raise SystemExit(f"{path}: expected at least {count} matches, found {found}: {old[:80]!r}")
+              text = text.replace(old, new, count)
+              p.write_text(text)
+
+          # Shared contract registration.
+          replace("crates/lifetrace-contracts/src/registry.rs",
+              '    user_owned(EntityType::EXECUTION_GOAL, false),\n    user_owned(EntityType::EXECUTION_PROJECT, false),',
+              '    user_owned(EntityType::EXECUTION_GOAL, false),\n    user_owned(EntityType::EXECUTION_WEEKLY_REVIEW, false),\n    user_owned(EntityType::EXECUTION_PROJECT, false),')
+          replace("crates/lifetrace-contracts/src/registry.rs",
+              '    pub const EXECUTION_GOAL: &\'static str = "execution.goal";\n    pub const EXECUTION_PROJECT: &\'static str = "execution.project";',
+              '    pub const EXECUTION_GOAL: &\'static str = "execution.goal";\n    pub const EXECUTION_WEEKLY_REVIEW: &\'static str = "execution.weekly_review";\n    pub const EXECUTION_PROJECT: &\'static str = "execution.project";')
+          replace("crates/lifetrace-contracts/src/registry.rs",
+              '            Self::EXECUTION_GOAL,\n            Self::EXECUTION_PROJECT,',
+              '            Self::EXECUTION_GOAL,\n            Self::EXECUTION_WEEKLY_REVIEW,\n            Self::EXECUTION_PROJECT,')
+          replace("crates/lifetrace-contracts/src/domain/payload.rs",
+              '            EntityType::EXECUTION_GOAL => registered(value, EntityType::EXECUTION_GOAL),\n            EntityType::EXECUTION_PROJECT => registered(value, EntityType::EXECUTION_PROJECT),',
+              '            EntityType::EXECUTION_GOAL => registered(value, EntityType::EXECUTION_GOAL),\n            EntityType::EXECUTION_WEEKLY_REVIEW => registered(value, EntityType::EXECUTION_WEEKLY_REVIEW),\n            EntityType::EXECUTION_PROJECT => registered(value, EntityType::EXECUTION_PROJECT),')
+
+          # Desktop SQLite projection + migration registry.
+          replace("apps/desktop/src-tauri/src/database/migrations/mod.rs",
+              'mod m0014_execution_goals;\n',
+              'mod m0014_execution_goals;\nmod m0015_execution_weekly_reviews;\n')
+          replace("apps/desktop/src-tauri/src/database/migrations/mod.rs",
+              'pub use m0014_execution_goals::M0014ExecutionGoals;\n',
+              'pub use m0014_execution_goals::M0014ExecutionGoals;\npub use m0015_execution_weekly_reviews::M0015ExecutionWeeklyReviews;\n')
+          replace("apps/desktop/src-tauri/src/database/migrations/mod.rs",
+              '        Box::new(M0014ExecutionGoals),\n',
+              '        Box::new(M0014ExecutionGoals),\n        Box::new(M0015ExecutionWeeklyReviews),\n')
+          replace("apps/desktop/src-tauri/src/sync/execution.rs",
+              '    TableSpec {\n        entity_type: "execution.goal",\n        table: "execution_goals",\n        soft_delete: true,\n    },\n',
+              '    TableSpec {\n        entity_type: "execution.goal",\n        table: "execution_goals",\n        soft_delete: true,\n    },\n    TableSpec {\n        entity_type: "execution.weekly_review",\n        table: "execution_weekly_reviews",\n        soft_delete: true,\n    },\n')
+          replace("apps/desktop/src-tauri/src/sync/execution.rs",
+              '    "execution.goal",\n    "execution.project",',
+              '    "execution.goal",\n    "execution.weekly_review",\n    "execution.project",')
+
+          # Browser registry and exports.
+          replace("apps/desktop/web-client/src/cloud/types.ts",
+              '  "execution.goal", "execution.project",',
+              '  "execution.goal", "execution.weekly_review", "execution.project",')
+          replace("apps/desktop/web-client/src/core.ts",
+              'export * from "./cloud/execution-goal";\n',
+              'export * from "./cloud/execution-goal";\nexport * from "./cloud/execution-weekly-review";\n')
+
+          # ExecutionPage: import atomic helper + review factory.
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx",
+              '  createExecutionCalendarEvent, createExecutionCompletionResult, createExecutionMemo,\n',
+              '  atomicMutate, createExecutionCalendarEvent, createExecutionCompletionResult, createExecutionMemo,\n  createExecutionWeeklyReview,\n')
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx",
+              '  const [memoDuration, setMemoDuration] = useState("30");\n',
+              '  const [memoDuration, setMemoDuration] = useState("30");\n  const [reviewNote, setReviewNote] = useState("");\n')
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx",
+              '  const completionResults = entities(state, "execution.completion_result");\n',
+              '  const completionResults = entities(state, "execution.completion_result");\n  const weeklyReviews = sorted(entities(state, "execution.weekly_review"));\n')
+
+          old = '''    await run(async (store) => {\n      let next = await store.upsert("execution.task", updated);\n      if (status === "done" && !text(task, "recurrenceRuleId")) {\n        const existing = completionResults.find((item) => text(item, "taskId") === task.meta.id);\n        if (!existing) {\n          const result = createExecutionCompletionResult(session.user.id, session.session.deviceId, task.meta.id, typeof task.actualMinutes === "number" ? task.actualMinutes : null);\n          next = await store.upsert("execution.completion_result", result);\n        }\n      }\n      return next;\n    });'''
+          new = '''    await run(async (store) => {\n      if (status === "done" && !text(task, "recurrenceRuleId")) {\n        const existing = completionResults.find((item) => text(item, "taskId") === task.meta.id);\n        if (!existing) {\n          const result = createExecutionCompletionResult(session.user.id, session.session.deviceId, task.meta.id, typeof task.actualMinutes === "number" ? task.actualMinutes : null);\n          return atomicMutate(store, [\n            { operation: "upsert", entityType: "execution.task", entity: updated },\n            { operation: "upsert", entityType: "execution.completion_result", entity: result },\n          ]);\n        }\n      }\n      return store.upsert("execution.task", updated);\n    });'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.task", target);\n      await store.upsert("execution.entity_link", forward);\n      await store.upsert("execution.entity_link", reverse);\n      return store.upsert("execution.memo", { ...memo, status: "archived", archivedAt: new Date().toISOString() });\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.task", entity: target },\n      { operation: "upsert", entityType: "execution.entity_link", entity: forward },\n      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },\n      { operation: "upsert", entityType: "execution.memo", entity: { ...memo, status: "archived", archivedAt: new Date().toISOString() } },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.calendar_event", target);\n      await store.upsert("execution.entity_link", forward);\n      await store.upsert("execution.entity_link", reverse);\n      return store.upsert("execution.memo", { ...memo, status: "archived", archivedAt: new Date().toISOString() });\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.calendar_event", entity: target },\n      { operation: "upsert", entityType: "execution.entity_link", entity: forward },\n      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },\n      { operation: "upsert", entityType: "execution.memo", entity: { ...memo, status: "archived", archivedAt: new Date().toISOString() } },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.recurrence_rule", rule);\n      await store.upsert("execution.task", updated);\n      if (nextOccurrences.length) return (await store.batchUpsert("execution.task_occurrence", nextOccurrences)).state;\n      return store.snapshot();\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.recurrence_rule", entity: rule },\n      { operation: "upsert", entityType: "execution.task", entity: updated },\n      ...nextOccurrences.map((entity) => ({ operation: "upsert" as const, entityType: "execution.task_occurrence" as const, entity })),\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          old = '''    await run(async (store) => {\n      const next = await store.upsert("execution.task", { ...task, recurrenceRuleId: null });\n      try { return await store.delete("execution.recurrence_rule", ruleId); }\n      catch { return next; }\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.task", entity: { ...task, recurrenceRuleId: null } },\n      { operation: "delete", entityType: "execution.recurrence_rule", entityId: ruleId },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx",
+              '  const overdueOccurrences = occurrences.filter((item) => item.status === "pending" && text(item, "occurrenceKey") < today);\n\n  return <PageStack>',
+              '''  const overdueOccurrences = occurrences.filter((item) => item.status === "pending" && text(item, "occurrenceKey") < today);\n  const currentWeeklyReview = weeklyReviews.find((item) => text(item, "weekStart") === reviewStart && text(item, "weekEnd") === today);\n\n  async function saveWeeklyReview() {\n    if (currentWeeklyReview) {\n      setMessage("当前 7 日区间已经保存过快照");\n      return;\n    }\n    const review = createExecutionWeeklyReview(session.user.id, session.session.deviceId, {\n      weekStart: reviewStart, weekEnd: today, plannedCount: reviewPlanned, completedCount: reviewCompleted,\n      completionRate: reviewRate, plannedMinutes, actualMinutes, overdueTaskCount: overdueTasks.length,\n      overdueOccurrenceCount: overdueOccurrences.length, note: reviewNote,\n    });\n    await run((store) => store.upsert("execution.weekly_review", review));\n    setReviewNote("");\n    setMessage("本周执行复盘快照已持久化并同步");\n  }\n\n  return <PageStack>''')
+
+          old = '''<Panel eyebrow="REVIEW RULE" title="回顾不是再造一套任务"><p className="hx-muted">每日与每周回顾直接读取 Task、Occurrence、Completion Result 和 Timebox。普通任务完成写 completion_result；重复任务完成写 occurrence 状态，因此不会因为下一次重复而抹掉历史。</p><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></Panel>'''
+          new = '''<Panel eyebrow="WEEKLY SNAPSHOT" title="保存执行复盘快照"><p className="hx-muted">指标仍直接读取 Task、Occurrence、Completion Result 和 Timebox；保存时只冻结这一周的结果，不复制任务。</p><label>本周备注<textarea rows={3} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="本周最值得保留的经验、下周调整……" /></label><div className="hx-inline-actions"><button className="hx-btn primary" disabled={!online || Boolean(currentWeeklyReview)} onClick={() => void saveWeeklyReview()}>{currentWeeklyReview ? "本周快照已保存" : "保存本周快照"}</button><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></div>{weeklyReviews.length > 0 && <div className="hx-list">{weeklyReviews.slice(0, 4).map((review) => <article className="hx-row" key={review.meta.id}><span className="hx-row-icon">周</span><div className="hx-row-main"><strong>{text(review, "weekStart")} – {text(review, "weekEnd")}</strong><small>完成 {number(review, "completedCount")} / {number(review, "plannedCount")} · {number(review, "completionRate")}% · 实际 {number(review, "actualMinutes")} 分钟</small>{text(review, "note") && <small>{text(review, "note")}</small>}</div></article>)}</div>}</Panel>'''
+          replace("apps/desktop/web-client/src/pages/ExecutionPage.tsx", old, new)
+
+          # Timebox writes are a single atomic unit.
+          replace("apps/desktop/web-client/src/pages/ExecutionCalendarPage.tsx",
+              '  createExecutionCalendarEvent, isOpenExecutionTask, localDate, type JsonEntity,',
+              '  atomicMutate, createExecutionCalendarEvent, isOpenExecutionTask, localDate, type JsonEntity,')
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.task", nextTask);\n      return store.upsert("execution.calendar_event", nextEvent);\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.task", entity: nextTask },\n      { operation: "upsert", entityType: "execution.calendar_event", entity: nextEvent },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionCalendarPage.tsx", old, new)
+          old = '''    await run(async (store) => {\n      if (task) await store.upsert("execution.task", { ...task, scheduledStartAt: null, scheduledEndAt: null });\n      return store.upsert("execution.calendar_event", { ...item.event!, status: "cancelled" });\n    });'''
+          new = '''    if (task) {\n      await run((store) => atomicMutate(store, [\n        { operation: "upsert", entityType: "execution.task", entity: { ...task, scheduledStartAt: null, scheduledEndAt: null } },\n        { operation: "upsert", entityType: "execution.calendar_event", entity: { ...item.event!, status: "cancelled" } },\n      ]));\n    } else {\n      await run((store) => store.upsert("execution.calendar_event", { ...item.event!, status: "cancelled" }));\n    }'''
+          replace("apps/desktop/web-client/src/pages/ExecutionCalendarPage.tsx", old, new)
+
+          # Waiting conversions and calendar recurrence become atomic.
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx",
+              '  createExecutionRecurrenceRule,',
+              '  atomicMutate,\n  createExecutionRecurrenceRule,')
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.waiting_item", item);\n      if (source) return store.upsert("execution.task", { ...source, status: "waiting" });\n      return store.snapshot();\n    });'''
+          new = '''    if (source) {\n      await run((store) => atomicMutate(store, [\n        { operation: "upsert", entityType: "execution.waiting_item", entity: item },\n        { operation: "upsert", entityType: "execution.task", entity: { ...source, status: "waiting" } },\n      ]));\n    } else {\n      await run((store) => store.upsert("execution.waiting_item", item));\n    }'''
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx", old, new)
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.waiting_item", resolveExecutionWaitingItem(item, "等待结束，恢复来源任务"));\n      return store.upsert("execution.task", { ...task, status: "todo" });\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.waiting_item", entity: resolveExecutionWaitingItem(item, "等待结束，恢复来源任务") },\n      { operation: "upsert", entityType: "execution.task", entity: { ...task, status: "todo" } },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx", old, new)
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.task", target);\n      await store.upsert("execution.entity_link", forward);\n      await store.upsert("execution.entity_link", reverse);\n      return store.upsert("execution.waiting_item", resolveExecutionWaitingItem(item, "已转换为后续任务"));\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.task", entity: target },\n      { operation: "upsert", entityType: "execution.entity_link", entity: forward },\n      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },\n      { operation: "upsert", entityType: "execution.waiting_item", entity: resolveExecutionWaitingItem(item, "已转换为后续任务") },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx", old, new)
+          old = '''    await run(async (store) => {\n      await store.upsert("execution.recurrence_rule", rule);\n      await store.upsert("execution.calendar_event", updated);\n      return next.length ? (await store.batchUpsert("execution.calendar_occurrence", next)).state : store.snapshot();\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.recurrence_rule", entity: rule },\n      { operation: "upsert", entityType: "execution.calendar_event", entity: updated },\n      ...next.map((entity) => ({ operation: "upsert" as const, entityType: "execution.calendar_occurrence" as const, entity })),\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx", old, new)
+          old = '''    await run(async (store) => {\n      const next = await store.upsert("execution.calendar_event", { ...calendarEvent, recurrenceRuleId: null });\n      try { return await store.delete("execution.recurrence_rule", ruleId); }\n      catch { return next; }\n    });'''
+          new = '''    await run((store) => atomicMutate(store, [\n      { operation: "upsert", entityType: "execution.calendar_event", entity: { ...calendarEvent, recurrenceRuleId: null } },\n      { operation: "delete", entityType: "execution.recurrence_rule", entityId: ruleId },\n    ]));'''
+          replace("apps/desktop/web-client/src/pages/ExecutionControlPage.tsx", old, new)
+          PY
+
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add crates/lifetrace-contracts apps/desktop services/cloud
+          git commit -m "feat(execution): complete P4 atomic and weekly review integration"
+          git push origin HEAD:execution-workspace-p4
