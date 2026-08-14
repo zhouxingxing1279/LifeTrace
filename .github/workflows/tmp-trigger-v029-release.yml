@@ -1,0 +1,26 @@
+name: Temporary Trigger v0.2.9 Release
+
+on:
+  push:
+    branches:
+      - fix/desktop-v029-lock-metadata
+    paths:
+      - ".github/workflows/tmp-trigger-v029-release.yml"
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed Windows release from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-windows.yml \
+            --repo zhouxingxing1279/LifeTrace \
+            --ref main \
+            -f version=0.2.9
