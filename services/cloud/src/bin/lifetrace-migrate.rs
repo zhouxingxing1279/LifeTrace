@@ -23,15 +23,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sqlx::query_as("SELECT current_database(), current_user")
             .fetch_one(&pool)
             .await?;
-    println!("Running LifeTrace migrations on database '{database_name}' as user '{database_user}'");
+    println!(
+        "Running LifeTrace migrations on database '{database_name}' as user '{database_user}'"
+    );
 
     sqlx::migrate!().run(&pool).await?;
 
-    let cloud_users_exists: bool = sqlx::query_scalar(
-        "SELECT to_regclass('public.cloud_users') IS NOT NULL",
-    )
-    .fetch_one(&pool)
-    .await?;
+    let cloud_users_exists: bool =
+        sqlx::query_scalar("SELECT to_regclass('public.cloud_users') IS NOT NULL")
+            .fetch_one(&pool)
+            .await?;
 
     if !cloud_users_exists {
         return Err("migration verification failed: public.cloud_users was not created".into());
