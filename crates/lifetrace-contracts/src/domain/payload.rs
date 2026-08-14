@@ -256,6 +256,7 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             EntityType::ENTITY_LINK => parse::<EntityLink>(&value, EntityType::ENTITY_LINK).map(EntityPayload::EntityLink),
             EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, EntityType::USER_PREFERENCE).map(EntityPayload::UserPreference),
             EntityType::EXECUTION_GOAL => registered(value, EntityType::EXECUTION_GOAL),
+            EntityType::EXECUTION_WEEKLY_REVIEW => registered(value, EntityType::EXECUTION_WEEKLY_REVIEW),
             EntityType::EXECUTION_PROJECT => registered(value, EntityType::EXECUTION_PROJECT),
             EntityType::EXECUTION_RECURRENCE_RULE => registered(value, EntityType::EXECUTION_RECURRENCE_RULE),
             EntityType::EXECUTION_TASK => registered(value, EntityType::EXECUTION_TASK),

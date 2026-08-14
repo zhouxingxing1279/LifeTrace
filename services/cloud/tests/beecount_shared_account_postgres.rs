@@ -148,13 +148,12 @@ async fn one_account_can_keep_lifetrace_and_beecount_sessions_active_together() 
     assert_eq!(status, StatusCode::OK, "{bee_profile}");
     assert_eq!(bee_profile["user_id"], canonical_user_id);
 
-    let user_count: i64 = sqlx::query_scalar(
-        "SELECT COUNT(*)::BIGINT FROM cloud_users WHERE id=$1::uuid",
-    )
-    .bind(&canonical_user_id)
-    .fetch_one(&state.pool)
-    .await
-    .unwrap();
+    let user_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*)::BIGINT FROM cloud_users WHERE id=$1::uuid")
+            .bind(&canonical_user_id)
+            .fetch_one(&state.pool)
+            .await
+            .unwrap();
     assert_eq!(user_count, 1);
 
     let sessions: Vec<(String, String)> = sqlx::query_as(

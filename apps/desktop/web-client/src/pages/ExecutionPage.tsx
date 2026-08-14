@@ -1,6 +1,7 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
-  createExecutionCalendarEvent, createExecutionCompletionResult, createExecutionMemo,
+  atomicMutate, createExecutionCalendarEvent, createExecutionCompletionResult, createExecutionMemo,
+  createExecutionWeeklyReview,
   createExecutionProject, createExecutionRecurrenceRule, createExecutionTask,
   createMemoConversionLinks, executionTaskDate, isOpenExecutionTask, localDate,
   materializeTaskOccurrences, recurrenceLabel, taskIsInbox, taskMatchesToday,
@@ -71,6 +72,7 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
   const [memoDate, setMemoDate] = useState(localDate());
   const [memoTime, setMemoTime] = useState("19:00");
   const [memoDuration, setMemoDuration] = useState("30");
+  const [reviewNote, setReviewNote] = useState("");
 
   const projects = useMemo(
     () => sorted(entities(state, "execution.project")).filter((item) => item.status !== "archived" && item.status !== "cancelled"),
@@ -81,6 +83,7 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
   const rules = useMemo(() => entities(state, "execution.recurrence_rule"), [state]);
   const occurrences = useMemo(() => entities(state, "execution.task_occurrence"), [state]);
   const completionResults = entities(state, "execution.completion_result");
+  const weeklyReviews = sorted(entities(state, "execution.weekly_review"));
   const openTasks = tasks.filter(isOpenExecutionTask);
   const recurringTaskIds = new Set(tasks.filter((item) => text(item, "recurrenceRuleId")).map((item) => item.meta.id));
   const today = localDate();
@@ -150,15 +153,17 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
       cancelledAt: status === "cancelled" ? now : null,
     };
     await run(async (store) => {
-      let next = await store.upsert("execution.task", updated);
       if (status === "done" && !text(task, "recurrenceRuleId")) {
         const existing = completionResults.find((item) => text(item, "taskId") === task.meta.id);
         if (!existing) {
           const result = createExecutionCompletionResult(session.user.id, session.session.deviceId, task.meta.id, typeof task.actualMinutes === "number" ? task.actualMinutes : null);
-          next = await store.upsert("execution.completion_result", result);
+          return atomicMutate(store, [
+            { operation: "upsert", entityType: "execution.task", entity: updated },
+            { operation: "upsert", entityType: "execution.completion_result", entity: result },
+          ]);
         }
       }
-      return next;
+      return store.upsert("execution.task", updated);
     });
   }
 
@@ -188,12 +193,12 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
       context: text(memo, "context") || null,
     });
     const [forward, reverse] = createMemoConversionLinks(session.user.id, session.session.deviceId, memo.meta.id, "task", target.meta.id);
-    await run(async (store) => {
-      await store.upsert("execution.task", target);
-      await store.upsert("execution.entity_link", forward);
-      await store.upsert("execution.entity_link", reverse);
-      return store.upsert("execution.memo", { ...memo, status: "archived", archivedAt: new Date().toISOString() });
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.task", entity: target },
+      { operation: "upsert", entityType: "execution.entity_link", entity: forward },
+      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },
+      { operation: "upsert", entityType: "execution.memo", entity: { ...memo, status: "archived", archivedAt: new Date().toISOString() } },
+    ]));
     setMessage("备忘已转换成任务，并保留来源关系");
   }
 
@@ -206,12 +211,12 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
     const end = new Date(start.getTime() + Math.max(5, Number(memoDuration) || 30) * 60_000);
     const target = createExecutionCalendarEvent(session.user.id, session.session.deviceId, { title: memoTitle(memo), description: text(memo, "content"), startAt: start.toISOString(), endAt: end.toISOString() });
     const [forward, reverse] = createMemoConversionLinks(session.user.id, session.session.deviceId, memo.meta.id, "calendar_event", target.meta.id);
-    await run(async (store) => {
-      await store.upsert("execution.calendar_event", target);
-      await store.upsert("execution.entity_link", forward);
-      await store.upsert("execution.entity_link", reverse);
-      return store.upsert("execution.memo", { ...memo, status: "archived", archivedAt: new Date().toISOString() });
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.calendar_event", entity: target },
+      { operation: "upsert", entityType: "execution.entity_link", entity: forward },
+      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },
+      { operation: "upsert", entityType: "execution.memo", entity: { ...memo, status: "archived", archivedAt: new Date().toISOString() } },
+    ]));
     setMemoCalendarId("");
     setMessage("备忘已转换成日历时间块，并保留来源关系");
   }
@@ -232,12 +237,11 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
     const anchored: JsonEntity = executionTaskDate(task) ? task : { ...task, dueAt: dueAt(today) };
     const updated: JsonEntity = { ...anchored, recurrenceRuleId: rule.meta.id, context: anchored.context === "inbox" ? null : anchored.context };
     const nextOccurrences = materializeTaskOccurrences(session.user.id, session.session.deviceId, updated, rule, occurrences, today, 30);
-    await run(async (store) => {
-      await store.upsert("execution.recurrence_rule", rule);
-      await store.upsert("execution.task", updated);
-      if (nextOccurrences.length) return (await store.batchUpsert("execution.task_occurrence", nextOccurrences)).state;
-      return store.snapshot();
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.recurrence_rule", entity: rule },
+      { operation: "upsert", entityType: "execution.task", entity: updated },
+      ...nextOccurrences.map((entity) => ({ operation: "upsert" as const, entityType: "execution.task_occurrence" as const, entity })),
+    ]));
     setMessage(`重复规则已保存，并生成未来 30 天内 ${nextOccurrences.length} 个新实例`);
   }
 
@@ -256,11 +260,10 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
   async function clearRecurrence(task: JsonEntity) {
     const ruleId = text(task, "recurrenceRuleId");
     if (!ruleId) return;
-    await run(async (store) => {
-      const next = await store.upsert("execution.task", { ...task, recurrenceRuleId: null });
-      try { return await store.delete("execution.recurrence_rule", ruleId); }
-      catch { return next; }
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.task", entity: { ...task, recurrenceRuleId: null } },
+      { operation: "delete", entityType: "execution.recurrence_rule", entityId: ruleId },
+    ]));
     setMessage("重复规则已关闭；历史 occurrence 保留");
   }
 
@@ -275,6 +278,22 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
   const actualMinutes = completionResults.filter((item) => inDayRange(text(item, "completedAt").slice(0, 10), reviewStart, today)).reduce((sum, item) => sum + number(item, "actualMinutes"), 0);
   const overdueTasks = openTasks.filter((item) => !text(item, "recurrenceRuleId") && Boolean(executionTaskDate(item) && executionTaskDate(item)! < today));
   const overdueOccurrences = occurrences.filter((item) => item.status === "pending" && text(item, "occurrenceKey") < today);
+  const currentWeeklyReview = weeklyReviews.find((item) => text(item, "weekStart") === reviewStart && text(item, "weekEnd") === today);
+
+  async function saveWeeklyReview() {
+    if (currentWeeklyReview) {
+      setMessage("当前 7 日区间已经保存过快照");
+      return;
+    }
+    const review = createExecutionWeeklyReview(session.user.id, session.session.deviceId, {
+      weekStart: reviewStart, weekEnd: today, plannedCount: reviewPlanned, completedCount: reviewCompleted,
+      completionRate: reviewRate, plannedMinutes, actualMinutes, overdueTaskCount: overdueTasks.length,
+      overdueOccurrenceCount: overdueOccurrences.length, note: reviewNote,
+    });
+    await run((store) => store.upsert("execution.weekly_review", review));
+    setReviewNote("");
+    setMessage("本周执行复盘快照已持久化并同步");
+  }
 
   return <PageStack>
     <Toolbar>
@@ -345,7 +364,7 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
 
     {view === "review" && <PageStack>
       <MetricGrid><Metric label="近 7 日计划" value={String(reviewPlanned)} detail={`${reviewStart} 至 ${today}`} /><Metric label="近 7 日完成" value={String(reviewCompleted)} detail={`计划完成率 ${reviewRate}%`} positive={reviewRate >= 80} /><Metric label="计划投入" value={`${plannedMinutes} 分钟`} detail="基于任务预计时间" /><Metric label="已记录实际" value={`${actualMinutes} 分钟`} detail="来自 completion_result" positive={actualMinutes > 0} /></MetricGrid>
-      <div className="hx-content-grid two"><Panel eyebrow="MISSED" title="需要重新决定的事项"><div className="hx-list">{overdueTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">!</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>原计划 {executionTaskDate(task)}</small></div><button className="hx-btn secondary" disabled={!online} onClick={() => void arrangeToday(task)}>改到今天</button></article>)}{overdueOccurrences.map((occurrence) => <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(taskMap.get(text(occurrence, "taskId")) ?? ({ meta: {} } as JsonEntity), "title") || "重复任务"}</strong><small>{text(occurrence, "occurrenceKey")} 的实例仍未完成</small></div></article>)}{!overdueTasks.length && !overdueOccurrences.length && <Empty title="没有逾期遗留" description="近期待办都已完成、取消或仍在未来。" />}</div></Panel><Panel eyebrow="REVIEW RULE" title="回顾不是再造一套任务"><p className="hx-muted">每日与每周回顾直接读取 Task、Occurrence、Completion Result 和 Timebox。普通任务完成写 completion_result；重复任务完成写 occurrence 状态，因此不会因为下一次重复而抹掉历史。</p><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></Panel></div>
+      <div className="hx-content-grid two"><Panel eyebrow="MISSED" title="需要重新决定的事项"><div className="hx-list">{overdueTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">!</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>原计划 {executionTaskDate(task)}</small></div><button className="hx-btn secondary" disabled={!online} onClick={() => void arrangeToday(task)}>改到今天</button></article>)}{overdueOccurrences.map((occurrence) => <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(taskMap.get(text(occurrence, "taskId")) ?? ({ meta: {} } as JsonEntity), "title") || "重复任务"}</strong><small>{text(occurrence, "occurrenceKey")} 的实例仍未完成</small></div></article>)}{!overdueTasks.length && !overdueOccurrences.length && <Empty title="没有逾期遗留" description="近期待办都已完成、取消或仍在未来。" />}</div></Panel><Panel eyebrow="WEEKLY SNAPSHOT" title="保存执行复盘快照"><p className="hx-muted">指标仍直接读取 Task、Occurrence、Completion Result 和 Timebox；保存时只冻结这一周的结果，不复制任务。</p><label>本周备注<textarea rows={3} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="本周最值得保留的经验、下周调整……" /></label><div className="hx-inline-actions"><button className="hx-btn primary" disabled={!online || Boolean(currentWeeklyReview)} onClick={() => void saveWeeklyReview()}>{currentWeeklyReview ? "本周快照已保存" : "保存本周快照"}</button><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></div>{weeklyReviews.length > 0 && <div className="hx-list">{weeklyReviews.slice(0, 4).map((review) => <article className="hx-row" key={review.meta.id}><span className="hx-row-icon">周</span><div className="hx-row-main"><strong>{text(review, "weekStart")} – {text(review, "weekEnd")}</strong><small>完成 {number(review, "completedCount")} / {number(review, "plannedCount")} · {number(review, "completionRate")}% · 实际 {number(review, "actualMinutes")} 分钟</small>{text(review, "note") && <small>{text(review, "note")}</small>}</div></article>)}</div>}</Panel></div>
     </PageStack>}
   </PageStack>;
 }

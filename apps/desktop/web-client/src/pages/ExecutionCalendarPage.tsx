@@ -1,6 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
-  createExecutionCalendarEvent, isOpenExecutionTask, localDate, type JsonEntity,
+  atomicMutate, createExecutionCalendarEvent, isOpenExecutionTask, localDate, type JsonEntity,
 } from "../core";
 import { navigate } from "../navigation";
 import { Empty, Notice, PageStack, Panel, Toolbar, entities, number, text, type CloudPageProps } from "../ui";
@@ -128,10 +128,10 @@ export function ExecutionCalendarPage({ session, state, run, online }: CloudPage
     const nextEvent: JsonEntity = currentEvent
       ? { ...currentEvent, title: text(task, "title"), description: text(task, "description") || null, isAllDay: false, startAt: start.toISOString(), endAt: end.toISOString(), startLocalDate: null, endLocalDate: null, status: "scheduled", sourceTaskId: task.meta.id }
       : createExecutionCalendarEvent(session.user.id, session.session.deviceId, { title: text(task, "title"), description: text(task, "description"), startAt: start.toISOString(), endAt: end.toISOString(), sourceTaskId: task.meta.id });
-    await run(async (store) => {
-      await store.upsert("execution.task", nextTask);
-      return store.upsert("execution.calendar_event", nextEvent);
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.task", entity: nextTask },
+      { operation: "upsert", entityType: "execution.calendar_event", entity: nextEvent },
+    ]));
     setTaskId("");
     setMessage("任务已放入时间块，并同步回 Today");
   }
@@ -155,10 +155,14 @@ export function ExecutionCalendarPage({ session, state, run, online }: CloudPage
     }
     if (!item.event) return;
     const task = item.sourceTaskId ? tasks.find((candidate) => candidate.meta.id === item.sourceTaskId) : undefined;
-    await run(async (store) => {
-      if (task) await store.upsert("execution.task", { ...task, scheduledStartAt: null, scheduledEndAt: null });
-      return store.upsert("execution.calendar_event", { ...item.event!, status: "cancelled" });
-    });
+    if (task) {
+      await run((store) => atomicMutate(store, [
+        { operation: "upsert", entityType: "execution.task", entity: { ...task, scheduledStartAt: null, scheduledEndAt: null } },
+        { operation: "upsert", entityType: "execution.calendar_event", entity: { ...item.event!, status: "cancelled" } },
+      ]));
+    } else {
+      await run((store) => store.upsert("execution.calendar_event", { ...item.event!, status: "cancelled" }));
+    }
     setMessage(task ? "任务已移出时间块" : "时间块已取消");
   }
 

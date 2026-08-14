@@ -23,6 +23,11 @@ const TABLE_SPECS: &[TableSpec] = &[
         soft_delete: true,
     },
     TableSpec {
+        entity_type: "execution.weekly_review",
+        table: "execution_weekly_reviews",
+        soft_delete: true,
+    },
+    TableSpec {
         entity_type: "execution.project",
         table: "execution_projects",
         soft_delete: true,
@@ -91,6 +96,7 @@ const TABLE_SPECS: &[TableSpec] = &[
 
 pub const ENTITY_TYPES: &[&str] = &[
     "execution.goal",
+    "execution.weekly_review",
     "execution.project",
     "execution.recurrence_rule",
     "execution.task",

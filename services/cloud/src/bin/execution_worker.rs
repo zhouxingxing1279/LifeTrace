@@ -99,8 +99,15 @@ async fn fire_due_reminders(state: &AppState) -> Result<usize, sqlx::Error> {
         payload["lastFiredAt"] = json!(now);
         payload["snoozedUntil"] = Value::Null;
         touch_meta(&mut payload, &now, version + 1);
-        if publish_existing(&state.pool, user_id, "execution.reminder", &entity_id, version, payload)
-            .await?
+        if publish_existing(
+            &state.pool,
+            user_id,
+            "execution.reminder",
+            &entity_id,
+            version,
+            payload,
+        )
+        .await?
         {
             count += 1;
         }
@@ -135,17 +142,45 @@ async fn materialize_task_occurrences(state: &AppState) -> Result<usize, sqlx::E
         let task_id: String = row.get("subject_id");
         let rule: Value = row.get("rule_payload");
         let task: Value = row.get("subject_payload");
-        let Some(anchor) = task_anchor(&task) else { continue };
+        let Some(anchor) = task_anchor(&task) else {
+            continue;
+        };
         for date in occurrence_dates(anchor, &rule, HORIZON_DAYS) {
-            if occurrence_exists(&state.pool, user_id, "execution.task_occurrence", "taskId", &task_id, date).await? {
+            if occurrence_exists(
+                &state.pool,
+                user_id,
+                "execution.task_occurrence",
+                "taskId",
+                &task_id,
+                date,
+            )
+            .await?
+            {
                 continue;
             }
-            if max_occurrences_reached(&state.pool, user_id, "execution.task_occurrence", "taskId", &task_id, &rule).await? {
+            if max_occurrences_reached(
+                &state.pool,
+                user_id,
+                "execution.task_occurrence",
+                "taskId",
+                &task_id,
+                &rule,
+            )
+            .await?
+            {
                 break;
             }
             let payload = task_occurrence_payload(user_id, &task_id, &task, anchor, date);
             let entity_id = deterministic_id(user_id, "task_occurrence", &task_id, date);
-            if publish_new(&state.pool, user_id, "execution.task_occurrence", &entity_id, payload).await? {
+            if publish_new(
+                &state.pool,
+                user_id,
+                "execution.task_occurrence",
+                &entity_id,
+                payload,
+            )
+            .await?
+            {
                 created += 1;
             }
         }
@@ -180,17 +215,45 @@ async fn materialize_calendar_occurrences(state: &AppState) -> Result<usize, sql
         let event_id: String = row.get("subject_id");
         let rule: Value = row.get("rule_payload");
         let event: Value = row.get("subject_payload");
-        let Some(anchor) = event_anchor(&event) else { continue };
+        let Some(anchor) = event_anchor(&event) else {
+            continue;
+        };
         for date in occurrence_dates(anchor, &rule, HORIZON_DAYS) {
-            if occurrence_exists(&state.pool, user_id, "execution.calendar_occurrence", "eventId", &event_id, date).await? {
+            if occurrence_exists(
+                &state.pool,
+                user_id,
+                "execution.calendar_occurrence",
+                "eventId",
+                &event_id,
+                date,
+            )
+            .await?
+            {
                 continue;
             }
-            if max_occurrences_reached(&state.pool, user_id, "execution.calendar_occurrence", "eventId", &event_id, &rule).await? {
+            if max_occurrences_reached(
+                &state.pool,
+                user_id,
+                "execution.calendar_occurrence",
+                "eventId",
+                &event_id,
+                &rule,
+            )
+            .await?
+            {
                 break;
             }
             let payload = calendar_occurrence_payload(user_id, &event_id, &event, anchor, date);
             let entity_id = deterministic_id(user_id, "calendar_occurrence", &event_id, date);
-            if publish_new(&state.pool, user_id, "execution.calendar_occurrence", &entity_id, payload).await? {
+            if publish_new(
+                &state.pool,
+                user_id,
+                "execution.calendar_occurrence",
+                &entity_id,
+                payload,
+            )
+            .await?
+            {
                 created += 1;
             }
         }
@@ -201,14 +264,30 @@ async fn materialize_calendar_occurrences(state: &AppState) -> Result<usize, sql
 fn occurrence_dates(anchor: NaiveDate, rule: &Value, horizon_days: i64) -> Vec<NaiveDate> {
     let today = Utc::now().date_naive();
     let until = json_date(rule.get("untilAt"));
-    let interval = rule.get("intervalValue").and_then(Value::as_i64).unwrap_or(1).max(1);
-    let frequency = rule.get("frequency").and_then(Value::as_str).unwrap_or_default();
+    let interval = rule
+        .get("intervalValue")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .max(1);
+    let frequency = rule
+        .get("frequency")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
     let weekdays: Vec<u32> = rule
         .get("weekdays")
         .and_then(Value::as_array)
-        .map(|items| items.iter().filter_map(Value::as_u64).map(|value| value as u32).collect())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(Value::as_u64)
+                .map(|value| value as u32)
+                .collect()
+        })
         .unwrap_or_default();
-    let month_day = rule.get("monthDay").and_then(Value::as_u64).unwrap_or(anchor.day() as u64) as u32;
+    let month_day = rule
+        .get("monthDay")
+        .and_then(Value::as_u64)
+        .unwrap_or(anchor.day() as u64) as u32;
     (0..horizon_days)
         .map(|offset| today + Duration::days(offset))
         .filter(|candidate| *candidate >= anchor)
@@ -217,10 +296,12 @@ fn occurrence_dates(anchor: NaiveDate, rule: &Value, horizon_days: i64) -> Vec<N
             "daily" => candidate.signed_duration_since(anchor).num_days() % interval == 0,
             "weekly" => {
                 let weekday = weekday_number(candidate.weekday());
-                let anchor_week = anchor - Duration::days((weekday_number(anchor.weekday()) - 1) as i64);
+                let anchor_week =
+                    anchor - Duration::days((weekday_number(anchor.weekday()) - 1) as i64);
                 let candidate_week = *candidate - Duration::days((weekday - 1) as i64);
                 weekdays.contains(&weekday)
-                    && candidate_week.signed_duration_since(anchor_week).num_days() / 7 % interval == 0
+                    && candidate_week.signed_duration_since(anchor_week).num_days() / 7 % interval
+                        == 0
             }
             "monthly" => {
                 let months = (candidate.year() - anchor.year()) as i64 * 12
@@ -254,7 +335,13 @@ fn event_anchor(event: &Value) -> Option<NaiveDate> {
         .or_else(|| json_date(event.get("meta").and_then(|meta| meta.get("createdAt"))))
 }
 
-fn task_occurrence_payload(user_id: Uuid, task_id: &str, task: &Value, anchor: NaiveDate, date: NaiveDate) -> Value {
+fn task_occurrence_payload(
+    user_id: Uuid,
+    task_id: &str,
+    task: &Value,
+    anchor: NaiveDate,
+    date: NaiveDate,
+) -> Value {
     let delta = date.signed_duration_since(anchor).num_days();
     let scheduled_start = shifted_timestamp(task.get("scheduledStartAt"), delta);
     let scheduled_end = shifted_timestamp(task.get("scheduledEndAt"), delta);
@@ -275,14 +362,28 @@ fn task_occurrence_payload(user_id: Uuid, task_id: &str, task: &Value, anchor: N
     })
 }
 
-fn calendar_occurrence_payload(user_id: Uuid, event_id: &str, event: &Value, anchor: NaiveDate, date: NaiveDate) -> Value {
-    let is_all_day = event.get("isAllDay").and_then(Value::as_bool).unwrap_or(false);
+fn calendar_occurrence_payload(
+    user_id: Uuid,
+    event_id: &str,
+    event: &Value,
+    anchor: NaiveDate,
+    date: NaiveDate,
+) -> Value {
+    let is_all_day = event
+        .get("isAllDay")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let delta = date.signed_duration_since(anchor).num_days();
     let (start_at, end_at, start_local_date, end_local_date) = if is_all_day {
         let span = json_date(event.get("endLocalDate"))
             .map(|end| end.signed_duration_since(anchor).num_days().max(0))
             .unwrap_or(0);
-        (None, None, Some(date.to_string()), Some((date + Duration::days(span)).to_string()))
+        (
+            None,
+            None,
+            Some(date.to_string()),
+            Some((date + Duration::days(span)).to_string()),
+        )
     } else {
         (
             shifted_timestamp(event.get("startAt"), delta),
@@ -327,10 +428,19 @@ fn server_meta(user_id: Uuid, entity_id: String) -> Value {
 }
 
 fn touch_meta(payload: &mut Value, now: &str, server_version: i64) {
-    let Some(meta) = payload.get_mut("meta").and_then(Value::as_object_mut) else { return };
+    let Some(meta) = payload.get_mut("meta").and_then(Value::as_object_mut) else {
+        return;
+    };
     meta.insert("updatedAt".to_owned(), json!(now));
-    meta.insert("serverVersion".to_owned(), json!(server_version.to_string()));
-    let next_local = meta.get("localVersion").and_then(Value::as_u64).unwrap_or(0) + 1;
+    meta.insert(
+        "serverVersion".to_owned(),
+        json!(server_version.to_string()),
+    );
+    let next_local = meta
+        .get("localVersion")
+        .and_then(Value::as_u64)
+        .unwrap_or(0)
+        + 1;
     meta.insert("localVersion".to_owned(), json!(next_local));
     meta.insert("modifiedByDevice".to_owned(), Value::Null);
 }
@@ -371,7 +481,9 @@ async fn max_occurrences_reached(
     subject_id: &str,
     rule: &Value,
 ) -> Result<bool, sqlx::Error> {
-    let Some(max) = rule.get("maxOccurrences").and_then(Value::as_i64) else { return Ok(false) };
+    let Some(max) = rule.get("maxOccurrences").and_then(Value::as_i64) else {
+        return Ok(false);
+    };
     let count = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM sync_entities WHERE user_id=$1 AND entity_type=$2 AND is_deleted=FALSE AND payload->>$3=$4",
     )
@@ -430,7 +542,16 @@ async fn publish_existing(
         tx.rollback().await?;
         return Ok(false);
     }
-    publish_entity(&mut tx, user_id, entity_type, entity_id, expected_version + 1, payload, false).await?;
+    publish_entity(
+        &mut tx,
+        user_id,
+        entity_type,
+        entity_id,
+        expected_version + 1,
+        payload,
+        false,
+    )
+    .await?;
     tx.commit().await?;
     Ok(true)
 }
@@ -499,9 +620,12 @@ mod tests {
     #[test]
     fn recurrence_matching_is_deterministic() {
         let anchor = NaiveDate::from_ymd_opt(2026, 8, 3).unwrap(); // Monday
-        let weekly = json!({"frequency":"weekly","intervalValue":1,"weekdays":[1,3],"untilAt":null});
+        let weekly =
+            json!({"frequency":"weekly","intervalValue":1,"weekdays":[1,3],"untilAt":null});
         let dates = occurrence_dates(anchor, &weekly, 14);
-        assert!(dates.iter().all(|date| matches!(date.weekday(), Weekday::Mon | Weekday::Wed)));
+        assert!(dates
+            .iter()
+            .all(|date| matches!(date.weekday(), Weekday::Mon | Weekday::Wed)));
         assert_eq!(dates.len(), 4);
     }
 

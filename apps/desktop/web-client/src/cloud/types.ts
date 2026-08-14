@@ -16,7 +16,7 @@ export const ENTITY_TYPES = [
   "english.article", "english.highlight", "english.note", "english.learning_record",
   "english.vocabulary", "english.vocabulary_occurrence", "english.vocabulary_review_state",
   "workout.import", "workout.workout", "workout.exercise", "workout.set", "workout.training_note",
-  "execution.goal", "execution.project", "execution.recurrence_rule", "execution.task", "execution.task_dependency",
+  "execution.goal", "execution.weekly_review", "execution.project", "execution.recurrence_rule", "execution.task", "execution.task_dependency",
   "execution.task_occurrence", "execution.waiting_item", "execution.calendar_event",
   "execution.calendar_occurrence", "execution.memo", "execution.memo_tag",
   "execution.memo_tag_relation", "execution.reminder", "execution.completion_result",
