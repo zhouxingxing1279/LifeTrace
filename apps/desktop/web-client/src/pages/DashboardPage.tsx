@@ -15,6 +15,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
   const activities = entities(state, "habit.activity").filter((item) => item.isArchived !== true);
   const logs = entities(state, "habit.log");
   const tasks = entities(state, "execution.task");
+  const occurrences = entities(state, "execution.task_occurrence");
   const projects = entities(state, "execution.project").filter((item) => item.status !== "archived" && item.status !== "cancelled");
   const memos = entities(state, "execution.memo").filter((item) => item.status !== "archived");
   const transactions = entities(state, "finance.transaction");
@@ -26,16 +27,23 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
   const today = new Date();
   const todayKey = localDay(today);
   const month = todayKey.slice(0, 7);
-  const todayTasks = tasks.filter((item) => taskMatchesToday(item, todayKey));
+  const taskMap = new Map(tasks.map((item) => [item.meta.id, item]));
+  const recurringTaskIds = new Set(tasks.filter((item) => text(item, "recurrenceRuleId")).map((item) => item.meta.id));
+  const todayTasks = tasks.filter((item) => !recurringTaskIds.has(item.meta.id) && taskMatchesToday(item, todayKey));
+  const todayOccurrences = occurrences.filter((item) => text(item, "occurrenceKey") === todayKey && item.status !== "skipped");
   const todayOpenTasks = todayTasks.filter((item) => item.status !== "done" && item.status !== "cancelled");
   const todayDoneTasks = todayTasks.filter((item) => item.status === "done");
+  const todayOpenOccurrences = todayOccurrences.filter((item) => item.status !== "completed");
+  const todayDoneOccurrences = todayOccurrences.filter((item) => item.status === "completed");
   const inboxTasks = tasks.filter((item) => item.status !== "done" && item.status !== "cancelled" && (item.context === "inbox" || (!item.projectId && !item.dueAt && !item.scheduledStartAt)));
   const todayLogs = logs.filter((item) => text(item, "logDate") === todayKey && item.status !== "skipped");
   const completedIds = new Set(todayLogs.map((item) => text(item, "activityId")));
   const completedHabits = completedIds.size;
   const habitRemaining = Math.max(activities.length - completedHabits, 0);
-  const actionTotal = todayTasks.length + activities.length;
-  const actionCompleted = todayDoneTasks.length + completedHabits;
+  const taskActionTotal = todayTasks.length + todayOccurrences.length;
+  const taskActionCompleted = todayDoneTasks.length + todayDoneOccurrences.length;
+  const actionTotal = taskActionTotal + activities.length;
+  const actionCompleted = taskActionCompleted + completedHabits;
   const completion = actionTotal ? Math.round((actionCompleted / actionTotal) * 100) : 0;
   const monthTransactions = transactions.filter((item) => text(item, "localDate").startsWith(month));
   const monthExpense = monthTransactions
@@ -52,11 +60,11 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
         <span className="lt-overline"><Sparkles /> TODAY</span>
         <h2 id="dashboard-focus-title">今天只看真正重要的事。</h2>
         <p>{actionTotal
-          ? `今天安排了 ${todayTasks.length} 个任务和 ${activities.length} 个坚持项目，已经完成 ${actionCompleted} 项。临时想到的事情先进入收件箱，真正要做的再安排到今天。`
+          ? `今天有 ${todayTasks.length} 个普通任务、${todayOccurrences.length} 个重复实例和 ${activities.length} 个坚持项目，已经完成 ${actionCompleted} 项。临时想到的事情先进入收件箱，真正要做的再安排到今天。`
           : "先把脑中的事情快速收集到任务或备忘，再从收件箱安排今天。训练、学习、财务和复盘会继续自动汇总到这里。"}</p>
         <Toolbar className="lt-dashboard-actions">
           <button className="hx-btn primary" onClick={() => navigate("/execution")}><ListTodo />打开今日计划</button>
-          <button className="hx-btn secondary" onClick={() => navigate("/habits")}><Target />记录坚持</button>
+          <button className="hx-btn secondary" onClick={() => navigate("/calendar")}><Target />安排时间块</button>
           <button className="hx-btn ghost" onClick={() => navigate("/assistant")}>问 AI 管家<ArrowRight /></button>
         </Toolbar>
       </div>
@@ -69,7 +77,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
     </section>
 
     <MetricGrid>
-      <Metric label="今日待办" value={`${todayDoneTasks.length} / ${todayTasks.length}`} detail={todayOpenTasks.length ? `还有 ${todayOpenTasks.length} 项` : todayTasks.length ? "今天已清空" : `${inboxTasks.length} 项等待安排`} positive={todayTasks.length > 0 && todayOpenTasks.length === 0} />
+      <Metric label="今日待办" value={`${taskActionCompleted} / ${taskActionTotal}`} detail={todayOpenTasks.length + todayOpenOccurrences.length ? `还有 ${todayOpenTasks.length + todayOpenOccurrences.length} 项` : taskActionTotal ? "今天已清空" : `${inboxTasks.length} 项等待安排`} positive={taskActionTotal > 0 && todayOpenTasks.length + todayOpenOccurrences.length === 0} />
       <Metric label="今日坚持" value={`${completedHabits} / ${activities.length}`} detail={habitRemaining ? `还有 ${habitRemaining} 项` : activities.length ? "今天已全部完成" : "等待创建项目"} positive={habitRemaining === 0 && activities.length > 0} />
       <Metric label="近 7 天训练" value={`${weekWorkouts.length} 次`} detail="来自云端训练记录" positive={weekWorkouts.length > 0} />
       <Metric label="本月支出" value={formatMoney(monthExpense, "CNY", privacy)} detail={`${monthTransactions.length} 笔本月流水`} />
@@ -79,12 +87,20 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
       <div className="lt-dashboard-main">
         <Panel eyebrow="TODAY" title="今天的行动" actions={<button className="hx-btn ghost sm" onClick={() => navigate("/execution")}>管理计划<ArrowRight /></button>}>
           <div className="lt-action-list">
-            {todayOpenTasks.slice(0, 6).map((task) => <button className="lt-action-row" key={task.meta.id} onClick={() => navigate("/execution")}>
+            {todayOpenOccurrences.slice(0, 4).map((occurrence) => {
+              const task = taskMap.get(text(occurrence, "taskId"));
+              return <button className="lt-action-row" key={occurrence.meta.id} onClick={() => navigate("/execution")}>
+                <span className="lt-action-check" />
+                <div><strong>{task ? text(task, "title") : "重复任务"}</strong><small>重复实例 · {text(occurrence, "scheduledStartAt") ? formatSchedule(text(occurrence, "scheduledStartAt")) : "今天"}</small></div>
+                <b>待完成</b>
+              </button>;
+            })}
+            {todayOpenTasks.slice(0, Math.max(0, 6 - todayOpenOccurrences.length)).map((task) => <button className="lt-action-row" key={task.meta.id} onClick={() => navigate("/execution")}>
               <span className="lt-action-check" />
-              <div><strong>{text(task, "title")}</strong><small>{text(task, "description") || `${priorityLabel(text(task, "priority"))}优先级 · ${text(task, "dueAt") ? formatSchedule(text(task, "dueAt")) : "今天"}`}</small></div>
+              <div><strong>{text(task, "title")}</strong><small>{text(task, "description") || `${priorityLabel(text(task, "priority"))}优先级 · ${text(task, "scheduledStartAt") || text(task, "dueAt") ? formatSchedule(text(task, "scheduledStartAt") || text(task, "dueAt")) : "今天"}`}</small></div>
               <b>{task.status === "in_progress" ? "进行中" : "待完成"}</b>
             </button>)}
-            {activities.slice(0, Math.max(0, 8 - todayOpenTasks.length)).map((activity) => {
+            {activities.slice(0, Math.max(0, 8 - todayOpenOccurrences.length - todayOpenTasks.length)).map((activity) => {
               const done = completedIds.has(activity.meta.id);
               return <button className="lt-action-row" key={activity.meta.id} onClick={() => navigate("/habits")}>
                 <span className={`lt-action-check ${done ? "done" : ""}`}>{done ? "✓" : ""}</span>
@@ -92,7 +108,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
                 <b>{done ? "完成" : "坚持"}</b>
               </button>;
             })}
-            {!todayOpenTasks.length && !activities.length && <Empty title="还没有今日行动" description="先在“计划与待办”里快速收集一件事，再把它安排到今天。" />}
+            {!todayOpenTasks.length && !todayOpenOccurrences.length && !activities.length && <Empty title="还没有今日行动" description="先在“计划与待办”里快速收集一件事，再把它安排到今天。" />}
           </div>
         </Panel>
 
@@ -110,6 +126,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
       <aside className="lt-dashboard-rail" aria-label="今日摘要">
         <Panel eyebrow="EXECUTION" title="计划执行">
           <SummaryRow icon={<ListTodo />} label="任务收件箱" value={`${inboxTasks.length} 项`} detail="待整理" route="/execution" />
+          <SummaryRow icon={<Target />} label="今日重复实例" value={`${todayOccurrences.length} 次`} route="/execution" />
           <SummaryRow icon={<Target />} label="活跃计划" value={`${projects.length} 个`} route="/execution" />
           <SummaryRow icon={<NotebookPen />} label="快速备忘" value={`${memos.length} 条`} route="/execution" />
         </Panel>
@@ -132,7 +149,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
 
         <Panel eyebrow="CLOUD" title="数据状态">
           <div className="lt-cloud-summary"><ShieldCheck /><div><strong>{state.lastLoadedAt ? "云端快照已加载" : "等待云端数据"}</strong><small>{state.lastLoadedAt ? `最后加载 ${formatRelativeTime(state.lastLoadedAt)}` : "登录后自动加载"}</small></div></div>
-          <p className="lt-panel-note">任务、计划、备忘与完成历史使用 LifeTrace Cloud 通用同步协议；相册和本地密钥仍只属于桌面端。</p>
+          <p className="lt-panel-note">任务、重复实例、计划、备忘与完成历史使用 LifeTrace Cloud 通用同步协议；相册和本地密钥仍只属于桌面端。</p>
         </Panel>
       </aside>
     </div>
@@ -149,6 +166,7 @@ function buildTimeline(state: CloudState): Array<{ id: string; type: string; tit
   const values: Array<{ id: string; type: string; title: string; updatedAt: string }> = [];
   const add = (items: JsonEntity[], type: string, title: (item: JsonEntity) => string) => items.forEach((item) => values.push({ id: item.meta.id, type, title: title(item), updatedAt: item.meta.updatedAt }));
   add(entities(state, "execution.task"), "任务", (item) => text(item, "title") || "任务");
+  add(entities(state, "execution.task_occurrence"), "重复", (item) => `${text(item, "occurrenceKey")} 重复任务实例`);
   add(entities(state, "execution.memo"), "备忘", (item) => text(item, "plainText").slice(0, 80) || "备忘");
   add(entities(state, "habit.log"), "坚持", () => "完成坚持记录");
   add(entities(state, "workout.workout"), "训练", (item) => text(item, "name") || "训练记录");
