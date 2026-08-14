@@ -2,6 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import {
   createExecutionCalendarEvent, isOpenExecutionTask, localDate, type JsonEntity,
 } from "../core";
+import { navigate } from "../navigation";
 import { Empty, Notice, PageStack, Panel, Toolbar, entities, number, text, type CloudPageProps } from "../ui";
 
 interface CalendarItem {
@@ -13,6 +14,7 @@ interface CalendarItem {
   startAt?: string | null;
   sourceTaskId?: string | null;
   event?: JsonEntity;
+  occurrence?: JsonEntity;
 }
 
 function displayDate(value: string): string {
@@ -35,8 +37,11 @@ function dayOf(value?: string | null): string {
 
 function buildItems(state: CloudPageProps["state"]): CalendarItem[] {
   const values: CalendarItem[] = [];
-  for (const item of entities(state, "execution.calendar_event")) {
-    if (item.status === "cancelled") continue;
+  const calendarEvents = entities(state, "execution.calendar_event").filter((item) => item.status !== "cancelled");
+  const eventMap = new Map(calendarEvents.map((item) => [item.meta.id, item]));
+
+  for (const item of calendarEvents) {
+    if (text(item, "recurrenceRuleId")) continue;
     const date = item.isAllDay === true ? text(item, "startLocalDate") : dayOf(text(item, "startAt"));
     if (!date) continue;
     values.push({
@@ -50,6 +55,26 @@ function buildItems(state: CloudPageProps["state"]): CalendarItem[] {
       event: item,
     });
   }
+
+  for (const occurrence of entities(state, "execution.calendar_occurrence")) {
+    if (occurrence.status !== "scheduled") continue;
+    const event = eventMap.get(text(occurrence, "eventId"));
+    if (!event) continue;
+    const date = occurrence.isAllDay === true ? text(occurrence, "startLocalDate") : dayOf(text(occurrence, "startAt"));
+    if (!date) continue;
+    values.push({
+      id: occurrence.meta.id,
+      date,
+      type: "重复计划",
+      title: text(occurrence, "titleOverride") || text(event, "title") || "重复时间块",
+      detail: occurrence.isAllDay === true ? "全天 · 重复实例" : `${localTime(text(occurrence, "startAt"))}–${localTime(text(occurrence, "endAt"))} · 重复实例`,
+      startAt: text(occurrence, "startAt"),
+      sourceTaskId: text(event, "sourceTaskId") || null,
+      event,
+      occurrence,
+    });
+  }
+
   for (const item of entities(state, "habit.log")) values.push({ id: item.meta.id, date: text(item, "logDate"), type: "坚持", title: "完成坚持记录", detail: text(item, "note") });
   for (const item of entities(state, "finance.transaction")) values.push({ id: item.meta.id, date: text(item, "localDate"), type: "财务", title: text(item, "merchant") || text(item, "counterparty") || "财务流水", detail: "账单记录" });
   for (const item of entities(state, "workout.workout")) values.push({ id: item.meta.id, date: text(item, "localDate"), type: "训练", title: text(item, "name") || "训练", detail: `${Math.round(number(item, "durationSeconds") / 60)} 分钟` });
@@ -123,6 +148,11 @@ export function ExecutionCalendarPage({ session, state, run, online }: CloudPage
   }
 
   async function unschedule(item: CalendarItem) {
+    if (item.occurrence) {
+      await run((store) => store.upsert("execution.calendar_occurrence", { ...item.occurrence!, status: "skipped" }));
+      setMessage("只跳过了这一次重复日历实例，后续安排不受影响");
+      return;
+    }
     if (!item.event) return;
     const task = item.sourceTaskId ? tasks.find((candidate) => candidate.meta.id === item.sourceTaskId) : undefined;
     await run(async (store) => {
@@ -133,6 +163,10 @@ export function ExecutionCalendarPage({ session, state, run, online }: CloudPage
   }
 
   return <PageStack>
+    <Toolbar>
+      <button className="hx-btn secondary" onClick={() => navigate("/execution")}>计划与待办</button>
+      <button className="hx-btn secondary" onClick={() => navigate("/execution/control")}>等待 / 提醒 / 依赖 / 重复日历</button>
+    </Toolbar>
     {message && <Notice kind="success">{message}</Notice>}
     <div className="hx-calendar-layout">
       <Panel eyebrow="TIMEBOX CALENDAR" title={`${year} 年 ${monthNumber} 月`} actions={<Toolbar><button className="hx-btn ghost" onClick={() => move(-1)}>上个月</button><button className="hx-btn ghost" onClick={() => { setMonth(localDate().slice(0, 7)); setSelected(localDate()); }}>今天</button><button className="hx-btn ghost" onClick={() => move(1)}>下个月</button></Toolbar>}>
@@ -149,7 +183,7 @@ export function ExecutionCalendarPage({ session, state, run, online }: CloudPage
 
       <Panel eyebrow="DAY" title={displayDate(selected)}>
         <div className="hx-list">
-          {selectedItems.map((item) => <article className="hx-row" key={`${item.type}-${item.id}`}><span className="hx-row-icon">{item.type.slice(0, 1)}</span><div className="hx-row-main"><strong>{item.title}</strong><small>{item.type} · {item.detail}</small></div>{item.event && <button className="hx-btn ghost" disabled={!online} onClick={() => void unschedule(item)}>移出</button>}</article>)}
+          {selectedItems.map((item) => <article className="hx-row" key={`${item.type}-${item.id}`}><span className="hx-row-icon">{item.type.slice(0, 1)}</span><div className="hx-row-main"><strong>{item.title}</strong><small>{item.type} · {item.detail}</small></div>{(item.event || item.occurrence) && <button className="hx-btn ghost" disabled={!online} onClick={() => void unschedule(item)}>{item.occurrence ? "跳过本次" : "移出"}</button>}</article>)}
           {!selectedItems.length && <Empty title="这一天还没有安排" description="把任务拖进具体时间并不必要；选择下方任务和开始时间即可创建 timebox。" />}
         </div>
       </Panel>
