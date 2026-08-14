@@ -7,6 +7,10 @@ export function searchEntities(state: CloudState, query: string): SearchHit[] {
   const add = (entityType: EntityType, entity: JsonEntity, title: string, subtitle: string, route: string) => {
     if (`${title} ${subtitle}`.toLocaleLowerCase().includes(needle)) hits.push({ id: entity.meta.id, entityType, title: title || "未命名记录", subtitle, updatedAt: entity.meta.updatedAt, route });
   };
+  for (const entity of Object.values(state.entities["execution.task"] ?? {})) add("execution.task", entity, entityText(entity, "title") || "任务", `${entityText(entity, "description")} ${entityText(entity, "context")} ${entityText(entity, "priority")}`, "/execution");
+  for (const entity of Object.values(state.entities["execution.project"] ?? {})) add("execution.project", entity, entityText(entity, "name") || "计划", entityText(entity, "description"), "/execution");
+  for (const entity of Object.values(state.entities["execution.memo"] ?? {})) add("execution.memo", entity, entityText(entity, "plainText") || entityText(entity, "content") || "备忘", entityText(entity, "context"), "/execution");
+  for (const entity of Object.values(state.entities["execution.waiting_item"] ?? {})) add("execution.waiting_item", entity, entityText(entity, "title") || "等待事项", `${entityText(entity, "description")} ${entityText(entity, "waitingFor")}`, "/execution");
   for (const entity of Object.values(state.entities["habit.activity"] ?? {})) add("habit.activity", entity, entityText(entity, "name") || "坚持项目", `${entityText(entity, "description")} ${entityText(entity, "unit")}`, "/habits");
   for (const entity of Object.values(state.entities["habit.log"] ?? {})) add("habit.log", entity, `坚持记录 ${entityText(entity, "logDate")}`, entityText(entity, "note"), "/habits");
   for (const entity of Object.values(state.entities["workout.workout"] ?? {})) add("workout.workout", entity, entityText(entity, "name") || "训练记录", `${entityText(entity, "localDate")} ${entityText(entity, "source")}`, "/fitness");

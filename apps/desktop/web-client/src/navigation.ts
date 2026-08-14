@@ -1,6 +1,7 @@
 export type Route =
   | "/"
   | "/assistant"
+  | "/execution"
   | "/habits"
   | "/english/articles"
   | "/english/vocabulary"
@@ -59,6 +60,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "工作台",
     items: [
       { route: "/", label: "今日总览", icon: "home" },
+      { route: "/execution", label: "计划与待办", icon: "check" },
       { route: "/assistant", label: "AI 管家", icon: "bot" },
     ],
   },
@@ -93,22 +95,23 @@ export const SECONDARY_NAV: NavItem[] = [
 
 export const MOBILE_NAV: NavItem[] = [
   { route: "/", label: "总览", icon: "home" },
-  { route: "/habits", label: "坚持", icon: "check" },
+  { route: "/execution", label: "计划", icon: "check" },
   { route: "/finance", label: "财务", icon: "chart" },
   { route: "/notes", label: "笔记", icon: "note" },
   { route: "/settings", label: "设置", icon: "settings" },
 ];
 
 export const ROUTES = new Set<Route>([
-  "/", "/assistant", "/habits", "/english/articles", "/english/vocabulary",
+  "/", "/assistant", "/execution", "/habits", "/english/articles", "/english/vocabulary",
   "/english/stats", "/fitness", "/notes", "/calendar", "/review", "/finance",
   "/finance/transactions", "/finance/accounts", "/finance/categories",
   "/finance/budgets", "/finance/import", "/finance/beecount", "/devices", "/settings", "/search",
 ]);
 
 export const PAGE_COPY: Record<Route, [string, string]> = {
-  "/": ["今日总览", "把今天真正需要关注的坚持、训练、学习、财务和复盘集中在一个工作台。"],
+  "/": ["今日总览", "把今天真正需要关注的任务、坚持、训练、学习、财务和复盘集中在一个工作台。"],
   "/assistant": ["AI 管家", "基于当前云端记录生成摘要、趋势和可执行建议。"],
+  "/execution": ["计划与待办", "从快速收集到今天执行，把任务、计划、备忘和完成历史放在同一个闭环里。"],
   "/habits": ["坚持项目", "管理长期项目，关注完成率、累计量与真实趋势。"],
   "/english/articles": ["英语学习", "阅读、总结、高亮、生词与长期能力成长。"],
   "/english/vocabulary": ["生词本", "集中复习阅读中积累的词汇。"],
@@ -126,7 +129,7 @@ export const PAGE_COPY: Record<Route, [string, string]> = {
   "/finance/beecount": ["BeeCount 云账本", "在 LifeTrace 中查看 BeeCount iOS 与 Web 端同步的账本数据。"],
   "/devices": ["设备与会话", "管理登录设备、活动会话和账号安全。"],
   "/settings": ["数据与设置", "管理云端同步、界面偏好和账号设置。"],
-  "/search": ["全局搜索", "搜索账单、笔记、训练、英语和坚持记录。"],
+  "/search": ["全局搜索", "搜索任务、计划、备忘、账单、笔记、训练、英语和坚持记录。"],
 };
 
 export function currentRoute(pathname = typeof window === "undefined" ? "/" : window.location.pathname): Route {

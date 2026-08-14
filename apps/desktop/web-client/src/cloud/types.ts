@@ -16,6 +16,11 @@ export const ENTITY_TYPES = [
   "english.article", "english.highlight", "english.note", "english.learning_record",
   "english.vocabulary", "english.vocabulary_occurrence", "english.vocabulary_review_state",
   "workout.import", "workout.workout", "workout.exercise", "workout.set", "workout.training_note",
+  "execution.project", "execution.recurrence_rule", "execution.task", "execution.task_dependency",
+  "execution.task_occurrence", "execution.waiting_item", "execution.calendar_event",
+  "execution.calendar_occurrence", "execution.memo", "execution.memo_tag",
+  "execution.memo_tag_relation", "execution.reminder", "execution.completion_result",
+  "execution.entity_link",
   "file.metadata", "entity.link", "user.preference",
 ] as const;
 
@@ -236,7 +241,7 @@ export const REQUESTED_SCOPES = [
   "finance:read", "finance:write", "notes:read", "notes:write",
   "english:read", "english:write", "habits:read", "habits:write",
   "reviews:read", "reviews:write", "workouts:read", "workouts:write",
-  "files:read", "files:write",
+  "execution:read", "execution:write", "files:read", "files:write",
 ] as const;
 
 export const EMPTY_CLOUD_STATE: CloudState = { cursor: null, entities: {}, conflicts: [], lastLoadedAt: null };
