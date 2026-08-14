@@ -1,0 +1,24 @@
+{
+  "name": "LifeTrace 摄影挑战",
+  "short_name": "摄影挑战",
+  "description": "上传照片、使用 GLM-4V-Flash 评分并记录 90+ 摄影挑战进度。",
+  "start_url": "/photo-challenge-upload/",
+  "scope": "/photo-challenge-upload/",
+  "display": "standalone",
+  "background_color": "#f4f1e9",
+  "theme_color": "#29382f",
+  "icons": [
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/photo-challenge-upload/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

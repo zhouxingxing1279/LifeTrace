@@ -10,6 +10,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { ExecutionPage } from "../pages/ExecutionPage";
 import { ExecutionCalendarPage } from "../pages/ExecutionCalendarPage";
 import { ExecutionControlPage } from "../pages/ExecutionControlPage";
+import { PhotoChallengePage } from "../pages/PhotoChallengePage";
 import { SearchPage } from "../pages/SearchPage";
 
 interface RouteViewProps {
@@ -31,6 +32,7 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
     case "/execution": return <ExecutionPage {...common} />;
     case "/execution/control": return <ExecutionControlPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
+    case "/photo-challenge": return <PhotoChallengePage />;
     case "/fitness": return <FitnessPage {...common} />;
     case "/calendar": return <ExecutionCalendarPage {...common} />;
     case "/review": return <ReviewPage {...common} />;

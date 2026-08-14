@@ -4,6 +4,7 @@ export type Route =
   | "/execution"
   | "/execution/control"
   | "/habits"
+  | "/photo-challenge"
   | "/english/articles"
   | "/english/vocabulary"
   | "/english/stats"
@@ -26,6 +27,7 @@ export type NavIcon =
   | "home"
   | "bot"
   | "check"
+  | "camera"
   | "languages"
   | "dumbbell"
   | "note"
@@ -69,6 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "成长健康",
     items: [
       { route: "/habits", label: "坚持项目", icon: "check" },
+      { route: "/photo-challenge", label: "摄影挑战", icon: "camera" },
       { route: "/fitness", label: "健身训练", icon: "dumbbell" },
       { route: "/calendar", label: "生活日历", icon: "calendar" },
       { route: "/review", label: "每日复盘", icon: "review" },
@@ -103,7 +106,7 @@ export const MOBILE_NAV: NavItem[] = [
 ];
 
 export const ROUTES = new Set<Route>([
-  "/", "/assistant", "/execution", "/execution/control", "/habits", "/english/articles", "/english/vocabulary",
+  "/", "/assistant", "/execution", "/execution/control", "/habits", "/photo-challenge", "/english/articles", "/english/vocabulary",
   "/english/stats", "/fitness", "/notes", "/calendar", "/review", "/finance",
   "/finance/transactions", "/finance/accounts", "/finance/categories",
   "/finance/budgets", "/finance/import", "/finance/beecount", "/devices", "/settings", "/search",
@@ -115,6 +118,7 @@ export const PAGE_COPY: Record<Route, [string, string]> = {
   "/execution": ["计划与待办", "从快速收集到今天执行，把任务、计划、备忘和完成历史放在同一个闭环里。"],
   "/execution/control": ["执行控制台", "管理等待事项、提醒、任务依赖与重复日历例外，不把外部依赖混进普通待办。"],
   "/habits": ["坚持项目", "管理长期项目，关注完成率、累计量与真实趋势。"],
+  "/photo-challenge": ["摄影挑战", "查看 90+ 高分照片数量、评分记录和原图从云端转存到本地相册的状态。"],
   "/english/articles": ["英语学习", "阅读、总结、高亮、生词与长期能力成长。"],
   "/english/vocabulary": ["生词本", "集中复习阅读中积累的词汇。"],
   "/english/stats": ["英语统计", "查看阅读、总结与词汇积累。"],

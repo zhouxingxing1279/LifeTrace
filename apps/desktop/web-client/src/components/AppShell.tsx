@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
-  BarChart3, BookOpen, Bot, CalendarDays, Check, ChevronRight, Cloud, Dumbbell,
+  BarChart3, BookOpen, Bot, CalendarDays, Camera, Check, ChevronRight, Cloud, Dumbbell,
   Eye, EyeOff, FileUp, Home, Languages, LogOut, Menu, NotebookPen, PanelLeftClose,
   PanelLeftOpen, RefreshCw, Search, Settings, Smartphone, WalletCards, CircleDollarSign,
 } from "lucide-react";
@@ -15,6 +15,7 @@ const ICONS: Record<NavItem["icon"], typeof Home> = {
   home: Home,
   bot: Bot,
   check: Check,
+  camera: Camera,
   languages: Languages,
   dumbbell: Dumbbell,
   note: NotebookPen,

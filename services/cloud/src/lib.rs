@@ -65,6 +65,7 @@ pub fn app(state: AppState) -> Router {
                 CONTENT_TYPE,
                 HeaderName::from_static("x-csrf-token"),
                 HeaderName::from_static("x-request-id"),
+                HeaderName::from_static("x-photo-challenge-key"),
             ])
     };
 

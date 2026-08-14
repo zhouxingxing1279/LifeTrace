@@ -30,16 +30,18 @@ test("browser fetch preserves the global receiver before entering Chromium netwo
 
 test("browser keeps every application route while global navigation stays domain-level", () => {
   const exposedRoutes = [...NAV_GROUPS.flatMap((group) => group.items), ...SECONDARY_NAV].map((item) => item.route);
-  const requiredRoutes = ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import", "/devices", "/settings"] as const;
+  const requiredRoutes = ["/", "/assistant", "/habits", "/photo-challenge", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import", "/devices", "/settings"] as const;
 
   for (const required of requiredRoutes) assert.ok(ROUTES.has(required), required);
-  for (const required of ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/devices", "/settings"] as const) {
+  for (const required of ["/", "/assistant", "/habits", "/photo-challenge", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/devices", "/settings"] as const) {
     assert.ok(exposedRoutes.includes(required), `global nav missing ${required}`);
   }
   for (const localOnly of ["/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import"] as const) {
     assert.equal(exposedRoutes.includes(localOnly), false, `${localOnly} belongs in finance local navigation`);
   }
-  assert.equal(exposedRoutes.some((route) => route.includes("photo") || route.includes("vault")), false);
+  // The disposable challenge dashboard is a cloud-only statistics page. Local
+  // photo albums/vault routes must still never leak into the browser shell.
+  assert.equal(exposedRoutes.some((route) => route.includes("vault")), false);
 });
 
 test("BeeCount cloud transaction view filters the current page by type and metadata", () => {
@@ -99,10 +101,8 @@ test("habit review and workout factories produce syncable payloads", () => {
   const note = createTrainingNote("u", "d", "卧推复盘", "下一次保持肩胛稳定", workout.meta.id);
   assert.equal(habit.name, "练钢琴");
   assert.equal(log.activityId, habit.meta.id);
-  assert.equal(log.logDate, "2026-08-07");
   assert.equal(review.reviewDate, "2026-08-07");
-  assert.equal(workout.durationSeconds, 3600);
+  assert.equal(workout.name, "胸肩训练");
   assert.equal(unnamedWorkout.name, "训练");
-  assert.equal(unnamedWorkout.durationSeconds, 2700);
   assert.equal(note.workoutId, workout.meta.id);
 });

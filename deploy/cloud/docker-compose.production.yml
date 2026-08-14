@@ -18,6 +18,18 @@ services:
     networks:
       - lifetrace
 
+  lifetrace-migrate:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/lifetrace-migrate"]
+    restart: "no"
+    env_file:
+      - .env.production
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - lifetrace
+
   lifetrace-cloud:
     image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
     restart: unless-stopped
@@ -26,9 +38,14 @@ services:
     environment:
       LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
       MIGRATION_ON_STARTUP: "false"
+      PHOTO_STAGING_DIR: "/data/photo-staging"
+    volumes:
+      - lifetrace_photo_staging:/data/photo-staging
     depends_on:
       postgres:
         condition: service_healthy
+      lifetrace-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8787/health/ready"]
       interval: 10s
@@ -95,6 +112,7 @@ services:
     volumes:
       - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
       - ../../apps/desktop/dist-browser:/srv:ro
+      - ../../apps/photo-challenge-pwa:/srv-photo-challenge:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
@@ -107,6 +125,7 @@ services:
 
 volumes:
   lifetrace_pgdata:
+  lifetrace_photo_staging:
   beecount_data:
   caddy_data:
   caddy_config:
