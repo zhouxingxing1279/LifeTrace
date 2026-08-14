@@ -9,6 +9,7 @@ import { AssistantPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from
 import { DashboardPage } from "../pages/DashboardPage";
 import { ExecutionPage } from "../pages/ExecutionPage";
 import { ExecutionCalendarPage } from "../pages/ExecutionCalendarPage";
+import { ExecutionControlPage } from "../pages/ExecutionControlPage";
 import { SearchPage } from "../pages/SearchPage";
 
 interface RouteViewProps {
@@ -28,6 +29,7 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
     case "/": return <DashboardPage state={state} privacy={privacy} />;
     case "/assistant": return <AssistantPage {...common} />;
     case "/execution": return <ExecutionPage {...common} />;
+    case "/execution/control": return <ExecutionControlPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
     case "/fitness": return <FitnessPage {...common} />;
     case "/calendar": return <ExecutionCalendarPage {...common} />;
