@@ -5,6 +5,17 @@ export const BROWSER_HOST = "0.0.0.0";
 export const BROWSER_PORT = 4173;
 export const DEFAULT_LIFETRACE_CLOUD_URL = "http://127.0.0.1:8787";
 
+const cloudProxy = {
+  "/api": {
+    target: DEFAULT_LIFETRACE_CLOUD_URL,
+    changeOrigin: true,
+  },
+  "/health": {
+    target: DEFAULT_LIFETRACE_CLOUD_URL,
+    changeOrigin: true,
+  },
+};
+
 export default defineConfig({
   root: "web-client",
   publicDir: "../public",
@@ -20,10 +31,12 @@ export default defineConfig({
     host: BROWSER_HOST,
     port: BROWSER_PORT,
     strictPort: true,
+    proxy: cloudProxy,
   },
   preview: {
     host: BROWSER_HOST,
     port: BROWSER_PORT,
     strictPort: true,
+    proxy: cloudProxy,
   },
 });
