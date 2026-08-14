@@ -121,7 +121,7 @@ async fn import_one(
     if bytes.len() != item.size_bytes as usize || bytes.len() > MAX_DOWNLOAD_BYTES {
         return Err("暂存照片下载大小校验失败".to_owned());
     }
-    let actual_hash = hex::encode(Sha256::digest(&bytes));
+    let actual_hash = sha256_hex(&bytes);
     if actual_hash != item.sha256 {
         return Err("暂存照片 SHA-256 校验失败，云端副本不会删除".to_owned());
     }
@@ -294,6 +294,17 @@ fn safe_extension(original_name: &str, mime_type: &str, media_type: &str) -> Str
         _ if media_type == "video" => "mp4".to_owned(),
         _ => "jpg".to_owned(),
     })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 fn clean_name(value: &str) -> String {
