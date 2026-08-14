@@ -9,7 +9,7 @@ CREATE TABLE IF NOT EXISTS photo_staging_items (
     mime_type TEXT NOT NULL,
     size_bytes BIGINT NOT NULL CHECK (size_bytes > 0),
     captured_at TIMESTAMPTZ,
-    content BYTEA NOT NULL,
+    storage_name TEXT NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     expires_at TIMESTAMPTZ NOT NULL
 );
@@ -20,6 +20,8 @@ CREATE INDEX IF NOT EXISTS photo_staging_items_expires_idx
     ON photo_staging_items(expires_at);
 CREATE INDEX IF NOT EXISTS photo_staging_items_user_hash_idx
     ON photo_staging_items(user_id, sha256);
+CREATE UNIQUE INDEX IF NOT EXISTS photo_staging_items_storage_name_uq
+    ON photo_staging_items(storage_name);
 CREATE UNIQUE INDEX IF NOT EXISTS photo_staging_items_client_asset_uq
     ON photo_staging_items(user_id, source, client_asset_id)
     WHERE client_asset_id IS NOT NULL;
