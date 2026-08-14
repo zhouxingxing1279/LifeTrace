@@ -25,7 +25,6 @@ use crate::error::ApiError;
 use crate::state::AppState;
 
 pub const MAX_STAGED_PHOTO_BYTES: usize = 64 * 1024 * 1024;
-const DEFAULT_TTL_HOURS: i64 = 72;
 const MAX_LIST_LIMIT: i64 = 200;
 
 #[derive(Debug, Clone, Serialize)]
@@ -41,7 +40,7 @@ pub struct StagedPhoto {
     pub size_bytes: i64,
     pub captured_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
-    pub expires_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -89,7 +88,7 @@ async fn list(
     let limit = query.limit.unwrap_or(50).clamp(1, MAX_LIST_LIMIT);
     let rows = sqlx::query(
         "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
-         FROM photo_staging_items WHERE user_id=$1 AND expires_at>now() ORDER BY created_at ASC LIMIT $2",
+         FROM photo_staging_items WHERE user_id=$1 ORDER BY created_at ASC LIMIT $2",
     )
     .bind(user_id)
     .bind(limit)
@@ -108,10 +107,11 @@ async fn metadata(
 ) -> Result<Json<StagedPhoto>, ApiError> {
     principal.require_scope("files:read")?;
     ensure_database(&state)?;
+    cleanup_expired(&state).await?;
     let user_id = user_uuid(&principal.user_id)?;
     let row = sqlx::query(
         "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
-         FROM photo_staging_items WHERE id=$1 AND user_id=$2 AND expires_at>now()",
+         FROM photo_staging_items WHERE id=$1 AND user_id=$2",
     )
     .bind(id)
     .bind(user_id)
@@ -140,10 +140,11 @@ async fn content(
 ) -> Result<Response, ApiError> {
     principal.require_scope("files:read")?;
     ensure_database(&state)?;
+    cleanup_expired(&state).await?;
     let user_id = user_uuid(&principal.user_id)?;
     let row = sqlx::query(
         "SELECT original_name,mime_type,sha256,size_bytes,storage_name FROM photo_staging_items \
-         WHERE id=$1 AND user_id=$2 AND expires_at>now()",
+         WHERE id=$1 AND user_id=$2",
     )
     .bind(id)
     .bind(user_id)
@@ -194,6 +195,7 @@ async fn acknowledge(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     principal.require_scope("files:write")?;
     ensure_database(&state)?;
+    cleanup_expired(&state).await?;
     let user_id = user_uuid(&principal.user_id)?;
     let row = sqlx::query(
         "DELETE FROM photo_staging_items WHERE id=$1 AND user_id=$2 RETURNING storage_name",
@@ -229,12 +231,16 @@ pub(crate) async fn stage_for_user(
 
     let sha256 = hex::encode(Sha256::digest(&input.content));
     let id = Uuid::new_v4();
-    let ttl_hours = std::env::var("PHOTO_STAGING_TTL_HOURS")
+    // No expiry by default: an original remains staged until the desktop
+    // confirms that the existing local photo library committed it. Operators
+    // may explicitly configure a positive TTL for other relay deployments.
+    let expires_at = std::env::var("PHOTO_STAGING_TTL_HOURS")
         .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
         .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(DEFAULT_TTL_HOURS)
-        .clamp(1, 24 * 30);
-    let expires_at = Utc::now() + Duration::hours(ttl_hours);
+        .filter(|hours| *hours > 0)
+        .map(|hours| Utc::now() + Duration::hours(hours.min(24 * 3650)));
     let storage_name = format!("{owner}/{id}.blob");
     let storage_path = resolve_storage_path(&storage_name)?;
     let parent = storage_path
@@ -300,7 +306,7 @@ async fn existing_client_asset(
 ) -> Result<Option<sqlx::postgres::PgRow>, ApiError> {
     sqlx::query(
         "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
-         FROM photo_staging_items WHERE user_id=$1 AND source=$2 AND client_asset_id=$3 AND expires_at>now()",
+         FROM photo_staging_items WHERE user_id=$1 AND source=$2 AND client_asset_id=$3",
     )
     .bind(owner)
     .bind(source)
@@ -430,7 +436,7 @@ fn row_to_metadata(row: &sqlx::postgres::PgRow) -> Result<StagedPhoto, ApiError>
 async fn cleanup_expired(state: &AppState) -> Result<(), ApiError> {
     ensure_database(state)?;
     let rows = sqlx::query(
-        "DELETE FROM photo_staging_items WHERE expires_at<=now() RETURNING storage_name",
+        "DELETE FROM photo_staging_items WHERE expires_at IS NOT NULL AND expires_at<=now() RETURNING storage_name",
     )
     .fetch_all(&state.pool)
     .await
@@ -545,7 +551,7 @@ fn bad_request(message: impl Into<String>) -> ApiError {
 fn not_found() -> ApiError {
     ApiError::new(
         ErrorCode::InvalidRequest,
-        "暂存照片不存在或已过期",
+        "暂存照片不存在或已被清除",
         StatusCode::NOT_FOUND,
     )
 }
