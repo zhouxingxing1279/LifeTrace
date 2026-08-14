@@ -5,16 +5,9 @@ import { AppShell } from "./components/AppShell";
 import { AppLoading, OfflineGate } from "./components/AppStates";
 import { RouteView } from "./components/RouteView";
 import { currentRoute, navigate, type Route } from "./navigation";
-import { PhotoChallengeUploadPage } from "./pages/PhotoChallengeUploadPage";
 import { entities, text } from "./ui";
 
 export default function App() {
-  const pathname = typeof window === "undefined" ? "/" : window.location.pathname.replace(/\/$/, "") || "/";
-  if (pathname === "/photo-challenge/upload") return <PhotoChallengeUploadPage />;
-  return <LifeTraceApp />;
-}
-
-function LifeTraceApp() {
   const auth = useMemo(() => new AuthApi(), []);
   const [session, setSession] = useState<WebSession | null>(null);
   const [route, setRoute] = useState<Route>(currentRoute());
