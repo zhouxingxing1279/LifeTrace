@@ -135,7 +135,9 @@ pub fn router() -> Router<AppState> {
         .route("/api/v1/photo-challenge/summary", get(public_summary))
         .route("/api/v1/photo-challenge/score", post(score_photo))
         .route("/api/v1/photo-challenge/admin", get(admin))
-        .layer(DefaultBodyLimit::max(MAX_STAGED_PHOTO_BYTES + 4 * 1024 * 1024))
+        .layer(DefaultBodyLimit::max(
+            MAX_STAGED_PHOTO_BYTES + 4 * 1024 * 1024,
+        ))
 }
 
 async fn public_summary(
@@ -169,7 +171,10 @@ async fn admin(
     .fetch_all(&state.pool)
     .await
     .map_err(database_error)?;
-    let entries = rows.iter().map(row_to_entry).collect::<Result<Vec<_>, _>>()?;
+    let entries = rows
+        .iter()
+        .map(row_to_entry)
+        .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(AdminResponse {
         stats: load_stats(&state, &owner).await?,
         entries,
@@ -272,16 +277,29 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
     let mut thumbnail_data_url = None;
     let mut captured_at = None;
 
-    while let Some(field) = multipart.next_field().await.map_err(|_| bad_request("上传表单无效"))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| bad_request("上传表单无效"))?
+    {
         let name = field.name().unwrap_or_default().to_owned();
         match name.as_str() {
             "file" => {
                 let file_name = field.file_name().unwrap_or("photo.jpg").to_owned();
-                let content_type = field.content_type().unwrap_or("application/octet-stream").to_owned();
-                if !matches!(content_type.as_str(), "image/jpeg" | "image/png" | "image/webp") {
+                let content_type = field
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_owned();
+                if !matches!(
+                    content_type.as_str(),
+                    "image/jpeg" | "image/png" | "image/webp"
+                ) {
                     return Err(bad_request("摄影挑战仅支持 JPEG、PNG 或 WebP"));
                 }
-                let bytes = field.bytes().await.map_err(|_| bad_request("读取原始照片失败"))?;
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|_| bad_request("读取原始照片失败"))?;
                 if bytes.is_empty() || bytes.len() > MAX_STAGED_PHOTO_BYTES {
                     return Err(bad_request("原始照片为空或超过 64 MiB"));
                 }
@@ -290,16 +308,24 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
                 original = Some(bytes.to_vec());
             }
             "previewDataUrl" => {
-                let value = field.text().await.map_err(|_| bad_request("评分预览无效"))?;
-                preview_base64 = Some(decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?.base64);
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|_| bad_request("评分预览无效"))?;
+                preview_base64 =
+                    Some(decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?.base64);
             }
             "thumbnailDataUrl" => {
                 let value = field.text().await.map_err(|_| bad_request("缩略图无效"))?;
                 let decoded = decode_data_url(&value, MAX_THUMBNAIL_BYTES, "缩略图")?;
-                thumbnail_data_url = Some(format!("data:{};base64,{}", decoded.mime, decoded.base64));
+                thumbnail_data_url =
+                    Some(format!("data:{};base64,{}", decoded.mime, decoded.base64));
             }
             "capturedAt" => {
-                let value = field.text().await.map_err(|_| bad_request("拍摄时间无效"))?;
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|_| bad_request("拍摄时间无效"))?;
                 if !value.trim().is_empty() {
                     captured_at = Some(
                         DateTime::parse_from_rfc3339(value.trim())
@@ -327,18 +353,29 @@ struct DecodedImage {
     base64: String,
 }
 
-fn decode_data_url(data_url: &str, max_bytes: usize, label: &str) -> Result<DecodedImage, ApiError> {
-    let (prefix, encoded) = data_url.split_once(',').ok_or_else(|| bad_request(format!("{label}格式无效")))?;
+fn decode_data_url(
+    data_url: &str,
+    max_bytes: usize,
+    label: &str,
+) -> Result<DecodedImage, ApiError> {
+    let (prefix, encoded) = data_url
+        .split_once(',')
+        .ok_or_else(|| bad_request(format!("{label}格式无效")))?;
     let mime = prefix
         .strip_prefix("data:")
         .and_then(|value| value.strip_suffix(";base64"))
         .filter(|value| matches!(*value, "image/jpeg" | "image/png" | "image/webp"))
         .ok_or_else(|| bad_request(format!("{label}仅支持 JPEG、PNG 或 WebP")))?;
-    let bytes = STANDARD.decode(encoded).map_err(|_| bad_request(format!("{label} Base64 数据无效")))?;
+    let bytes = STANDARD
+        .decode(encoded)
+        .map_err(|_| bad_request(format!("{label} Base64 数据无效")))?;
     if bytes.is_empty() || bytes.len() > max_bytes {
         return Err(bad_request(format!("{label}大小超出限制")));
     }
-    Ok(DecodedImage { mime: mime.to_owned(), base64: encoded.to_owned() })
+    Ok(DecodedImage {
+        mime: mime.to_owned(),
+        base64: encoded.to_owned(),
+    })
 }
 
 fn verify_challenge_key(headers: &HeaderMap) -> Result<(), ApiError> {
@@ -373,11 +410,13 @@ async fn challenge_owner(state: &AppState) -> Result<UserId, ApiError> {
     }
     let email = env_non_empty("PHOTO_CHALLENGE_OWNER_EMAIL")
         .map(|value| value.to_lowercase())
-        .ok_or_else(|| ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "摄影挑战尚未配置所属账号",
-            StatusCode::SERVICE_UNAVAILABLE,
-        ))?;
+        .ok_or_else(|| {
+            ApiError::new(
+                ErrorCode::TemporarilyUnavailable,
+                "摄影挑战尚未配置所属账号",
+                StatusCode::SERVICE_UNAVAILABLE,
+            )
+        })?;
     let id = sqlx::query_scalar::<_, Uuid>(
         "SELECT id FROM cloud_users WHERE email_normalized=$1 AND status='active' LIMIT 1",
     )
@@ -385,17 +424,25 @@ async fn challenge_owner(state: &AppState) -> Result<UserId, ApiError> {
     .fetch_optional(&state.pool)
     .await
     .map_err(database_error)?
-    .ok_or_else(|| ApiError::new(
-        ErrorCode::InvalidRequest,
-        "摄影挑战所属账号不存在",
-        StatusCode::NOT_FOUND,
-    ))?;
+    .ok_or_else(|| {
+        ApiError::new(
+            ErrorCode::InvalidRequest,
+            "摄影挑战所属账号不存在",
+            StatusCode::NOT_FOUND,
+        )
+    })?;
     Ok(UserId::new(id.to_string()))
 }
 
-async fn web_principal(state: &AppState, headers: &HeaderMap) -> Result<AuthenticatedPrincipal, ApiError> {
+async fn web_principal(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<AuthenticatedPrincipal, ApiError> {
     let raw = cookie_value(headers, &state.config.auth_cookie_name);
-    state.auth.authenticate(AuthCredential::WebSession(raw.as_deref())).await
+    state
+        .auth
+        .authenticate(AuthCredential::WebSession(raw.as_deref()))
+        .await
 }
 
 async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, ApiError> {
@@ -408,9 +455,17 @@ async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, 
     .fetch_one(&state.pool)
     .await
     .map_err(database_error)?;
-    let total = row.try_get::<i64, _>("total").map_err(database_error)?.max(0) as usize;
-    let high_score_count = row.try_get::<i64, _>("high_count").map_err(database_error)?.max(0) as usize;
-    let average_score = row.try_get::<f64, _>("average_score").map_err(database_error)?;
+    let total = row
+        .try_get::<i64, _>("total")
+        .map_err(database_error)?
+        .max(0) as usize;
+    let high_score_count = row
+        .try_get::<i64, _>("high_count")
+        .map_err(database_error)?
+        .max(0) as usize;
+    let average_score = row
+        .try_get::<f64, _>("average_score")
+        .map_err(database_error)?;
     Ok(ChallengeStats {
         total,
         high_score_count,
@@ -421,12 +476,18 @@ async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, 
     })
 }
 
-fn response_from_row(row: &sqlx::postgres::PgRow, duplicate: bool) -> Result<ScoreResponse, ApiError> {
+fn response_from_row(
+    row: &sqlx::postgres::PgRow,
+    duplicate: bool,
+) -> Result<ScoreResponse, ApiError> {
     let breakdown_value: Value = row.try_get("breakdown").map_err(database_error)?;
-    let breakdown: ScoreBreakdown = serde_json::from_value(breakdown_value)
-        .map_err(|_| bad_request("云端评分明细损坏"))?;
+    let breakdown: ScoreBreakdown =
+        serde_json::from_value(breakdown_value).map_err(|_| bad_request("云端评分明细损坏"))?;
     Ok(ScoreResponse {
-        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        id: row
+            .try_get::<Uuid, _>("id")
+            .map_err(database_error)?
+            .to_string(),
         score: row.try_get("score").map_err(database_error)?,
         qualified: row.try_get("qualified").map_err(database_error)?,
         breakdown,
@@ -446,26 +507,35 @@ fn response_from_row(row: &sqlx::postgres::PgRow, duplicate: bool) -> Result<Sco
 fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<ChallengeEntry, ApiError> {
     let breakdown_value: Value = row.try_get("breakdown").map_err(database_error)?;
     Ok(ChallengeEntry {
-        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        id: row
+            .try_get::<Uuid, _>("id")
+            .map_err(database_error)?
+            .to_string(),
         file_name: row.try_get("file_name").map_err(database_error)?,
         captured_at: row.try_get("captured_at").map_err(database_error)?,
         score: row.try_get("score").map_err(database_error)?,
         qualified: row.try_get("qualified").map_err(database_error)?,
-        breakdown: serde_json::from_value(breakdown_value).map_err(|_| bad_request("云端评分明细损坏"))?,
+        breakdown: serde_json::from_value(breakdown_value)
+            .map_err(|_| bad_request("云端评分明细损坏"))?,
         feedback: row.try_get("feedback").map_err(database_error)?,
         model: row.try_get("model").map_err(database_error)?,
         thumbnail_data_url: row.try_get("thumbnail_data_url").map_err(database_error)?,
         scored_at: row.try_get("scored_at").map_err(database_error)?,
-        staging_pending: row.try_get::<Option<Uuid>, _>("staging_id").map_err(database_error)?.is_some(),
+        staging_pending: row
+            .try_get::<Option<Uuid>, _>("staging_id")
+            .map_err(database_error)?
+            .is_some(),
     })
 }
 
 async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
-    let api_key = env_non_empty("ZHIPU_API_KEY").ok_or_else(|| ApiError::new(
-        ErrorCode::TemporarilyUnavailable,
-        "缺少 ZHIPU_API_KEY，无法进行照片评分",
-        StatusCode::SERVICE_UNAVAILABLE,
-    ))?;
+    let api_key = env_non_empty("ZHIPU_API_KEY").ok_or_else(|| {
+        ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "缺少 ZHIPU_API_KEY，无法进行照片评分",
+            StatusCode::SERVICE_UNAVAILABLE,
+        )
+    })?;
     if api_key.contains(['\r', '\n']) {
         return Err(ApiError::new(
             ErrorCode::InvalidRequest,
@@ -497,34 +567,46 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
         call_provider(&endpoint, &api_key, &request),
     )
     .await
-    .map_err(|_| ApiError::new(
-        ErrorCode::TemporarilyUnavailable,
-        "GLM-4V-Flash 评分超时",
-        StatusCode::GATEWAY_TIMEOUT,
-    ))?
-    .map_err(|message| ApiError::new(
-        ErrorCode::TemporarilyUnavailable,
-        format!("GLM-4V-Flash 评分失败: {message}"),
-        StatusCode::BAD_GATEWAY,
-    ))?;
+    .map_err(|_| {
+        ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "GLM-4V-Flash 评分超时",
+            StatusCode::GATEWAY_TIMEOUT,
+        )
+    })?
+    .map_err(|message| {
+        ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            format!("GLM-4V-Flash 评分失败: {message}"),
+            StatusCode::BAD_GATEWAY,
+        )
+    })?;
     let content = provider
         .choices
         .into_iter()
         .next()
         .map(|choice| choice.message.content)
-        .ok_or_else(|| ApiError::new(
+        .ok_or_else(|| {
+            ApiError::new(
+                ErrorCode::TemporarilyUnavailable,
+                "GLM-4V-Flash 未返回评分内容",
+                StatusCode::BAD_GATEWAY,
+            )
+        })?;
+    parse_model_score(&content).ok_or_else(|| {
+        ApiError::new(
             ErrorCode::TemporarilyUnavailable,
-            "GLM-4V-Flash 未返回评分内容",
+            "GLM-4V-Flash 返回的评分格式无效",
             StatusCode::BAD_GATEWAY,
-        ))?;
-    parse_model_score(&content).ok_or_else(|| ApiError::new(
-        ErrorCode::TemporarilyUnavailable,
-        "GLM-4V-Flash 返回的评分格式无效",
-        StatusCode::BAD_GATEWAY,
-    ))
+        )
+    })
 }
 
-async fn call_provider(endpoint: &str, api_key: &str, request: &Value) -> Result<ProviderResponse, String> {
+async fn call_provider(
+    endpoint: &str,
+    api_key: &str,
+    request: &Value,
+) -> Result<ProviderResponse, String> {
     let payload = serde_json::to_vec(request).map_err(|error| error.to_string())?;
     let mut child = Command::new("curl")
         .arg("--silent")
@@ -547,14 +629,29 @@ async fn call_provider(endpoint: &str, api_key: &str, request: &Value) -> Result
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|error| error.to_string())?;
-    let mut stdin = child.stdin.take().ok_or_else(|| "无法打开评分请求输入流".to_owned())?;
-    stdin.write_all(&payload).await.map_err(|error| error.to_string())?;
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "无法打开评分请求输入流".to_owned())?;
+    stdin
+        .write_all(&payload)
+        .await
+        .map_err(|error| error.to_string())?;
     drop(stdin);
-    let output = child.wait_with_output().await.map_err(|error| error.to_string())?;
+    let output = child
+        .wait_with_output()
+        .await
+        .map_err(|error| error.to_string())?;
     if !output.status.success() {
         let body = String::from_utf8_lossy(&output.stdout).trim().to_owned();
         let error = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(if !body.is_empty() { body } else if !error.is_empty() { error } else { format!("HTTP 调用失败: {}", output.status) });
+        return Err(if !body.is_empty() {
+            body
+        } else if !error.is_empty() {
+            error
+        } else {
+            format!("HTTP 调用失败: {}", output.status)
+        });
     }
     serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
 }
@@ -610,7 +707,14 @@ mod tests {
     fn model_total_is_derived_from_rubric_parts() {
         let content = r#"{"score":99,"composition":23,"lightColor":18,"subjectStory":17,"technical":18,"originality":13,"feedback":"不错"}"#;
         let parsed = parse_model_score(content).expect("score");
-        assert_eq!(parsed.composition + parsed.light_color + parsed.subject_story + parsed.technical + parsed.originality, 89);
+        assert_eq!(
+            parsed.composition
+                + parsed.light_color
+                + parsed.subject_story
+                + parsed.technical
+                + parsed.originality,
+            89
+        );
     }
 
     #[test]

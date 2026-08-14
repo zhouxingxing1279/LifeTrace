@@ -98,10 +98,7 @@ async fn list(
     .await
     .map_err(database_error)?;
     Ok(Json(StagedPhotoList {
-        items: rows
-            .iter()
-            .map(row_to_metadata)
-            .collect::<Result<_, _>>()?,
+        items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()?,
     }))
 }
 
@@ -224,7 +221,8 @@ pub(crate) async fn stage_for_user(
     let owner = user_uuid(user_id)?;
 
     if let Some(client_asset_id) = input.client_asset_id.as_deref() {
-        if let Some(row) = existing_client_asset(state, owner, &input.source, client_asset_id).await?
+        if let Some(row) =
+            existing_client_asset(state, owner, &input.source, client_asset_id).await?
         {
             return row_to_metadata(&row);
         }
@@ -250,9 +248,9 @@ pub(crate) async fn stage_for_user(
     fs::write(&temp_path, &input.content)
         .await
         .map_err(|error| storage_error(format!("写入暂存照片失败: {error}")))?;
-    fs::rename(&temp_path, &storage_path).await.map_err(|error| {
-        storage_error(format!("提交暂存照片文件失败: {error}"))
-    })?;
+    fs::rename(&temp_path, &storage_path)
+        .await
+        .map_err(|error| storage_error(format!("提交暂存照片文件失败: {error}")))?;
 
     let inserted = sqlx::query(
         "INSERT INTO photo_staging_items \
@@ -333,8 +331,8 @@ async fn read_upload(mut multipart: Multipart) -> Result<StageInput, ApiError> {
                     .text()
                     .await
                     .map_err(|_| bad_request("clientAssetId 无效"))?;
-                client_asset_id = (!value.trim().is_empty())
-                    .then(|| value.trim().chars().take(180).collect());
+                client_asset_id =
+                    (!value.trim().is_empty()).then(|| value.trim().chars().take(180).collect());
             }
             "capturedAt" => {
                 let value = field
