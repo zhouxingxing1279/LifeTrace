@@ -83,6 +83,24 @@ services:
       retries: 5
       start_period: 2s
 
+  lifetrace-execution-worker:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/execution_worker"]
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+
   # Local reverse proxy for stock BeeCount compatibility paths. Plain HTTP on :8080 only.
   caddy:
     image: caddy:2-alpine
