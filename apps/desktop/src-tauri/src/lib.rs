@@ -30,6 +30,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            cloud_auth::cloud_auth_http_request,
             cloud_auth::cloud_credential_set,
             cloud_auth::cloud_credential_get,
             cloud_auth::cloud_credential_clear,
