@@ -76,6 +76,28 @@ services:
     networks:
       - lifetrace
 
+  lifetrace-execution-worker:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/execution_worker"]
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    networks:
+      - lifetrace
+
   # Legacy BeeCount Cloud is retained only as an isolated rollback/data-export
   # source. Caddy no longer sends stock BeeCount clients here after the unified
   # Rust backend cutover. Keep this service until legacy data migration and

@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import {
+  atomicMutate,
   createExecutionRecurrenceRule,
   createExecutionReminder,
   createExecutionSubtask,
@@ -185,11 +186,14 @@ function WaitingView({ session, online, run, tasks, openTasks, waitingItems, tas
       followUpAt: isoFromDateTime(followUpAt),
       sourceTaskId: source?.meta.id ?? null,
     });
-    await run(async (store) => {
-      await store.upsert("execution.waiting_item", item);
-      if (source) return store.upsert("execution.task", { ...source, status: "waiting" });
-      return store.snapshot();
-    });
+    if (source) {
+      await run((store) => atomicMutate(store, [
+        { operation: "upsert", entityType: "execution.waiting_item", entity: item },
+        { operation: "upsert", entityType: "execution.task", entity: { ...source, status: "waiting" } },
+      ]));
+    } else {
+      await run((store) => store.upsert("execution.waiting_item", item));
+    }
     setTitle("");
     setWaitingFor("");
     setSourceTaskId("");
@@ -204,10 +208,10 @@ function WaitingView({ session, online, run, tasks, openTasks, waitingItems, tas
   async function resumeSource(item: JsonEntity) {
     const task = taskMap.get(text(item, "sourceTaskId"));
     if (!task) return;
-    await run(async (store) => {
-      await store.upsert("execution.waiting_item", resolveExecutionWaitingItem(item, "等待结束，恢复来源任务"));
-      return store.upsert("execution.task", { ...task, status: "todo" });
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.waiting_item", entity: resolveExecutionWaitingItem(item, "等待结束，恢复来源任务") },
+      { operation: "upsert", entityType: "execution.task", entity: { ...task, status: "todo" } },
+    ]));
     setMessage("等待已结束，来源任务恢复为待办");
   }
 
@@ -223,12 +227,12 @@ function WaitingView({ session, online, run, tasks, openTasks, waitingItems, tas
       context: "follow-up",
     });
     const [forward, reverse] = createWaitingConversionLinks(session.user.id, session.session.deviceId, item.meta.id, target.meta.id);
-    await run(async (store) => {
-      await store.upsert("execution.task", target);
-      await store.upsert("execution.entity_link", forward);
-      await store.upsert("execution.entity_link", reverse);
-      return store.upsert("execution.waiting_item", resolveExecutionWaitingItem(item, "已转换为后续任务"));
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.task", entity: target },
+      { operation: "upsert", entityType: "execution.entity_link", entity: forward },
+      { operation: "upsert", entityType: "execution.entity_link", entity: reverse },
+      { operation: "upsert", entityType: "execution.waiting_item", entity: resolveExecutionWaitingItem(item, "已转换为后续任务") },
+    ]));
     setMessage("等待事项已转换为新任务，并保留双向来源关系");
   }
 
@@ -444,11 +448,11 @@ function CalendarRecurrenceView({ session, online, run, events, occurrences, rul
     }, existingRule?.meta.id);
     const updated = { ...calendarEvent, recurrenceRuleId: rule.meta.id };
     const next = materializeCalendarOccurrences(session.user.id, session.session.deviceId, updated, rule, occurrences, localDate(), 60);
-    await run(async (store) => {
-      await store.upsert("execution.recurrence_rule", rule);
-      await store.upsert("execution.calendar_event", updated);
-      return next.length ? (await store.batchUpsert("execution.calendar_occurrence", next)).state : store.snapshot();
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.recurrence_rule", entity: rule },
+      { operation: "upsert", entityType: "execution.calendar_event", entity: updated },
+      ...next.map((entity) => ({ operation: "upsert" as const, entityType: "execution.calendar_occurrence" as const, entity })),
+    ]));
     setMessage(`重复日历规则已保存，并生成未来 60 天 ${next.length} 个实例`);
   }
 
@@ -467,11 +471,10 @@ function CalendarRecurrenceView({ session, online, run, events, occurrences, rul
   async function clearRecurrence(calendarEvent: JsonEntity) {
     const ruleId = text(calendarEvent, "recurrenceRuleId");
     if (!ruleId) return;
-    await run(async (store) => {
-      const next = await store.upsert("execution.calendar_event", { ...calendarEvent, recurrenceRuleId: null });
-      try { return await store.delete("execution.recurrence_rule", ruleId); }
-      catch { return next; }
-    });
+    await run((store) => atomicMutate(store, [
+      { operation: "upsert", entityType: "execution.calendar_event", entity: { ...calendarEvent, recurrenceRuleId: null } },
+      { operation: "delete", entityType: "execution.recurrence_rule", entityId: ruleId },
+    ]));
     setMessage("日历重复规则已关闭，历史 occurrence 保留");
   }
 

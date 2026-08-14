@@ -26,6 +26,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --manifest-path services/cloud/Cargo.toml \
     --bin lifetrace-cloud \
     --bin mail_worker \
+    --bin execution_worker \
     --bin lifetrace-migrate \
     --bin lifetrace-admin
 
@@ -43,6 +44,7 @@ RUN sed -i \
 WORKDIR /app
 COPY --from=builder /build/services/cloud/target/release/lifetrace-cloud /app/lifetrace-cloud
 COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker
+COPY --from=builder /build/services/cloud/target/release/execution_worker /app/execution_worker
 COPY --from=builder /build/services/cloud/target/release/lifetrace-migrate /app/lifetrace-migrate
 COPY --from=builder /build/services/cloud/target/release/lifetrace-admin /app/lifetrace-admin
 USER lifetrace

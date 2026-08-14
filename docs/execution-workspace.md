@@ -1,12 +1,12 @@
 # LifeTrace Execution Workspace
 
-> Status: browser/desktop P3 implementation, reusing one shared execution domain across Web, cloud sync and the desktop SQLite projection.
+> Status: **P0–P4 complete**. Browser, cloud sync and desktop SQLite share one execution domain.
 >
 > Updated: 2026-08-14
 
 ## 1. Goal
 
-LifeTrace does not model memo, todo, plan, waiting, calendar and long-term goals as unrelated islands. The execution workspace turns them into one capture-to-review loop:
+LifeTrace does not model memo, todo, plan, waiting, calendar and long-term goals as unrelated islands. The execution workspace is one capture-to-review loop:
 
 ```text
 Goal
@@ -25,16 +25,17 @@ Execution
   ↓
 Completion Result / Occurrence status
   ↓
-Dashboard / Review / Search
+Weekly Review Snapshot / Dashboard / Search
 ```
 
-Quick Capture and Memo remain the low-friction entry points; they eventually resolve into the same execution graph instead of creating separate task databases.
+Quick Capture and Memo remain low-friction entry points, but actionable work eventually resolves into this same execution graph.
 
 ## 2. Canonical execution domain
 
-The shared contract registry now provides:
+The shared contract registry provides:
 
 - `execution.goal`
+- `execution.weekly_review`
 - `execution.project`
 - `execution.recurrence_rule`
 - `execution.task`
@@ -50,60 +51,41 @@ The shared contract registry now provides:
 - `execution.completion_result`
 - `execution.entity_link`
 
-`execution.goal` is a normal user-owned bidirectional sync entity and therefore uses the existing `execution:read` / `execution:write` scopes. It is not a Web-only record.
+These are normal user-owned bidirectional sync entities under `execution:read` / `execution:write`.
 
-The desktop SQLite projection adds `execution_goals` and `execution_projects.goal_id`. Goal insert/update/delete operations use the same local sync outbox as the other execution entities, and remote Goal payloads are projected back into the real SQLite tables.
+Desktop SQLite projects the domain into real local tables. P3 added `execution_goals` and `execution_projects.goal_id`; P4 adds `execution_weekly_reviews`. Local insert/update/delete operations enter the normal sync outbox and remote payloads project back into SQLite.
 
 ## 3. Browser information architecture
 
-The global sidebar still exposes one execution destination: **计划与待办** (`/execution`). Detail functions stay inside the execution domain.
+The global sidebar exposes one destination: **计划与待办** (`/execution`). Internal routes remain domain-level details rather than additional global modules.
 
 ### `/execution`
 
-The Execution Hub wraps the existing workspace and links to the Goal and Control subroutes without adding more global navigation entries.
-
-Core views remain:
+Core views:
 
 1. **今天** — ordinary tasks plus recurring task occurrences.
-2. **收件箱** — captured tasks not yet organized.
+2. **收件箱** — captured work not yet organized.
 3. **计划** — projects and task progress.
 4. **备忘** — memo timeline and conversion.
 5. **重复** — recurring task editor.
-6. **回顾** — rolling seven-day execution analytics.
+6. **回顾** — rolling seven-day analytics plus persistent weekly snapshots.
 7. **已完成** — non-recurring task completion history.
 
 ### `/execution/goals`
 
-The Goal workspace implements:
-
-```text
-Goal → Project → Task
-```
-
-A Goal carries long-horizon intent, optional target time and lifecycle state. Projects can be attached to a Goal through `project.goalId`. Goal progress is derived from its Projects and Tasks rather than copied into another checklist.
-
-Creating a Goal together with its first Project uses one atomic sync group so the Project cannot exist without its intended Goal because of a partial network/server write.
+Implements `Goal → Project → Task`. Goal progress is derived from attached Projects and Tasks, never copied into another checklist.
 
 ### `/execution/control`
 
-1. **等待事项** — external dependencies and follow-up dates.
-2. **提醒** — reminder lifecycle for task/calendar/waiting/memo objects.
-3. **子任务与依赖** — parent-child structure and finish-before-start dependencies.
-4. **重复日历** — calendar recurrence materialization and per-occurrence exceptions.
+Contains Waiting Items, Reminders, Subtasks/Dependencies and recurring-calendar exception controls.
 
 ### `/calendar`
 
-The existing calendar is the Timebox view over execution data while continuing to aggregate habits, finance, workouts, English and daily review records.
+The calendar is the Timebox view over execution data while still aggregating habits, finance, workouts, English and subjective daily review records.
 
 ## 4. Goal semantics
 
-Goal is deliberately different from Project and Task:
-
-- **Goal** answers *why / what long-term outcome*;
-- **Project** answers *which finite workstream*;
-- **Task** answers *what can be executed next*.
-
-Goal lifecycle:
+Goal answers *why / what long-term outcome*; Project answers *which finite workstream*; Task answers *what can be executed next*.
 
 ```text
 active ↔ paused
@@ -112,52 +94,41 @@ active ↔ paused
    └→ cancelled
 ```
 
-Completing a Goal does not delete, rewrite or auto-complete its Projects/Tasks. Historical execution evidence stays intact.
+Completing a Goal does not rewrite its Projects or Tasks. Historical execution evidence stays intact.
 
-Goal progress is calculated from the current execution graph:
+## 5. Dependency-aware Today and hard enforcement
 
-- attached Project count;
-- completed Project count;
-- Task count under attached Projects;
-- completed Task count;
-- derived Task completion rate.
+The UI separates **ready** and **blocked** work and names unfinished predecessors.
 
-## 5. Dependency-aware Today
+P4 makes this rule authoritative on the server. Every `execution.task` upsert that attempts to enter `in_progress` or `done` is checked against active `execution.task_dependency` rows of type `finish_before_start`.
 
-Today now distinguishes **ready** and **blocked** work.
+The PostgreSQL guard runs inside the actual sync transaction. For an atomic group such as:
 
-For each task scheduled/due today (including the parent task behind a recurring occurrence), LifeTrace checks `execution.task_dependency` edges. A task is blocked when any `dependsOnTaskId` prerequisite has not reached `done`.
+```text
+1. predecessor: todo → done
+2. successor:   todo → in_progress
+```
 
-The root dashboard therefore exposes:
-
-- number of actions that can start immediately;
-- number of actions currently blocked;
-- explicit blocker titles for each blocked task.
-
-This is advisory ordering at P3: the UI makes blockers visible. Hard server-side rejection of an illegal `todo → in_progress` transition remains future work so desktop, Web and future mobile clients can share one enforcement rule.
+step 2 sees step 1's staged state and is allowed. An out-of-order or stale client that attempts step 2 alone is rejected with a dependency error. Desktop, Web and future clients therefore share the same enforcement rule.
 
 ## 6. Atomic multi-entity sync
 
-The sync protocol already contained `atomicGroupId`; P3 activates it in the browser through `atomicMutate`.
+`atomicGroupId` is now the standard for workflows whose objects must agree.
 
-An atomic mutation can mix entity types:
+P4 migrates the remaining important multi-write paths to `atomicMutate`:
 
-```text
-atomicGroupId = G
-  ├─ upsert execution.goal
-  ├─ upsert execution.project
-  └─ ...
-```
+- Goal + first Project;
+- Task completion + `completion_result`;
+- Memo → Task + bidirectional lineage + Memo archive;
+- Memo → Calendar + bidirectional lineage + Memo archive;
+- Task Timebox + Calendar Event;
+- remove Timebox + clear Task scheduling;
+- Task → Waiting and Waiting → restored Task;
+- Waiting → new Task + bidirectional lineage;
+- recurrence rule + parent object + initial occurrences;
+- recurrence shutdown + parent recurrence reference removal.
 
-The browser does not publish any of those entities into its local CloudState until every result succeeds.
-
-Server behavior was already implemented before P3:
-
-- the in-memory sync store evaluates the complete group before committing it;
-- PostgreSQL executes a multi-change group inside a nested transaction/savepoint;
-- any rejected/conflicting member causes the whole group to roll back and returns `atomic_group_failed` for the group.
-
-P3 uses this for Goal + first Project bootstrap. Existing older conversion/timebox flows can now be migrated to the same helper incrementally instead of adding a second transaction API.
+The browser publishes no local CloudState changes until every member succeeds. PostgreSQL uses a nested transaction/savepoint; any rejected/conflicting member rolls the group back.
 
 ## 7. Capture, Memo and Waiting semantics
 
@@ -171,13 +142,13 @@ todo → in_progress → done
 
 Quick-captured tasks use `context = "inbox"`.
 
-A Memo is lighter than a formal Note: no required title/folder, quick capture first, chronological timeline, optional pin/archive, and conversion into actionable objects. Formal knowledge remains in Notes.
+A Memo is lighter than a formal Note and can later be converted into Task or Calendar objects while preserving lineage.
 
-A Waiting Item represents work that cannot currently advance because the next change must come from another person, service or condition. Task → Waiting keeps the source task and sets it to `waiting`; resolving the waiting item does not silently finish the source task.
+A Waiting Item represents work that cannot advance until an external person, service or condition changes. Task → Waiting keeps the source task and moves it to `waiting`; resolving the Waiting Item never silently completes the source Task.
 
 ## 8. Timeboxing and recurrence
 
-Task Timeboxing keeps task scheduling fields and `execution.calendar_event` aligned. Calendar remains a scheduling view over the same execution data, not another todo database.
+Task Timeboxing keeps Task scheduling fields and `execution.calendar_event` aligned as one atomic operation.
 
 Recurring tasks use:
 
@@ -185,85 +156,99 @@ Recurring tasks use:
 Task definition → Recurrence Rule → Task Occurrence
 ```
 
-They never reset a completed task back to `todo`. Each occurrence owns its completion state.
+Recurring calendar events use the same `execution.recurrence_rule` with `execution.calendar_occurrence`. Per-instance skip/restore/move edits the occurrence rather than rewriting the parent rule.
 
-Recurring calendar events use the same `execution.recurrence_rule` model with `execution.calendar_occurrence`. Per-instance skip/restore/move changes the occurrence without rewriting the parent recurrence rule.
+## 9. Dedicated Execution maintenance worker
 
-## 9. Reminders, subtasks and dependencies
+P4 introduces `services/cloud/src/bin/execution_worker.rs`. It is deliberately separate from `mail_worker`.
 
-`execution.reminder` references an existing task/calendar/waiting/memo subject. Web manages lifecycle (`scheduled`, snooze, dismiss, cancel); reliable OS/background delivery remains the job of an active desktop/mobile notification executor.
+A database-backed lease (`execution_worker_leases`) provides one active owner across multiple cloud instances. The worker runs a bounded maintenance cycle and:
 
-A Subtask is a normal task with `parentTaskId` and inherits the parent Project.
+- materializes Task Occurrences for the next 60 days;
+- materializes Calendar Occurrences for the next 60 days;
+- respects recurrence interval, weekdays/month-day, `untilAt` and `maxOccurrences`;
+- uses deterministic occurrence IDs plus semantic occurrence keys for idempotency;
+- transitions due reminders from `scheduled` to `fired` and records `lastFiredAt`;
+- writes worker-generated updates into both `sync_entities` and `sync_change_log`, so normal client pull/snapshot observes them.
 
-Dependencies remain separate from hierarchy:
+The worker does **not** claim to deliver an OS notification itself. `fired` is the durable synchronized event; desktop/mobile notification adapters can present it through the appropriate OS channel.
 
-- parent/child = decomposition;
-- `finish_before_start` = execution ordering.
+The release Docker image now packages `/app/execution_worker`. Production and local Compose stacks run it as a separate service after PostgreSQL and the cloud API become healthy.
 
-The Web editor prevents dependency cycles before writing an edge.
+## 10. Completion history and weekly review
 
-## 10. Completion history and review
+Non-recurring completion writes Task state and exactly one `execution.completion_result` atomically. Recurring completion belongs to the occurrence.
 
-Non-recurring completion writes task state plus one `execution.completion_result`. Recurring task completion writes the individual Task Occurrence. Calendar occurrences keep their own status.
+The seven-day execution review is still calculated from source evidence:
 
-The Execution review continues to derive rolling seven-day metrics from actual execution evidence, while `/review` remains the subjective mood/energy/reflection record.
+- Tasks;
+- Task Occurrences;
+- Completion Results;
+- Timebox/scheduling data.
+
+`execution.weekly_review` persists a snapshot of those calculated metrics plus an optional note. It does not copy Task state. The snapshot stores week range, planned/completed counts, completion rate, planned/actual minutes and overdue counts, allowing later week-to-week comparison without making analytics the source of truth.
+
+`/review` remains the separate subjective mood/energy/reflection record.
 
 ## 11. Search and sync
 
-Global search now includes Goals in addition to tasks, projects, memos and waiting items. Goal results open `/execution/goals`.
+Global search includes Goals, Tasks, Projects, Memos and Waiting Items. Browser writes continue through normal optimistic snapshot/pull/push sync. Photos, encrypted local albums, credentials and local secrets stay outside this execution boundary.
 
-Browser writes use the normal optimistic snapshot/pull/push protocol. Photos, encrypted local albums, credentials and local secrets remain outside this execution boundary.
+## 12. P0–P4 completion status
 
-## 12. Server-side scheduler decision
+### P0 — foundation
 
-The current cloud service has a dedicated mail worker but no generic execution scheduler/lease framework. P3 therefore does **not** bolt recurrence and reminder polling onto the mail worker or pretend browser background execution is reliable.
+- [x] unified Execution workspace, Inbox, Projects, Memo and completion history
+- [x] shared cloud sync entities
 
-Long-horizon materialization and due-reminder delivery remain a separate backend work item that should introduce one reusable execution maintenance worker with:
+### P1 — scheduling and recurrence
 
-- distributed lease / single-owner processing;
-- idempotent occurrence keys and reminder fire keys;
-- bounded horizon materialization;
-- retry/backoff and observability;
-- notification channel adapters.
+- [x] Timeboxing
+- [x] task recurrence / occurrence history
+- [x] Memo conversions
+- [x] rolling seven-day review
 
-This keeps scheduling correctness independent of whether a Web page happens to be open.
+### P2 — advanced execution control
 
-## 13. Implementation status
+- [x] Waiting Items
+- [x] Reminders
+- [x] Subtasks and dependency graph
+- [x] recurring-calendar occurrence exceptions
 
-Completed:
+### P3 — goals and atomic sync
 
-- [x] Shared `execution.goal` contract registration
-- [x] Web Goal workspace and Goal → Project → Task progress
-- [x] Desktop `execution_goals` migration and Project `goal_id` storage
-- [x] Goal local outbox triggers and remote SQLite projection
-- [x] Goal global search integration
-- [x] Dependency-aware Today ready/blocked summary
-- [x] Browser mixed-entity `atomicGroupId` helper
-- [x] Atomic Goal + first Project bootstrap
-- [x] Unified execution workspace / Inbox / Memo / Project / completion history
-- [x] Task and calendar recurrence with occurrence history
-- [x] Waiting items, reminders, subtasks and dependency cycle prevention
-- [x] Calendar occurrence exceptions
-- [x] Regression coverage for the P3 execution layer
+- [x] shared Goal layer and desktop Goal projection
+- [x] Goal → Project → Task progress
+- [x] dependency-aware Today
+- [x] mixed-entity `atomicMutate`
 
-Follow-up work:
+### P4 — reliability and closure
 
-- [ ] Migrate older Memo conversion and task-timebox multi-write flows to `atomicMutate`
-- [ ] Shared hard enforcement of dependency-aware task start transitions
-- [ ] Long-horizon/server-side recurrence materialization worker
-- [ ] Reminder delivery worker and notification permission/channel UX
-- [ ] Weekly review persistence and comparison across weeks
-- [ ] AI-assisted Inbox classification and Goal/Project decomposition
+- [x] server-authoritative dependency transition enforcement
+- [x] migration of remaining critical multi-entity workflows to `atomicMutate`
+- [x] dedicated multi-instance-safe Execution maintenance worker
+- [x] server recurrence materialization
+- [x] durable due-reminder firing state
+- [x] persistent `execution.weekly_review`
+- [x] desktop weekly-review projection and outbox triggers
+- [x] Docker/Compose execution-worker deployment
 
-## 14. Verification
+P0–P4 is the completed Execution refactor. Future features such as AI Inbox classification, notification-channel UX or richer goal coaching are product enhancements rather than unfinished architecture work.
 
-Relevant regression coverage:
+## 13. Verification
+
+Primary regression coverage includes:
 
 ```text
 apps/desktop/tests/web-execution-workspace.test.ts
-apps/desktop/src-tauri/src/database/migrations/m0014_execution_goals.rs
+apps/desktop/tests/execution-p4.test.ts
+apps/desktop/src-tauri/src/database/migrations/m0015_execution_weekly_reviews.rs
 apps/desktop/src-tauri/src/sync/execution.rs
+services/cloud/tests/execution_p4_postgres.rs
+services/cloud/src/postgres_repository/push/execution_guard.rs
+services/cloud/src/bin/execution_worker.rs
+services/cloud/migrations/0021_execution_worker.sql
 crates/lifetrace-contracts/src/registry.rs
 ```
 
-Validation includes linting, unit tests, Web build, browser build, Rust tests and clippy. Execution changes must not merge until GitHub Actions reports success.
+Merge gate: Browser Web, PostgreSQL, Windows Sync and Local Encrypted Album workflows must all be successful, including lint, unit tests, browser/Web builds, Rust tests, migrations, clippy and Docker/Compose smoke coverage.

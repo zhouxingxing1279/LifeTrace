@@ -5,6 +5,7 @@ export * from "./cloud/factories";
 export * from "./cloud/execution";
 export * from "./cloud/execution-advanced";
 export * from "./cloud/execution-goal";
+export * from "./cloud/execution-weekly-review";
 export * from "./cloud/api";
 export * from "./cloud/atomic";
 export * from "./cloud/management";
