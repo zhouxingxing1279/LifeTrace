@@ -1,5 +1,6 @@
-# Production example. The Cloud image is built by GitHub Actions and published
-# to GHCR so production hosts only need to pull and run the image.
+# Production example for hosts using an external PostgreSQL database.
+# Both Cloud and Web images are built by GitHub Actions and published to GHCR,
+# so production hosts only need Docker Compose and environment variables.
 services:
   lifetrace-cloud:
     image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
@@ -22,16 +23,7 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
-      BEECOUNT_ADAPTER_ENABLED: ${BEECOUNT_ADAPTER_ENABLED:-false}
-      BEECOUNT_ADAPTER_BASE_URL: ${BEECOUNT_ADAPTER_BASE_URL:-http://beecount-cloud:8080/}
-      BEECOUNT_ADAPTER_EMAIL: ${BEECOUNT_ADAPTER_EMAIL:-}
-      BEECOUNT_ADAPTER_PASSWORD: ${BEECOUNT_ADAPTER_PASSWORD:-}
-      BEECOUNT_ADAPTER_LIFETRACE_USER_ID: ${BEECOUNT_ADAPTER_LIFETRACE_USER_ID:-}
-      BEECOUNT_ADAPTER_TIMEOUT_SECONDS: ${BEECOUNT_ADAPTER_TIMEOUT_SECONDS:-10}
-      BEECOUNT_ADAPTER_MAX_RESPONSE_BYTES: ${BEECOUNT_ADAPTER_MAX_RESPONSE_BYTES:-8388608}
       BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES: ${BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES:-67108864}
-    secrets:
-      - database_url
     restart: unless-stopped
 
   lifetrace-mail-worker:
@@ -46,12 +38,40 @@ services:
     environment:
       <<: *cloud_environment
       MIGRATION_ON_STARTUP: "false"
-    secrets:
-      - database_url
     depends_on:
       - lifetrace-cloud
     restart: unless-stopped
 
-secrets:
-  database_url:
-    environment: DATABASE_URL
+  lifetrace-execution-worker:
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    entrypoint: ["/app/execution_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      - lifetrace-cloud
+    restart: unless-stopped
+
+  caddy:
+    image: ${LIFETRACE_WEB_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-web:main}
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      BEECOUNT_DOMAIN: "${BEECOUNT_DOMAIN:-finance.8-148-75-45.sslip.io}"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - lifetrace-cloud
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:
