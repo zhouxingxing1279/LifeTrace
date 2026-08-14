@@ -5,10 +5,15 @@ import { installGlobalErrorHandlers } from "../../src/services/clientObservabili
 import { installGlobalFetchInstrumentation } from "../../src/services/fetchInstrumentation";
 import "./bootstrap";
 import App from "./App";
+
+/* Legacy feature compatibility first; authoritative browser layers follow. */
 import "./styles.css";
 import "./cloud-pages.css";
-import "./web-shell.css";
 import "./browser.css";
+import "./web-tokens.css";
+import "./web-primitives.css";
+import "./web-shell.css";
+import "./web-features.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
