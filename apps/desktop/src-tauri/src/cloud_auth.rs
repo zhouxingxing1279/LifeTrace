@@ -1,4 +1,118 @@
+use std::time::Duration;
+
+use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
+use reqwest::{redirect::Policy, Method};
+use serde::{Deserialize, Serialize};
+use url::Url;
+
 const CREDENTIAL_TARGET: &str = "LifeTrace/cloud/lifetrace-desktop/refresh-token";
+const MAX_AUTH_RESPONSE_BYTES: usize = 1024 * 1024;
+const AUTH_PATHS: &[&str] = &[
+    "/api/v1/auth/capabilities",
+    "/api/v1/auth/login",
+    "/api/v1/auth/register",
+    "/api/v1/auth/password/forgot",
+    "/api/v1/auth/password/change",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/logout-all",
+];
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAuthHttpRequest {
+    origin: String,
+    path: String,
+    method: String,
+    body: Option<String>,
+    authorization: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudAuthHttpResponse {
+    status: u16,
+    body: String,
+}
+
+fn auth_url(origin: &str, path: &str) -> Result<Url, String> {
+    let mut url = Url::parse(origin.trim()).map_err(|_| "云服务地址格式无效".to_owned())?;
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        return Err("云服务地址必须是有效的 HTTP 或 HTTPS 地址".to_owned());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("云服务地址不能包含用户名或密码".to_owned());
+    }
+    if url.path() != "/" || url.query().is_some() || url.fragment().is_some() {
+        return Err("云服务地址只能填写服务器根地址".to_owned());
+    }
+    if !AUTH_PATHS.contains(&path) {
+        return Err("桌面端拒绝访问未授权的云认证路径".to_owned());
+    }
+    url.set_path(path);
+    Ok(url)
+}
+
+#[tauri::command]
+pub async fn cloud_auth_http_request(
+    request: CloudAuthHttpRequest,
+) -> Result<CloudAuthHttpResponse, String> {
+    let url = auth_url(&request.origin, &request.path)?;
+    let method = match request.method.to_ascii_uppercase().as_str() {
+        "GET" => Method::GET,
+        "POST" => Method::POST,
+        _ => return Err("桌面端云认证只允许 GET 或 POST".to_owned()),
+    };
+    if request.path == "/api/v1/auth/capabilities" && method != Method::GET {
+        return Err("云认证 capabilities 只允许 GET".to_owned());
+    }
+    if request.path != "/api/v1/auth/capabilities" && method != Method::POST {
+        return Err("该云认证接口只允许 POST".to_owned());
+    }
+
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(20))
+        .redirect(Policy::none())
+        .build()
+        .map_err(|error| format!("无法初始化云端网络客户端: {error}"))?;
+    let mut builder = client
+        .request(method, url)
+        .header(ACCEPT, "application/json");
+    if let Some(body) = request.body {
+        if body.len() > 64 * 1024 {
+            return Err("云认证请求体超过安全上限".to_owned());
+        }
+        builder = builder.header(CONTENT_TYPE, "application/json").body(body);
+    }
+    if let Some(authorization) = request.authorization {
+        if authorization.len() > 8192 || !authorization.starts_with("Bearer ") {
+            return Err("云认证 Authorization 头无效".to_owned());
+        }
+        builder = builder.header(AUTHORIZATION, authorization);
+    }
+
+    let response = builder
+        .send()
+        .await
+        .map_err(|error| format!("无法连接 LifeTrace 云端: {error}"))?;
+    let status = response.status().as_u16();
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_AUTH_RESPONSE_BYTES as u64)
+    {
+        return Err("云认证响应超过安全上限".to_owned());
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("读取云认证响应失败: {error}"))?;
+    if bytes.len() > MAX_AUTH_RESPONSE_BYTES {
+        return Err("云认证响应超过安全上限".to_owned());
+    }
+    let body =
+        String::from_utf8(bytes.to_vec()).map_err(|_| "云认证响应不是有效 UTF-8".to_owned())?;
+    Ok(CloudAuthHttpResponse { status, body })
+}
 
 pub(crate) fn credential_set_internal(refresh_token: &str) -> Result<(), String> {
     if refresh_token.is_empty() || refresh_token.len() > 4096 {
@@ -136,11 +250,25 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use super::auth_url;
+
     #[test]
     fn credential_target_is_stable_and_contains_no_secret() {
         assert_eq!(
             super::CREDENTIAL_TARGET,
             "LifeTrace/cloud/lifetrace-desktop/refresh-token"
         );
+    }
+
+    #[test]
+    fn native_auth_transport_only_accepts_server_origin_and_known_paths() {
+        let url = auth_url("https://8-148-75-45.sslip.io", "/api/v1/auth/login").unwrap();
+        assert_eq!(
+            url.as_str(),
+            "https://8-148-75-45.sslip.io/api/v1/auth/login"
+        );
+        assert!(auth_url("https://8-148-75-45.sslip.io/api", "/api/v1/auth/login").is_err());
+        assert!(auth_url("https://8-148-75-45.sslip.io", "/api/v1/admin/users").is_err());
+        assert!(auth_url("file:///tmp/lifetrace", "/api/v1/auth/login").is_err());
     }
 }
