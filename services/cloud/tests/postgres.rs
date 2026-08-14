@@ -199,6 +199,41 @@ async fn postgres_runtime_migrates_persists_and_replays_idempotently() {
         .unwrap();
     assert!(snapshot.completed);
     assert_eq!(snapshot.items.len(), 1);
+
+    let filtered_types = vec![EntityType::new("finance.transaction")];
+    let filtered_snapshot = restarted
+        .store
+        .snapshot(
+            &user,
+            &SnapshotRequestV1 {
+                request_id: RequestId::new("postgres-filtered-snapshot"),
+                client: client(),
+                snapshot_id: None,
+                page_token: None,
+                entity_types: Some(filtered_types.clone()),
+                page_size: 20,
+            },
+        )
+        .await
+        .unwrap();
+    assert!(filtered_snapshot.completed);
+    assert_eq!(filtered_snapshot.items.len(), 1);
+
+    let after_filtered_snapshot = restarted
+        .store
+        .pull(
+            &user,
+            &PullRequestV1 {
+                request_id: RequestId::new("postgres-filtered-pull"),
+                client: client(),
+                after_cursor: Some(filtered_snapshot.snapshot_cursor),
+                limit: 50,
+                entity_types: Some(filtered_types),
+            },
+        )
+        .await
+        .unwrap();
+    assert!(after_filtered_snapshot.changes.is_empty());
 }
 
 #[tokio::test]
