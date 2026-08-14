@@ -21,15 +21,6 @@ fn cors_app() -> axum::Router {
     app(AppState::new(config))
 }
 
-fn production_cors_app() -> axum::Router {
-    let config = Config {
-        environment: "production".to_owned(),
-        cors_allowed_origins: vec![WEB_ORIGIN.to_owned()],
-        ..Config::default()
-    };
-    app(AppState::new(config))
-}
-
 #[tokio::test]
 async fn configured_web_origin_can_read_credentialed_response() {
     let response = cors_app()
@@ -111,8 +102,8 @@ async fn registration_preflight_allows_json_and_csrf_headers() {
 }
 
 #[tokio::test]
-async fn production_allows_packaged_tauri_login_preflight() {
-    let response = production_cors_app()
+async fn packaged_tauri_login_preflight_is_always_allowed() {
+    let response = cors_app()
         .oneshot(
             Request::builder()
                 .method(Method::OPTIONS)
