@@ -209,5 +209,5 @@ async fn finish_before_start_is_server_authoritative_and_atomic_group_aware() {
         .into_iter()
         .find(|entity| entity.entity_id.as_str() == "next")
         .unwrap();
-    assert_eq!(next.payload.unwrap().0["status"], "in_progress");
+    assert_eq!(next.payload.0["status"], "in_progress");
 }
