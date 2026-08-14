@@ -27,8 +27,10 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - name: Rust formatting
-        run: cargo fmt --all --check
+      - name: Cloud Rust formatting
+        run: cargo fmt --manifest-path services/cloud/Cargo.toml --all --check
+      - name: Desktop Rust formatting
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all --check
       - name: Cloud compile
         run: cargo check --locked --manifest-path services/cloud/Cargo.toml
       - name: Cloud tests
