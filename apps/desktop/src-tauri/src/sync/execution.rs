@@ -18,6 +18,11 @@ struct TableSpec {
 
 const TABLE_SPECS: &[TableSpec] = &[
     TableSpec {
+        entity_type: "execution.goal",
+        table: "execution_goals",
+        soft_delete: true,
+    },
+    TableSpec {
         entity_type: "execution.project",
         table: "execution_projects",
         soft_delete: true,
@@ -85,6 +90,7 @@ const TABLE_SPECS: &[TableSpec] = &[
 ];
 
 pub const ENTITY_TYPES: &[&str] = &[
+    "execution.goal",
     "execution.project",
     "execution.recurrence_rule",
     "execution.task",
@@ -534,10 +540,14 @@ mod tests {
     fn execution_payload_round_trips_to_real_tables() {
         let (source, source_profile) = db("source");
         let (target, target_profile) = db("target");
+        source.execute(
+            "INSERT INTO execution_goals(id,user_id,name,status,created_at,updated_at) VALUES('g1',?1,'Graduate','active','2026-08-09T00:00:00Z','2026-08-09T00:00:00Z')",
+            [&source_profile],
+        ).unwrap();
         source
             .execute(
-                "INSERT INTO execution_projects(id,user_id,name,status,created_at,updated_at)
-             VALUES('p1',?1,'Launch','active','2026-08-09T00:00:00Z','2026-08-09T00:00:00Z')",
+                "INSERT INTO execution_projects(id,user_id,name,status,goal_id,created_at,updated_at)
+             VALUES('p1',?1,'Launch','active','g1','2026-08-09T00:00:00Z','2026-08-09T00:00:00Z')",
                 [&source_profile],
             )
             .unwrap();
@@ -553,6 +563,7 @@ mod tests {
         ).unwrap();
 
         for (entity_type, entity_id) in [
+            ("execution.goal", "g1"),
             ("execution.project", "p1"),
             ("execution.task", "t1"),
             ("execution.memo", "m1"),
@@ -567,6 +578,22 @@ mod tests {
             apply_upsert(&target, &target_profile, entity_type, &legacy).unwrap();
         }
 
+        let goal_name: String = target
+            .query_row(
+                "SELECT name FROM execution_goals WHERE id='g1' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(goal_name, "Graduate");
+        let project_goal: String = target
+            .query_row(
+                "SELECT goal_id FROM execution_projects WHERE id='p1' AND user_id=?1",
+                [&target_profile],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(project_goal, "g1");
         let title: String = target
             .query_row(
                 "SELECT title FROM execution_tasks WHERE id='t1' AND user_id=?1",

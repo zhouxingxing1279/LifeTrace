@@ -2,6 +2,7 @@ export type Route =
   | "/"
   | "/assistant"
   | "/execution"
+  | "/execution/goals"
   | "/execution/control"
   | "/habits"
   | "/photo-challenge"
@@ -106,7 +107,7 @@ export const MOBILE_NAV: NavItem[] = [
 ];
 
 export const ROUTES = new Set<Route>([
-  "/", "/assistant", "/execution", "/execution/control", "/habits", "/photo-challenge", "/english/articles", "/english/vocabulary",
+  "/", "/assistant", "/execution", "/execution/goals", "/execution/control", "/habits", "/photo-challenge", "/english/articles", "/english/vocabulary",
   "/english/stats", "/fitness", "/notes", "/calendar", "/review", "/finance",
   "/finance/transactions", "/finance/accounts", "/finance/categories",
   "/finance/budgets", "/finance/import", "/finance/beecount", "/devices", "/settings", "/search",
@@ -115,7 +116,8 @@ export const ROUTES = new Set<Route>([
 export const PAGE_COPY: Record<Route, [string, string]> = {
   "/": ["今日总览", "把今天真正需要关注的任务、坚持、训练、学习、财务和复盘集中在一个工作台。"],
   "/assistant": ["AI 管家", "基于当前云端记录生成摘要、趋势和可执行建议。"],
-  "/execution": ["计划与待办", "从快速收集到今天执行，把任务、计划、备忘和完成历史放在同一个闭环里。"],
+  "/execution": ["计划与待办", "从长期目标到今天执行，把目标、计划、任务、备忘和完成历史放在同一个闭环里。"],
+  "/execution/goals": ["长期目标", "用 Goal → Project → Task 把长期方向连接到每天真实发生的行动。"],
   "/execution/control": ["执行控制台", "管理等待事项、提醒、任务依赖与重复日历例外，不把外部依赖混进普通待办。"],
   "/habits": ["坚持项目", "管理长期项目，关注完成率、累计量与真实趋势。"],
   "/photo-challenge": ["摄影挑战", "查看 90+ 高分照片数量、评分记录和原图从云端转存到本地相册的状态。"],
@@ -135,7 +137,7 @@ export const PAGE_COPY: Record<Route, [string, string]> = {
   "/finance/beecount": ["BeeCount 云账本", "在 LifeTrace 中查看 BeeCount iOS 与 Web 端同步的账本数据。"],
   "/devices": ["设备与会话", "管理登录设备、活动会话和账号安全。"],
   "/settings": ["数据与设置", "管理云端同步、界面偏好和账号设置。"],
-  "/search": ["全局搜索", "搜索任务、计划、备忘、账单、笔记、训练、英语和坚持记录。"],
+  "/search": ["全局搜索", "搜索目标、任务、计划、备忘、账单、笔记、训练、英语和坚持记录。"],
 };
 
 export function currentRoute(pathname = typeof window === "undefined" ? "/" : window.location.pathname): Route {
