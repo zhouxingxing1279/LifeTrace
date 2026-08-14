@@ -1,0 +1,54 @@
+name: Temporary Desktop Package Lock Sync
+
+on:
+  push:
+    branches:
+      - fix/desktop-v029-lock-metadata
+    paths:
+      - ".github/workflows/tmp-sync-desktop-package-lock.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-package-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/desktop-v029-lock-metadata
+          fetch-depth: 0
+      - name: Update only LifeTrace root package versions
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("apps/desktop/package-lock.json")
+          before = path.read_text(encoding="utf-8")
+          old_top = '{\n  "name": "lifetrace",\n  "version": "0.2.8",\n'
+          new_top = '{\n  "name": "lifetrace",\n  "version": "0.2.9",\n'
+          old_root = '  "packages": {\n    "": {\n      "name": "lifetrace",\n      "version": "0.2.8",\n'
+          new_root = '  "packages": {\n    "": {\n      "name": "lifetrace",\n      "version": "0.2.9",\n'
+          if before.count(old_top) != 1 or before.count(old_root) != 1:
+              raise SystemExit("expected exactly one top-level and one root-package LifeTrace 0.2.8 version")
+          after = before.replace(old_top, new_top, 1).replace(old_root, new_root, 1)
+          if after.replace(new_top, old_top, 1).replace(new_root, old_root, 1) != before:
+              raise SystemExit("package-lock guard failed: unexpected content change")
+          path.write_text(after, encoding="utf-8", newline="\n")
+      - name: Verify diff only changes two root version lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          test "$(git diff --numstat -- apps/desktop/package-lock.json)" = $'2\t2\tapps/desktop/package-lock.json'
+          test "$(git diff -- apps/desktop/package-lock.json | grep -c -- '-  \?\"version\": \"0.2.8\"' || true)" -ge 0
+          git diff -- apps/desktop/package-lock.json | grep -F -- '+  "version": "0.2.9"'
+          git diff -- apps/desktop/package-lock.json | grep -F -- '+      "version": "0.2.9"'
+      - name: Commit synchronized npm lockfile
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add apps/desktop/package-lock.json
+          git commit -m "chore(desktop): sync package-lock for 0.2.9"
+          git push origin HEAD:fix/desktop-v029-lock-metadata
