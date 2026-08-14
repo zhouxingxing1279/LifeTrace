@@ -1,0 +1,82 @@
+name: Photo Challenge Branch Validation
+
+on:
+  push:
+    branches: [feat/photo-challenge-pwa]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: photo-challenge-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud-and-web:
+    name: Cloud, browser web and PWA
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+      - name: Rust formatting
+        run: cargo fmt --all --check
+      - name: Cloud compile
+        run: cargo check --locked --manifest-path services/cloud/Cargo.toml
+      - name: Cloud tests
+        run: cargo test --locked --manifest-path services/cloud/Cargo.toml
+      - name: Cloud clippy
+        run: cargo clippy --locked --manifest-path services/cloud/Cargo.toml --all-targets -- -D warnings
+      - name: Browser dependencies
+        working-directory: apps/desktop
+        run: npm ci
+      - name: Enforce browser cloud-only and no-photo boundaries
+        working-directory: apps/desktop
+        shell: bash
+        run: |
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' web-client/src; then
+            echo "Business data must not be persisted in browser storage"
+            exit 1
+          fi
+          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' web-client vite.browser.config.ts package.json; then
+            echo "Photo/PWA-only code must not enter the browser application"
+            exit 1
+          fi
+      - name: Browser lint
+        working-directory: apps/desktop
+        run: npm run lint
+      - name: Browser unit tests
+        working-directory: apps/desktop
+        run: npm run test:unit
+      - name: Browser build
+        working-directory: apps/desktop
+        run: npm run browser:build
+      - name: Validate standalone PWA files
+        shell: bash
+        run: |
+          test -f apps/photo-challenge-pwa/index.html
+          test -f apps/photo-challenge-pwa/app.js
+          test -f apps/photo-challenge-pwa/styles.css
+          test -f apps/photo-challenge-pwa/manifest.webmanifest
+          test -f apps/photo-challenge-pwa/sw.js
+          python -m json.tool apps/photo-challenge-pwa/manifest.webmanifest >/dev/null
+          grep -q 'photo-challenge-upload' apps/photo-challenge-pwa/manifest.webmanifest
+          grep -q '/api/v1/photo-challenge/score' apps/photo-challenge-pwa/app.js
+
+  desktop-rust:
+    name: Desktop Tauri compile
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Desktop cargo check
+        run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
