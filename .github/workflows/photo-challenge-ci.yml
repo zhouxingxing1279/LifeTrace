@@ -30,6 +30,7 @@ jobs:
       - name: Rustfmt changed files only
         shell: bash
         run: |
+          sed -i '/use std::str::FromStr;/d' services/cloud/src/routes/photo_staging.rs
           rustfmt --edition 2021 \
             services/cloud/src/lib.rs \
             services/cloud/src/routes/mod.rs \
@@ -49,7 +50,7 @@ jobs:
               apps/desktop/src-tauri/src/lib.rs \
               apps/desktop/src-tauri/src/sync/mod.rs \
               apps/desktop/src-tauri/src/sync/photo_staging.rs
-            git commit -m "style: rustfmt photo challenge changes"
+            git commit -m "fix: remove unused photo staging import"
             git push origin HEAD:feat/photo-challenge-pwa
           fi
       - name: Verify changed Rust files are formatted
