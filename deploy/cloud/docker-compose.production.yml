@@ -39,6 +39,7 @@ services:
       LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
       MIGRATION_ON_STARTUP: "false"
       PHOTO_STAGING_DIR: "/data/photo-staging"
+      PHOTO_STAGING_TTL_HOURS: "${PHOTO_STAGING_TTL_HOURS:-720}"
     volumes:
       - lifetrace_photo_staging:/data/photo-staging
     depends_on:
