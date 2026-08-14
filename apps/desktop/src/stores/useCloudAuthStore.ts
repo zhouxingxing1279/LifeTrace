@@ -6,6 +6,7 @@ import {
   type CloudAuthSnapshot,
   type CloudAuthUser,
 } from "@/src/services/cloudAuth";
+import { cloudAuthErrorMessage } from "@/src/services/cloudAuthError";
 
 export type AuthPhase = "bootstrapping" | "refreshing" | "authenticated" | "anonymous" | "offline" | "error";
 
@@ -88,7 +89,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
     try {
       cloudAuthClient.configure(origin);
       set({ origin: cloudAuthClient.configuredOrigin() });
-    } catch (error) { set({ error: error instanceof Error ? error.message : "云服务地址无效" }); }
+    } catch (error) { set({ error: cloudAuthErrorMessage(error, "云服务地址无效") }); }
   },
 
   async initialize() {
@@ -112,7 +113,8 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       } else {
         set(anonymousPatch());
       }
-      if (!hasCredential && error instanceof Error && !/Refresh Token/.test(error.message)) set({ error: error.message });
+      const detail = cloudAuthErrorMessage(error, "账户恢复失败");
+      if (!hasCredential && !/Refresh Token/.test(detail)) set({ error: detail });
     }
   },
 
@@ -145,7 +147,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
             phase: "offline",
             loading: false,
             initialized: true,
-            error: "云端暂时不可用，正在自动重连",
+            error: cloudAuthErrorMessage(error, "云端暂时不可用，正在自动重连"),
           });
         }
         return false;
@@ -161,7 +163,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       const capabilities = await cloudAuthClient.capabilities();
       set({ capabilities, error: undefined });
       return capabilities;
-    } catch (error) { set({ error: error instanceof Error ? error.message : "无法读取注册能力" }); return undefined; }
+    } catch (error) { set({ error: cloudAuthErrorMessage(error, "无法读取注册能力") }); return undefined; }
   },
 
   async login(email, password) {
@@ -170,7 +172,10 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       cloudAuthClient.configure(get().origin);
       set(authenticatedPatch(await cloudAuthClient.login(email, password)));
       return true;
-    } catch (error) { set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "登录失败" }); return false; }
+    } catch (error) {
+      set({ loading: false, phase: "anonymous", error: cloudAuthErrorMessage(error, "登录失败") });
+      return false;
+    }
   },
 
   async register(input) {
@@ -179,19 +184,19 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       cloudAuthClient.configure(get().origin);
       set(authenticatedPatch(await cloudAuthClient.register(input)));
       return true;
-    } catch (error) { set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "注册失败" }); return false; }
+    } catch (error) { set({ loading: false, phase: "anonymous", error: cloudAuthErrorMessage(error, "注册失败") }); return false; }
   },
 
   async forgotPassword(email) {
     set({ loading: true, error: undefined });
     try { cloudAuthClient.configure(get().origin); await cloudAuthClient.forgotPassword(email); set({ loading: false }); return true; }
-    catch (error) { set({ loading: false, error: error instanceof Error ? error.message : "无法提交密码重置请求" }); return false; }
+    catch (error) { set({ loading: false, error: cloudAuthErrorMessage(error, "无法提交密码重置请求") }); return false; }
   },
 
   async changePassword(currentPassword, newPassword) {
     set({ loading: true, error: undefined });
     try { await cloudAuthClient.changePassword(currentPassword, newPassword); set({ loading: false }); return true; }
-    catch (error) { set({ loading: false, error: error instanceof Error ? error.message : "修改密码失败" }); return false; }
+    catch (error) { set({ loading: false, error: cloudAuthErrorMessage(error, "修改密码失败") }); return false; }
   },
 
   async restore() {
@@ -219,7 +224,7 @@ export const useCloudAuthStore = create<CloudAuthState>((set, get) => ({
       await cloudAuthClient.logout(all);
       set({ ...cloudAuthClient.state(), user: undefined, phase: "anonymous", loading: false, initialized: true });
     } catch (error) {
-      set({ loading: false, phase: "anonymous", error: error instanceof Error ? error.message : "退出失败" });
+      set({ loading: false, phase: "anonymous", error: cloudAuthErrorMessage(error, "退出失败") });
     }
   },
 }));
