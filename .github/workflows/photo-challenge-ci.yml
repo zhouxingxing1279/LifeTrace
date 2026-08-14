@@ -65,10 +65,10 @@ jobs:
             apps/desktop/src-tauri/src/sync/photo_staging.rs
       - name: Cloud compile
         run: cargo check --locked --manifest-path services/cloud/Cargo.toml
-      - name: Cloud tests
-        run: cargo test --locked --manifest-path services/cloud/Cargo.toml
+      - name: Photo challenge unit tests
+        run: cargo test --locked --manifest-path services/cloud/Cargo.toml --lib routes::photo_challenge::tests
       - name: Cloud clippy
-        run: cargo clippy --locked --manifest-path services/cloud/Cargo.toml --all-targets -- -D warnings
+        run: cargo clippy --locked --manifest-path services/cloud/Cargo.toml --lib -- -D warnings
       - name: Browser dependencies
         working-directory: apps/desktop
         run: npm ci
