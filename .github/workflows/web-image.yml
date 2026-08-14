@@ -1,0 +1,96 @@
+name: Web Container Image
+
+on:
+  push:
+    branches:
+      - main
+      - agent/full-docker-deployment
+    paths:
+      - "apps/desktop/web-client/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/app/**"
+      - "apps/desktop/public/**"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/tsconfig.json"
+      - "apps/desktop/vite.browser.config.ts"
+      - "apps/photo-challenge-pwa/**"
+      - "deploy/cloud/Dockerfile.web"
+      - "deploy/cloud/Caddyfile.production"
+      - "deploy/cloud/docker-compose.production.yml"
+      - ".github/workflows/web-image.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/web-client/**"
+      - "apps/desktop/src/**"
+      - "apps/desktop/app/**"
+      - "apps/desktop/public/**"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/tsconfig.json"
+      - "apps/desktop/vite.browser.config.ts"
+      - "apps/photo-challenge-pwa/**"
+      - "deploy/cloud/Dockerfile.web"
+      - "deploy/cloud/Caddyfile.production"
+      - "deploy/cloud/docker-compose.production.yml"
+      - ".github/workflows/web-image.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: web-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/lifetrace-web
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=main,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-
+
+      - name: Build web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/cloud/Dockerfile.web
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=lifetrace-web
+          cache-to: type=gha,mode=max,scope=lifetrace-web
+          provenance: false
+
+      - name: Publish image reference
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          echo "### LifeTrace Web image" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`ghcr.io/${{ env.IMAGE_NAME }}:main\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "The image contains the browser build, Photo Challenge PWA, and production Caddy configuration." >> "$GITHUB_STEP_SUMMARY"

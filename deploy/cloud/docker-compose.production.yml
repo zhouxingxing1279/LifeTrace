@@ -98,43 +98,13 @@ services:
     networks:
       - lifetrace
 
-  # Legacy BeeCount Cloud is retained only as an isolated rollback/data-export
-  # source. Caddy no longer sends stock BeeCount clients here after the unified
-  # Rust backend cutover. Keep this service until legacy data migration and
-  # reconciliation have been signed off, then it can be removed safely.
-  beecount-cloud:
-    image: ${BEECOUNT_CLOUD_IMAGE:-sunxiao0721/beecount-cloud:latest}
-    restart: unless-stopped
-    environment:
-      APP_ENV: production
-      TZ: ${TZ:-Asia/Singapore}
-      SCHEDULER_TIMEZONE: ${TZ:-Asia/Singapore}
-      CORS_ORIGINS: "https://${BEECOUNT_DOMAIN:-finance.8-148-75-45.sslip.io}"
-      REGISTRATION_ENABLED: "false"
-      BOOTSTRAP_ADMIN_EMAIL: "${BEECOUNT_ADMIN_EMAIL:-}"
-      BOOTSTRAP_ADMIN_PASSWORD: "${BEECOUNT_ADMIN_PASSWORD:-}"
-      EMBEDDING_API_KEY: "${BEECOUNT_EMBEDDING_API_KEY:-}"
-    volumes:
-      - beecount_data:/data
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 15s
-    networks:
-      - lifetrace
-
   caddy:
-    image: caddy:2-alpine
+    image: ${LIFETRACE_WEB_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-web:main}
     restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
-      - ../../apps/desktop/dist-browser:/srv:ro
-      - ../../apps/photo-challenge-pwa:/srv-photo-challenge:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
@@ -148,7 +118,6 @@ services:
 volumes:
   lifetrace_pgdata:
   lifetrace_photo_staging:
-  beecount_data:
   caddy_data:
   caddy_config:
 

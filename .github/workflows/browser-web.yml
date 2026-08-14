@@ -13,8 +13,15 @@ on:
       - "apps/desktop/package.json"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/tsconfig.json"
+      - "apps/photo-challenge-pwa/**"
+      - "deploy/cloud/Dockerfile.web"
+      - "deploy/cloud/Caddyfile.production"
+      - "deploy/cloud/docker-compose.production.yml"
+      - "deploy/cloud/docker-compose.wsl.yml"
+      - "deploy/cloud/deploy-production.sh"
       - "services/cloud/**"
       - ".github/workflows/browser-web.yml"
+      - ".github/workflows/web-image.yml"
   push:
     branches: [main, agent/browser-app-parity]
     paths:
@@ -28,8 +35,15 @@ on:
       - "apps/desktop/package.json"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/tsconfig.json"
+      - "apps/photo-challenge-pwa/**"
+      - "deploy/cloud/Dockerfile.web"
+      - "deploy/cloud/Caddyfile.production"
+      - "deploy/cloud/docker-compose.production.yml"
+      - "deploy/cloud/docker-compose.wsl.yml"
+      - "deploy/cloud/deploy-production.sh"
       - "services/cloud/**"
       - ".github/workflows/browser-web.yml"
+      - ".github/workflows/web-image.yml"
   workflow_dispatch:
 
 permissions:
