@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: photo-challenge-${{ github.ref }}
@@ -27,60 +27,6 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - name: Apply final photo staging semantics and rustfmt
-        shell: bash
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          path = Path("services/cloud/src/routes/photo_staging.rs")
-          text = path.read_text(encoding="utf-8")
-
-          replacements = [
-              ("const DEFAULT_TTL_HOURS: i64 = 72;\n", ""),
-              ("pub expires_at: DateTime<Utc>,", "pub expires_at: Option<DateTime<Utc>>,"),
-              (" AND expires_at>now()", ""),
-              (
-                  '''    let ttl_hours = std::env::var("PHOTO_STAGING_TTL_HOURS")\n        .ok()\n        .and_then(|value| value.parse::<i64>().ok())\n        .unwrap_or(DEFAULT_TTL_HOURS)\n        .clamp(1, 24 * 30);\n    let expires_at = Utc::now() + Duration::hours(ttl_hours);''',
-                  '''    // No expiry by default: an original remains staged until the desktop\n    // confirms that the existing local photo library committed it. Operators\n    // may explicitly configure a positive TTL for other relay deployments.\n    let expires_at = std::env::var("PHOTO_STAGING_TTL_HOURS")\n        .ok()\n        .map(|value| value.trim().to_owned())\n        .filter(|value| !value.is_empty())\n        .and_then(|value| value.parse::<i64>().ok())\n        .filter(|hours| *hours > 0)\n        .map(|hours| Utc::now() + Duration::hours(hours.min(24 * 3650)));'''
-              ),
-              (
-                  '"DELETE FROM photo_staging_items WHERE expires_at<=now() RETURNING storage_name",',
-                  '"DELETE FROM photo_staging_items WHERE expires_at IS NOT NULL AND expires_at<=now() RETURNING storage_name",'
-              ),
-              ('"暂存照片不存在或已过期",', '"暂存照片不存在或已被清除",'),
-          ]
-          for old, new in replacements:
-              if old not in text:
-                  raise SystemExit(f"expected source fragment missing: {old[:100]!r}")
-              text = text.replace(old, new)
-
-          marker = "    ensure_database(&state)?;\n    let user_id = user_uuid(&principal.user_id)?;"
-          count = text.count(marker)
-          if count != 3:
-              raise SystemExit(f"expected metadata/content/ack marker three times, found {count}")
-          text = text.replace(
-              marker,
-              "    ensure_database(&state)?;\n    cleanup_expired(&state).await?;\n    let user_id = user_uuid(&principal.user_id)?;",
-          )
-
-          path.write_text(text, encoding="utf-8")
-          PY
-          rustfmt --edition 2021 \
-            services/cloud/src/lib.rs \
-            services/cloud/src/routes/mod.rs \
-            services/cloud/src/routes/photo_staging.rs \
-            services/cloud/src/routes/photo_challenge.rs \
-            apps/desktop/src-tauri/src/lib.rs \
-            apps/desktop/src-tauri/src/sync/mod.rs \
-            apps/desktop/src-tauri/src/sync/photo_staging.rs
-          if ! git diff --quiet; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add services/cloud/src/routes/photo_staging.rs
-            git commit -m "fix: retain staged photos until desktop acknowledgement"
-            git push origin HEAD:feat/photo-challenge-pwa
-          fi
       - name: Verify changed Rust files are formatted
         shell: bash
         run: |
@@ -109,7 +55,7 @@ jobs:
             echo "Business data must not be persisted in browser storage"
             exit 1
           fi
-          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' web-client vite.browser.config.ts package.json; then
+          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' web-client/src vite.browser.config.ts package.json; then
             echo "Photo/PWA-only code must not enter the browser application"
             exit 1
           fi
@@ -141,5 +87,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - name: Prepare generated dictionary resource for clean runner
+        shell: pwsh
+        run: |
+          $data = "apps/desktop/xunji_service/data"
+          $dictionary = Join-Path $data "dictionary.db"
+          if (-not (Test-Path $dictionary)) {
+            Copy-Item (Join-Path $data "ecdict_starter.db") $dictionary
+          }
       - name: Desktop cargo check
         run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
