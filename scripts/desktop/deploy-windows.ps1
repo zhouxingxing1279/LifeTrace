@@ -57,10 +57,12 @@ function Get-RepoRoot {
 
 function Get-DesktopVersion([string]$RepoRoot) {
     $packagePath = Join-Path $RepoRoot "apps\desktop\package.json"
+    $packageLockPath = Join-Path $RepoRoot "apps\desktop\package-lock.json"
     $tauriPath = Join-Path $RepoRoot "apps\desktop\src-tauri\tauri.conf.json"
     $cargoPath = Join-Path $RepoRoot "apps\desktop\src-tauri\Cargo.toml"
 
     $package = Get-Content $packagePath -Raw | ConvertFrom-Json
+    $packageLock = Get-Content $packageLockPath -Raw | ConvertFrom-Json
     $tauri = Get-Content $tauriPath -Raw | ConvertFrom-Json
     $cargo = Get-Content $cargoPath -Raw
     $cargoMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"')
@@ -69,12 +71,17 @@ function Get-DesktopVersion([string]$RepoRoot) {
     }
 
     $packageVersion = [string]$package.version
+    $packageLockVersion = [string]$packageLock.version
+    $packageLockRoot = $packageLock.packages.PSObject.Properties[""].Value
+    $packageLockRootVersion = if ($null -eq $packageLockRoot) { "" } else { [string]$packageLockRoot.version }
     $tauriVersion = [string]$tauri.version
     $cargoVersion = $cargoMatch.Groups[1].Value
     if ([string]::IsNullOrWhiteSpace($packageVersion) -or
+        $packageVersion -ne $packageLockVersion -or
+        $packageVersion -ne $packageLockRootVersion -or
         $packageVersion -ne $tauriVersion -or
         $packageVersion -ne $cargoVersion) {
-        Fail "桌面端版本不一致：package.json=$packageVersion, tauri.conf.json=$tauriVersion, Cargo.toml=$cargoVersion"
+        Fail "桌面端版本不一致：package.json=$packageVersion, package-lock.json=$packageLockVersion/$packageLockRootVersion, tauri.conf.json=$tauriVersion, Cargo.toml=$cargoVersion"
     }
     return $packageVersion
 }
