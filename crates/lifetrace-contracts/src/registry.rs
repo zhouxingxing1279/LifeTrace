@@ -125,6 +125,7 @@ pub const REGISTRY: &[EntityDescriptor] = &[
     user_owned(EntityType::WORKOUT_EXERCISE, false),
     user_owned(EntityType::WORKOUT_SET, false),
     user_owned(EntityType::WORKOUT_TRAINING_NOTE, false),
+    user_owned(EntityType::EXECUTION_GOAL, false),
     user_owned(EntityType::EXECUTION_PROJECT, false),
     user_owned(EntityType::EXECUTION_RECURRENCE_RULE, false),
     user_owned(EntityType::EXECUTION_TASK, false),
@@ -189,6 +190,7 @@ impl EntityType {
     pub const WORKOUT_EXERCISE: &'static str = "workout.exercise";
     pub const WORKOUT_SET: &'static str = "workout.set";
     pub const WORKOUT_TRAINING_NOTE: &'static str = "workout.training_note";
+    pub const EXECUTION_GOAL: &'static str = "execution.goal";
     pub const EXECUTION_PROJECT: &'static str = "execution.project";
     pub const EXECUTION_RECURRENCE_RULE: &'static str = "execution.recurrence_rule";
     pub const EXECUTION_TASK: &'static str = "execution.task";
@@ -245,6 +247,7 @@ impl EntityType {
             Self::WORKOUT_EXERCISE,
             Self::WORKOUT_SET,
             Self::WORKOUT_TRAINING_NOTE,
+            Self::EXECUTION_GOAL,
             Self::EXECUTION_PROJECT,
             Self::EXECUTION_RECURRENCE_RULE,
             Self::EXECUTION_TASK,
@@ -363,5 +366,6 @@ mod tests {
     fn unknown_entity_types_are_not_syncable() {
         assert!(!is_syncable("secret.credential"));
         assert!(is_syncable(EntityType::FINANCE_TRANSACTION));
+        assert!(is_syncable(EntityType::EXECUTION_GOAL));
     }
 }
