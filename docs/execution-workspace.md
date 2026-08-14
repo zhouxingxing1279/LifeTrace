@@ -1,41 +1,40 @@
 # LifeTrace Execution Workspace
 
-> Status: browser P2 implementation, reusing the execution domain that already exists in the desktop application and cloud contract registry.
+> Status: browser/desktop P3 implementation, reusing one shared execution domain across Web, cloud sync and the desktop SQLite projection.
 >
 > Updated: 2026-08-14
 
 ## 1. Goal
 
-LifeTrace does not model memo, todo, plan, waiting and calendar as unrelated islands. The execution workspace turns them into one capture-to-review loop:
+LifeTrace does not model memo, todo, plan, waiting, calendar and long-term goals as unrelated islands. The execution workspace turns them into one capture-to-review loop:
 
 ```text
-Quick Capture
-    ↓
-Inbox / Memo
-    ↓
-Plan (Project)
-    ↓
+Goal
+  ↓
+Project / Plan
+  ↓
 Task ─────→ Recurrence Rule → Task Occurrence
   │                           ↓
-  ├─→ Subtask / Dependency   Today
+  ├─→ Subtask / Dependency   Dependency-aware Today
   │
   ├─→ Waiting Item ─→ Follow-up / Reminder
   │
   └─→ Timebox Calendar ─→ Calendar Recurrence → Calendar Occurrence / Exception
-    ↓
+  ↓
 Execution
-    ↓
+  ↓
 Completion Result / Occurrence status
-    ↓
+  ↓
 Dashboard / Review / Search
 ```
 
-The browser deliberately reuses the existing `execution.*` contract instead of creating a second web-only task model.
+Quick Capture and Memo remain the low-friction entry points; they eventually resolve into the same execution graph instead of creating separate task databases.
 
 ## 2. Canonical execution domain
 
-The shared contract registry provides:
+The shared contract registry now provides:
 
+- `execution.goal`
 - `execution.project`
 - `execution.recurrence_rule`
 - `execution.task`
@@ -51,15 +50,21 @@ The shared contract registry provides:
 - `execution.completion_result`
 - `execution.entity_link`
 
-The browser requests `execution:read` and `execution:write` and includes these entities in snapshot, pull and push operations.
+`execution.goal` is a normal user-owned bidirectional sync entity and therefore uses the existing `execution:read` / `execution:write` scopes. It is not a Web-only record.
+
+The desktop SQLite projection adds `execution_goals` and `execution_projects.goal_id`. Goal insert/update/delete operations use the same local sync outbox as the other execution entities, and remote Goal payloads are projected back into the real SQLite tables.
 
 ## 3. Browser information architecture
 
-The global sidebar still exposes one execution destination: **计划与待办** (`/execution`). Detail functions stay inside the execution domain instead of fragmenting global navigation.
+The global sidebar still exposes one execution destination: **计划与待办** (`/execution`). Detail functions stay inside the execution domain.
 
 ### `/execution`
 
-1. **今天** — ordinary tasks due/scheduled today plus recurring task occurrences.
+The Execution Hub wraps the existing workspace and links to the Goal and Control subroutes without adding more global navigation entries.
+
+Core views remain:
+
+1. **今天** — ordinary tasks plus recurring task occurrences.
 2. **收件箱** — captured tasks not yet organized.
 3. **计划** — projects and task progress.
 4. **备忘** — memo timeline and conversion.
@@ -67,22 +72,96 @@ The global sidebar still exposes one execution destination: **计划与待办** 
 6. **回顾** — rolling seven-day execution analytics.
 7. **已完成** — non-recurring task completion history.
 
+### `/execution/goals`
+
+The Goal workspace implements:
+
+```text
+Goal → Project → Task
+```
+
+A Goal carries long-horizon intent, optional target time and lifecycle state. Projects can be attached to a Goal through `project.goalId`. Goal progress is derived from its Projects and Tasks rather than copied into another checklist.
+
+Creating a Goal together with its first Project uses one atomic sync group so the Project cannot exist without its intended Goal because of a partial network/server write.
+
 ### `/execution/control`
 
 1. **等待事项** — external dependencies and follow-up dates.
 2. **提醒** — reminder lifecycle for task/calendar/waiting/memo objects.
-3. **子任务与依赖** — parent-child task structure and finish-before-start dependencies.
+3. **子任务与依赖** — parent-child structure and finish-before-start dependencies.
 4. **重复日历** — calendar recurrence materialization and per-occurrence exceptions.
 
 ### `/calendar`
 
 The existing calendar is the Timebox view over execution data while continuing to aggregate habits, finance, workouts, English and daily review records.
 
-## 4. Capture semantics
+## 4. Goal semantics
 
-### Task
+Goal is deliberately different from Project and Task:
 
-A task is actionable work with explicit execution state, optional project, priority, due date, schedule and estimate.
+- **Goal** answers *why / what long-term outcome*;
+- **Project** answers *which finite workstream*;
+- **Task** answers *what can be executed next*.
+
+Goal lifecycle:
+
+```text
+active ↔ paused
+   │
+   ├→ completed
+   └→ cancelled
+```
+
+Completing a Goal does not delete, rewrite or auto-complete its Projects/Tasks. Historical execution evidence stays intact.
+
+Goal progress is calculated from the current execution graph:
+
+- attached Project count;
+- completed Project count;
+- Task count under attached Projects;
+- completed Task count;
+- derived Task completion rate.
+
+## 5. Dependency-aware Today
+
+Today now distinguishes **ready** and **blocked** work.
+
+For each task scheduled/due today (including the parent task behind a recurring occurrence), LifeTrace checks `execution.task_dependency` edges. A task is blocked when any `dependsOnTaskId` prerequisite has not reached `done`.
+
+The root dashboard therefore exposes:
+
+- number of actions that can start immediately;
+- number of actions currently blocked;
+- explicit blocker titles for each blocked task.
+
+This is advisory ordering at P3: the UI makes blockers visible. Hard server-side rejection of an illegal `todo → in_progress` transition remains future work so desktop, Web and future mobile clients can share one enforcement rule.
+
+## 6. Atomic multi-entity sync
+
+The sync protocol already contained `atomicGroupId`; P3 activates it in the browser through `atomicMutate`.
+
+An atomic mutation can mix entity types:
+
+```text
+atomicGroupId = G
+  ├─ upsert execution.goal
+  ├─ upsert execution.project
+  └─ ...
+```
+
+The browser does not publish any of those entities into its local CloudState until every result succeeds.
+
+Server behavior was already implemented before P3:
+
+- the in-memory sync store evaluates the complete group before committing it;
+- PostgreSQL executes a multi-change group inside a nested transaction/savepoint;
+- any rejected/conflicting member causes the whole group to roll back and returns `atomic_group_failed` for the group.
+
+P3 uses this for Goal + first Project bootstrap. Existing older conversion/timebox flows can now be migrated to the same helper incrementally instead of adding a second transaction API.
+
+## 7. Capture, Memo and Waiting semantics
+
+A task is actionable work with explicit state, optional project, priority, due date, schedule and estimate.
 
 ```text
 todo → in_progress → done
@@ -90,229 +169,101 @@ todo → in_progress → done
   └──────────────→ cancelled
 ```
 
-Quick-captured tasks use `context = "inbox"`. Scheduling or assigning them removes the Inbox-only meaning.
+Quick-captured tasks use `context = "inbox"`.
 
-### Memo
+A Memo is lighter than a formal Note: no required title/folder, quick capture first, chronological timeline, optional pin/archive, and conversion into actionable objects. Formal knowledge remains in Notes.
 
-A memo is lighter than a formal Note: no required title or folder, quick capture first, chronological timeline, optional pin/archive, and conversion into actionable objects. Formal knowledge remains in Notes.
+A Waiting Item represents work that cannot currently advance because the next change must come from another person, service or condition. Task → Waiting keeps the source task and sets it to `waiting`; resolving the waiting item does not silently finish the source task.
 
-### Waiting item
+## 8. Timeboxing and recurrence
 
-A waiting item represents work that cannot currently advance because the next change must come from another person, service or external condition.
+Task Timeboxing keeps task scheduling fields and `execution.calendar_event` aligned. Calendar remains a scheduling view over the same execution data, not another todo database.
 
-Core fields:
-
-- `waitingFor`
-- `expectedAt`
-- `followUpAt`
-- `sourceTaskId`
-- `status = open/resolved/cancelled`
-- `resolvedAt`
-- `resolutionSummary`
-
-Task → Waiting keeps the source task and changes its status to `waiting`. Resolving the waiting item does not silently complete the source task. The UI offers an explicit **恢复任务** action that resolves the waiting item and returns the source task to `todo`.
-
-Waiting → Task conversion writes provenance links:
+Recurring tasks use:
 
 ```text
-waiting_item --converted_to--> task
-waiting_item <--derived_from-- task
+Task definition → Recurrence Rule → Task Occurrence
 ```
 
-### Plan / Project
+They never reset a completed task back to `todo`. Each occurrence owns its completion state.
 
-The stable contract still uses `execution.project` as the plan container. A browser-only Goal entity is intentionally not introduced.
+Recurring calendar events use the same `execution.recurrence_rule` model with `execution.calendar_occurrence`. Per-instance skip/restore/move changes the occurrence without rewriting the parent recurrence rule.
 
-A future shared migration may add:
+## 9. Reminders, subtasks and dependencies
 
-```text
-Goal → Project → Task → Completion / Occurrence
-```
+`execution.reminder` references an existing task/calendar/waiting/memo subject. Web manages lifecycle (`scheduled`, snooze, dismiss, cancel); reliable OS/background delivery remains the job of an active desktop/mobile notification executor.
 
-## 5. Timeboxing
+A Subtask is a normal task with `parentTaskId` and inherits the parent Project.
 
-When a task is placed into a time block, the browser writes both:
-
-1. `execution.task.scheduledStartAt / scheduledEndAt`;
-2. `execution.calendar_event` with `sourceTaskId`.
-
-Removing a one-off task time block clears the task schedule and cancels the linked calendar event. Independent calendar blocks can also be created without a source task.
-
-This keeps Today and Calendar consistent: Calendar is a scheduling view over the same execution data, not a second todo database.
-
-## 6. Recurring tasks
-
-Recurring tasks follow the desktop semantics and **do not reset one task back to todo after completion**.
-
-```text
-Task definition
-  └─ recurrenceRuleId → Recurrence Rule
-                          ↓
-                    Task Occurrence #1
-                    Task Occurrence #2
-                    Task Occurrence #3
-```
-
-Supported browser recurrence fields:
-
-- daily / weekly / monthly;
-- interval greater than one;
-- weekday selection for weekly rules;
-- month day for monthly rules;
-- optional end date;
-- optional maximum occurrence count.
-
-Saving a task rule materializes missing occurrences for the next 30 days. Completion updates the individual `execution.task_occurrence`; the recurring task definition remains intact.
-
-## 7. Repeating calendar events and exceptions
-
-Calendar recurrence uses the same shared `execution.recurrence_rule` model but materializes `execution.calendar_occurrence` objects.
-
-The browser control center can:
-
-- attach a recurrence rule to an existing calendar event;
-- materialize missing occurrences for the next 60 days;
-- skip one occurrence without modifying the parent recurrence rule;
-- restore a skipped occurrence;
-- move one occurrence to another date/time without moving the entire series;
-- close the recurrence rule while preserving historical occurrences.
-
-`/calendar` renders scheduled calendar occurrences directly. Once an event becomes recurring, the parent event acts as the recurrence template and the calendar renders the materialized occurrences to avoid showing the template and occurrence twice.
-
-## 8. Reminder lifecycle
-
-`execution.reminder` references an existing subject instead of copying its content.
-
-Supported subjects:
-
-- `task`
-- `calendar_event`
-- `waiting_item`
-- `memo`
-
-Browser lifecycle:
-
-```text
-scheduled → dismissed
-     │
-     ├─ snooze → scheduled with snoozedUntil
-     └─ cancel → cancelled
-```
-
-Due state is derived from `COALESCE(snoozedUntil, triggerAt)`. The browser manages cloud reminder state; OS-level/background notification delivery remains the responsibility of the desktop/mobile notification executor.
-
-## 9. Subtasks and dependencies
-
-A subtask is a normal `execution.task` with `parentTaskId` and inherits the parent project.
-
-Dependencies use `execution.task_dependency` with:
-
-```text
-dependencyType = finish_before_start
-```
-
-The Web editor checks for cycles before writing a new dependency. A task is shown as blocked when any prerequisite is not `done`.
-
-This keeps hierarchy and dependency separate:
+Dependencies remain separate from hierarchy:
 
 - parent/child = decomposition;
-- dependency = execution ordering.
+- `finish_before_start` = execution ordering.
 
-## 10. Conversion lineage
+The Web editor prevents dependency cycles before writing an edge.
 
-Memo conversion follows the desktop convention. Memo → Task and Memo → Calendar write two `execution.entity_link` records:
+## 10. Completion history and review
 
-```text
-memo --converted_to--> target
-memo <--derived_from-- target
-```
+Non-recurring completion writes task state plus one `execution.completion_result`. Recurring task completion writes the individual Task Occurrence. Calendar occurrences keep their own status.
 
-The source Memo is archived after conversion.
+The Execution review continues to derive rolling seven-day metrics from actual execution evidence, while `/review` remains the subjective mood/energy/reflection record.
 
-Waiting → Task uses the same lineage convention with `waiting_item` as the source type.
+## 11. Search and sync
 
-## 11. Completion history
+Global search now includes Goals in addition to tasks, projects, memos and waiting items. Goal results open `/execution/goals`.
 
-Non-recurring task completion writes:
+Browser writes use the normal optimistic snapshot/pull/push protocol. Photos, encrypted local albums, credentials and local secrets remain outside this execution boundary.
 
-1. `execution.task.status = "done"` and `completedAt`;
-2. one `execution.completion_result` for the task.
+## 12. Server-side scheduler decision
 
-Recurring task execution uses `execution.task_occurrence.status = "completed"`. Calendar recurrence uses calendar occurrence status and does not overwrite task completion evidence.
+The current cloud service has a dedicated mail worker but no generic execution scheduler/lease framework. P3 therefore does **not** bolt recurrence and reminder polling onto the mail worker or pretend browser background execution is reliable.
 
-## 12. Today dashboard and execution review
+Long-horizon materialization and due-reminder delivery remain a separate backend work item that should introduce one reusable execution maintenance worker with:
 
-The root dashboard calculates daily action progress from:
+- distributed lease / single-owner processing;
+- idempotent occurrence keys and reminder fire keys;
+- bounded horizon materialization;
+- retry/backoff and observability;
+- notification channel adapters.
 
-- ordinary tasks assigned to today;
-- recurring task occurrences for today;
-- active habits.
+This keeps scheduling correctness independent of whether a Web page happens to be open.
 
-The Execution **回顾** view computes a rolling seven-day review from execution evidence:
-
-- planned actions;
-- completed actions;
-- completion rate;
-- planned minutes;
-- recorded actual minutes;
-- overdue ordinary tasks;
-- overdue recurring task occurrences.
-
-Subjective mood/energy/reflection remains in `/review`; execution review and subjective review are complementary.
-
-## 13. Search and sync
-
-Global search includes tasks, projects, memos and waiting items. All browser writes continue through `CloudDataStore`, using the normal optimistic-versioned snapshot/pull/push protocol.
-
-Photos, encrypted local albums, credentials and local secrets remain outside the browser sync boundary.
-
-## 14. Implementation status
+## 13. Implementation status
 
 Completed:
 
-- [x] Browser execution sync registry and scopes
-- [x] Unified execution workspace
-- [x] Quick task/memo capture
-- [x] Inbox and Today views
-- [x] Project/plan view
-- [x] Memo timeline and conversion lineage
-- [x] Task state transitions and completion-result history
-- [x] Root dashboard aggregation and global search
-- [x] Calendar Timeboxing
-- [x] Task recurrence and task occurrence materialization
-- [x] Seven-day execution review
-- [x] Waiting-item editor and Task → Waiting flow
-- [x] Waiting → Task conversion lineage
-- [x] Reminder editor and snooze/dismiss/cancel lifecycle
-- [x] Subtask editor
-- [x] Task dependency editor with cycle prevention
-- [x] Calendar recurrence materialization
-- [x] Per-calendar-occurrence skip/restore/move exceptions
-- [x] Recurring calendar occurrences rendered in `/calendar`
-- [x] Regression coverage
+- [x] Shared `execution.goal` contract registration
+- [x] Web Goal workspace and Goal → Project → Task progress
+- [x] Desktop `execution_goals` migration and Project `goal_id` storage
+- [x] Goal local outbox triggers and remote SQLite projection
+- [x] Goal global search integration
+- [x] Dependency-aware Today ready/blocked summary
+- [x] Browser mixed-entity `atomicGroupId` helper
+- [x] Atomic Goal + first Project bootstrap
+- [x] Unified execution workspace / Inbox / Memo / Project / completion history
+- [x] Task and calendar recurrence with occurrence history
+- [x] Waiting items, reminders, subtasks and dependency cycle prevention
+- [x] Calendar occurrence exceptions
+- [x] Regression coverage for the P3 execution layer
 
 Follow-up work:
 
-- [ ] Shared Goal contract
-- [ ] Long-horizon/server-side recurrence materialization scheduler
-- [ ] Atomic multi-entity browser transaction API for conversion/scheduling writes
-- [ ] Browser/desktop reminder delivery convergence and notification permission UX
-- [ ] Dependency-aware Today ordering and automatic start blocking
+- [ ] Migrate older Memo conversion and task-timebox multi-write flows to `atomicMutate`
+- [ ] Shared hard enforcement of dependency-aware task start transitions
+- [ ] Long-horizon/server-side recurrence materialization worker
+- [ ] Reminder delivery worker and notification permission/channel UX
 - [ ] Weekly review persistence and comparison across weeks
-- [ ] AI-assisted Inbox classification and project decomposition
+- [ ] AI-assisted Inbox classification and Goal/Project decomposition
 
-## 15. Consistency note
-
-The desktop application has richer local transactional execution APIs. Browser P2 mirrors their entity semantics, but browser cloud writes that span multiple entities are still sequential. The sync protocol already carries `atomicGroupId`; a later backend/client increment should expose a public atomic multi-entity mutation helper so conversion and scheduling become server-atomic as well as semantically consistent.
-
-## 16. Verification
+## 14. Verification
 
 Relevant regression coverage:
 
 ```text
 apps/desktop/tests/web-execution-workspace.test.ts
-apps/desktop/tests/browser-parity.test.ts
-apps/desktop/tests/browser-ui-architecture.test.ts
+apps/desktop/src-tauri/src/database/migrations/m0014_execution_goals.rs
+apps/desktop/src-tauri/src/sync/execution.rs
+crates/lifetrace-contracts/src/registry.rs
 ```
 
 Validation includes linting, unit tests, Web build, browser build, Rust tests and clippy. Execution changes must not merge until GitHub Actions reports success.
