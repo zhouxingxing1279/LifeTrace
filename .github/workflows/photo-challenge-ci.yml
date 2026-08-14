@@ -86,14 +86,11 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Prepare generated dictionary resource for clean runner
+      - name: Create required bundled dictionary resource
         shell: pwsh
         run: |
-          $data = "apps/desktop/xunji_service/data"
-          $dictionary = Join-Path $data "dictionary.db"
-          if (-not (Test-Path $dictionary)) {
-            Copy-Item (Join-Path $data "ecdict_starter.db") $dictionary
-          }
+          New-Item -ItemType Directory -Force apps/desktop/xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'apps/desktop/xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+      - uses: dtolnay/rust-toolchain@stable
       - name: Desktop cargo check
         run: cargo check --locked --manifest-path apps/desktop/src-tauri/Cargo.toml
