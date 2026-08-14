@@ -21,6 +21,7 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           import re
+          from textwrap import dedent
 
           docker = Path("services/cloud/Dockerfile")
           text = docker.read_text()
@@ -28,7 +29,7 @@ jobs:
           text = text.replace("COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker\n", "COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker\nCOPY --from=builder /build/services/cloud/target/release/execution_worker /app/execution_worker\n")
           docker.write_text(text)
 
-          def insert_service(path, service_block):
+          def insert_service(path, block):
               p = Path(path)
               text = p.read_text()
               if "  lifetrace-execution-worker:\n" in text:
@@ -40,96 +41,108 @@ jobs:
               else:
                   marker = "\nvolumes:\n" if "\nvolumes:\n" in text else "\nsecrets:\n"
                   pos = text.index(marker)
-              text = text[:pos] + service_block + "\n" + text[pos:]
+              text = text[:pos] + dedent(block).strip("\n") + "\n\n" + text[pos:]
               p.write_text(text)
 
-          insert_service("deploy/cloud/docker-compose.local.yml", '''  lifetrace-execution-worker:
-            profiles: ["cloud"]
-            build:
-              context: ../..
-              dockerfile: services/cloud/Dockerfile
-            entrypoint: ["/app/execution_worker"]
-            healthcheck:
-              test: ["CMD-SHELL", "kill -0 1"]
-              interval: 5s
-              timeout: 3s
-              retries: 5
-              start_period: 2s
-            environment:
-              <<: *cloud_environment
-              MIGRATION_ON_STARTUP: "false"
-            depends_on:
-              postgres:
-                condition: service_healthy
-              lifetrace-cloud:
-                condition: service_healthy
-          '''.replace("          ", ""))
+          insert_service("deploy/cloud/docker-compose.local.yml", """
+            lifetrace-execution-worker:
+              profiles: ["cloud"]
+              build:
+                context: ../..
+                dockerfile: services/cloud/Dockerfile
+              entrypoint: ["/app/execution_worker"]
+              healthcheck:
+                test: ["CMD-SHELL", "kill -0 1"]
+                interval: 5s
+                timeout: 3s
+                retries: 5
+                start_period: 2s
+              environment:
+                <<: *cloud_environment
+                MIGRATION_ON_STARTUP: "false"
+              depends_on:
+                postgres:
+                  condition: service_healthy
+                lifetrace-cloud:
+                  condition: service_healthy
+          """)
 
-          insert_service("deploy/cloud/docker-compose.production.yml", '''  lifetrace-execution-worker:
-            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
-            entrypoint: ["/app/execution_worker"]
-            restart: unless-stopped
-            env_file:
-              - .env.production
-            environment:
-              MIGRATION_ON_STARTUP: "false"
-            depends_on:
-              postgres:
-                condition: service_healthy
-              lifetrace-cloud:
-                condition: service_healthy
-            healthcheck:
-              test: ["CMD-SHELL", "kill -0 1"]
-              interval: 10s
-              timeout: 5s
-              retries: 5
-              start_period: 5s
-            networks:
-              - lifetrace
-          '''.replace("          ", ""))
+          insert_service("deploy/cloud/docker-compose.production.yml", """
+            lifetrace-execution-worker:
+              image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+              entrypoint: ["/app/execution_worker"]
+              restart: unless-stopped
+              env_file:
+                - .env.production
+              environment:
+                MIGRATION_ON_STARTUP: "false"
+              depends_on:
+                postgres:
+                  condition: service_healthy
+                lifetrace-cloud:
+                  condition: service_healthy
+              healthcheck:
+                test: ["CMD-SHELL", "kill -0 1"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 5s
+              networks:
+                - lifetrace
+          """)
 
-          insert_service("deploy/cloud/docker-compose.production.example.yml", '''  lifetrace-execution-worker:
-            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
-            entrypoint: ["/app/execution_worker"]
-            healthcheck:
-              test: ["CMD-SHELL", "kill -0 1"]
-              interval: 10s
-              timeout: 5s
-              retries: 5
-              start_period: 5s
-            environment:
-              <<: *cloud_environment
-              MIGRATION_ON_STARTUP: "false"
-            secrets:
-              - database_url
-            depends_on:
-              - lifetrace-cloud
-            restart: unless-stopped
-          '''.replace("          ", ""))
+          insert_service("deploy/cloud/docker-compose.production.example.yml", """
+            lifetrace-execution-worker:
+              image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+              entrypoint: ["/app/execution_worker"]
+              healthcheck:
+                test: ["CMD-SHELL", "kill -0 1"]
+                interval: 10s
+                timeout: 5s
+                retries: 5
+                start_period: 5s
+              environment:
+                <<: *cloud_environment
+                MIGRATION_ON_STARTUP: "false"
+              secrets:
+                - database_url
+              depends_on:
+                - lifetrace-cloud
+              restart: unless-stopped
+          """)
 
-          insert_service("deploy/cloud/docker-compose.wsl.yml", '''  lifetrace-execution-worker:
-            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
-            entrypoint: ["/app/execution_worker"]
-            environment:
-              <<: *cloud_environment
-              MIGRATION_ON_STARTUP: "false"
-            depends_on:
-              postgres:
-                condition: service_healthy
-              lifetrace-cloud:
-                condition: service_healthy
-            healthcheck:
-              test: ["CMD-SHELL", "kill -0 1"]
-              interval: 5s
-              timeout: 3s
-              retries: 5
-              start_period: 2s
-          '''.replace("          ", ""))
+          insert_service("deploy/cloud/docker-compose.wsl.yml", """
+            lifetrace-execution-worker:
+              image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+              entrypoint: ["/app/execution_worker"]
+              environment:
+                <<: *cloud_environment
+                MIGRATION_ON_STARTUP: "false"
+              depends_on:
+                postgres:
+                  condition: service_healthy
+                lifetrace-cloud:
+                  condition: service_healthy
+              healthcheck:
+                test: ["CMD-SHELL", "kill -0 1"]
+                interval: 5s
+                timeout: 3s
+                retries: 5
+                start_period: 2s
+          """)
           PY
       - name: Validate compose syntax
+        env:
+          POSTGRES_PASSWORD: test-password
+          CURSOR_SIGNING_KEY: test-cursor
+          PAGE_TOKEN_SIGNING_KEY: test-page
+          AUTH_PASSWORD_PEPPER: test-password-pepper
+          AUTH_TOKEN_HASH_PEPPER: test-token-pepper
+          MAIL_CREDENTIAL_KEY: dGVzdC1tYWlsLWtleS10ZXN0LW1haWwta2V5LTEyMzQ1Ng==
         run: |
           docker compose -f deploy/cloud/docker-compose.local.yml config >/dev/null
-          docker compose -f deploy/cloud/docker-compose.wsl.yml config >/dev/null || true
+          docker compose -f deploy/cloud/docker-compose.wsl.yml config >/dev/null
+          docker compose -f deploy/cloud/docker-compose.production.example.yml config >/dev/null || true
       - name: Commit deployment wiring
         run: |
           git config user.name "github-actions[bot]"
