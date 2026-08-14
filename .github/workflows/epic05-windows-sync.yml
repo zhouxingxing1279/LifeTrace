@@ -14,6 +14,8 @@ on:
       - "services/cloud/**"
       - "docs/epic-05/**"
       - "apps/desktop/package*.json"
+      - "scripts/desktop/**"
+      - "deploy-desktop.cmd"
       - ".github/workflows/epic05-windows-sync.yml"
   pull_request:
     paths:
@@ -25,6 +27,8 @@ on:
       - "services/cloud/**"
       - "docs/epic-05/**"
       - "apps/desktop/package*.json"
+      - "scripts/desktop/**"
+      - "deploy-desktop.cmd"
       - ".github/workflows/epic05-windows-sync.yml"
   workflow_dispatch:
 
@@ -148,6 +152,9 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+      - name: Validate desktop deployment script
+        shell: pwsh
+        run: ./scripts/desktop/deploy-windows.ps1 -Mode Validate
       - name: Create required bundled dictionary resource
         shell: pwsh
         run: |
