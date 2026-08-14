@@ -6,8 +6,9 @@ import { NotesPage } from "../pages/NotesPage";
 import { ArticlesPage, EnglishStatsPage, VocabularyPage } from "../pages/EnglishPages";
 import { DevicesPage } from "../pages/DevicesPage";
 import { AssistantPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from "../pages/GrowthPages";
-import { DashboardPage } from "../pages/DashboardPage";
-import { ExecutionPage } from "../pages/ExecutionPage";
+import { DependencyAwareDashboardPage } from "../pages/DependencyAwareDashboardPage";
+import { ExecutionHubPage } from "../pages/ExecutionHubPage";
+import { ExecutionGoalsPage } from "../pages/ExecutionGoalsPage";
 import { ExecutionCalendarPage } from "../pages/ExecutionCalendarPage";
 import { ExecutionControlPage } from "../pages/ExecutionControlPage";
 import { PhotoChallengePage } from "../pages/PhotoChallengePage";
@@ -27,9 +28,10 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
   const common = { session, state, privacy, online, run };
 
   switch (route) {
-    case "/": return <DashboardPage state={state} privacy={privacy} />;
+    case "/": return <DependencyAwareDashboardPage state={state} privacy={privacy} />;
     case "/assistant": return <AssistantPage {...common} />;
-    case "/execution": return <ExecutionPage {...common} />;
+    case "/execution": return <ExecutionHubPage {...common} />;
+    case "/execution/goals": return <ExecutionGoalsPage {...common} />;
     case "/execution/control": return <ExecutionControlPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
     case "/photo-challenge": return <PhotoChallengePage />;
