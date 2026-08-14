@@ -84,6 +84,27 @@ services:
       lifetrace-cloud:
         condition: service_healthy
 
+  lifetrace-execution-worker:
+    profiles: ["cloud"]
+    build:
+      context: ../..
+      dockerfile: services/cloud/Dockerfile
+    entrypoint: ["/app/execution_worker"]
+    healthcheck:
+      test: ["CMD-SHELL", "kill -0 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    environment:
+      <<: *cloud_environment
+      MIGRATION_ON_STARTUP: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lifetrace-cloud:
+        condition: service_healthy
+
 volumes:
   lifetrace_pgdata:
   lifetrace_photo_staging:
