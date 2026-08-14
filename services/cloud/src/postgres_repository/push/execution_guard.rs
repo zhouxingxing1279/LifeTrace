@@ -2,8 +2,8 @@ use lifetrace_contracts::sync::v1::{ChangeOperation, PushChangeResultV1, SyncCha
 use lifetrace_contracts::{ErrorCode, UserId};
 use sqlx::{Postgres, Transaction};
 
-use super::super::super::PostgresRepository;
 use crate::error::ApiError;
+use crate::postgres_repository::PostgresRepository;
 
 impl PostgresRepository {
     /// Enforce finish-before-start dependencies at the authoritative sync layer.
