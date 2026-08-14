@@ -1,13 +1,14 @@
 //! Reusable transient cloud relay for moving photos into a LifeTrace desktop library.
 //!
-//! This is deliberately not part of the normal sync entity store: photo bytes are
-//! temporary delivery payloads. The desktop downloads an item, commits it to the
-//! local photo library, then DELETEs the cloud item as its acknowledgement.
+//! PostgreSQL stores only delivery metadata. Original bytes live in a transient
+//! filesystem volume, are downloaded by the desktop, and are removed after the
+//! desktop acknowledges that the local photo library commit succeeded.
 
+use std::path::{Component, Path, PathBuf};
 use std::str::FromStr;
 
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
+use axum::extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
@@ -17,6 +18,7 @@ use lifetrace_contracts::{ErrorCode, UserId};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
+use tokio::fs;
 use uuid::Uuid;
 
 use crate::auth::AuthenticatedPrincipal;
@@ -82,6 +84,7 @@ async fn list(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<StagedPhotoList>, ApiError> {
     principal.require_scope("files:read")?;
+    ensure_database(&state)?;
     cleanup_expired(&state).await?;
     let user_id = user_uuid(&principal.user_id)?;
     let limit = query.limit.unwrap_or(50).clamp(1, MAX_LIST_LIMIT);
@@ -105,9 +108,10 @@ async fn list(
 async fn metadata(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
-    Path(id): Path<Uuid>,
+    AxumPath(id): AxumPath<Uuid>,
 ) -> Result<Json<StagedPhoto>, ApiError> {
     principal.require_scope("files:read")?;
+    ensure_database(&state)?;
     let user_id = user_uuid(&principal.user_id)?;
     let row = sqlx::query(
         "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
@@ -136,12 +140,13 @@ async fn upload(
 async fn content(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
-    Path(id): Path<Uuid>,
+    AxumPath(id): AxumPath<Uuid>,
 ) -> Result<Response, ApiError> {
     principal.require_scope("files:read")?;
+    ensure_database(&state)?;
     let user_id = user_uuid(&principal.user_id)?;
     let row = sqlx::query(
-        "SELECT original_name,mime_type,sha256,content FROM photo_staging_items \
+        "SELECT original_name,mime_type,sha256,size_bytes,storage_name FROM photo_staging_items \
          WHERE id=$1 AND user_id=$2 AND expires_at>now()",
     )
     .bind(id)
@@ -153,7 +158,19 @@ async fn content(
     let original_name: String = row.try_get("original_name").map_err(database_error)?;
     let mime_type: String = row.try_get("mime_type").map_err(database_error)?;
     let sha256: String = row.try_get("sha256").map_err(database_error)?;
-    let bytes: Vec<u8> = row.try_get("content").map_err(database_error)?;
+    let expected_size: i64 = row.try_get("size_bytes").map_err(database_error)?;
+    let storage_name: String = row.try_get("storage_name").map_err(database_error)?;
+    let storage_path = resolve_storage_path(&storage_name)?;
+    let bytes = fs::read(&storage_path).await.map_err(|error| {
+        storage_error(format!(
+            "读取暂存照片文件失败 {}: {error}",
+            storage_path.display()
+        ))
+    })?;
+    if bytes.len() != expected_size.max(0) as usize || bytes.len() > MAX_STAGED_PHOTO_BYTES {
+        return Err(storage_error("暂存照片文件大小校验失败"));
+    }
+
     let safe_name = original_name.replace(['\r', '\n', '"'], "");
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = StatusCode::OK;
@@ -177,19 +194,22 @@ async fn content(
 async fn acknowledge(
     State(state): State<AppState>,
     principal: AuthenticatedPrincipal,
-    Path(id): Path<Uuid>,
+    AxumPath(id): AxumPath<Uuid>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     principal.require_scope("files:write")?;
+    ensure_database(&state)?;
     let user_id = user_uuid(&principal.user_id)?;
-    let result = sqlx::query("DELETE FROM photo_staging_items WHERE id=$1 AND user_id=$2")
-        .bind(id)
-        .bind(user_id)
-        .execute(&state.pool)
-        .await
-        .map_err(database_error)?;
-    if result.rows_affected() == 0 {
-        return Err(not_found());
-    }
+    let row = sqlx::query(
+        "DELETE FROM photo_staging_items WHERE id=$1 AND user_id=$2 RETURNING storage_name",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(database_error)?
+    .ok_or_else(not_found)?;
+    let storage_name: String = row.try_get("storage_name").map_err(database_error)?;
+    remove_storage_file(&storage_name).await;
     Ok(Json(serde_json::json!({ "deleted": true, "id": id })))
 }
 
@@ -198,16 +218,18 @@ pub(crate) async fn stage_for_user(
     user_id: &UserId,
     mut input: StageInput,
 ) -> Result<StagedPhoto, ApiError> {
-    if !state.database_enabled {
-        return Err(ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "照片云端暂存需要 PostgreSQL",
-            StatusCode::SERVICE_UNAVAILABLE,
-        ));
-    }
+    ensure_database(state)?;
     validate_input(&mut input)?;
     cleanup_expired(state).await?;
     let owner = user_uuid(user_id)?;
+
+    if let Some(client_asset_id) = input.client_asset_id.as_deref() {
+        if let Some(row) = existing_client_asset(state, owner, &input.source, client_asset_id).await?
+        {
+            return row_to_metadata(&row);
+        }
+    }
+
     let sha256 = hex::encode(Sha256::digest(&input.content));
     let id = Uuid::new_v4();
     let ttl_hours = std::env::var("PHOTO_STAGING_TTL_HOURS")
@@ -216,27 +238,26 @@ pub(crate) async fn stage_for_user(
         .unwrap_or(DEFAULT_TTL_HOURS)
         .clamp(1, 24 * 30);
     let expires_at = Utc::now() + Duration::hours(ttl_hours);
-
-    if let Some(client_asset_id) = input.client_asset_id.as_deref() {
-        if let Some(row) = sqlx::query(
-            "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
-             FROM photo_staging_items WHERE user_id=$1 AND source=$2 AND client_asset_id=$3 AND expires_at>now()",
-        )
-        .bind(owner)
-        .bind(&input.source)
-        .bind(client_asset_id)
-        .fetch_optional(&state.pool)
+    let storage_name = format!("{owner}/{id}.blob");
+    let storage_path = resolve_storage_path(&storage_name)?;
+    let parent = storage_path
+        .parent()
+        .ok_or_else(|| storage_error("暂存照片目录无效"))?;
+    fs::create_dir_all(parent)
         .await
-        .map_err(database_error)?
-        {
-            return row_to_metadata(&row);
-        }
-    }
+        .map_err(|error| storage_error(format!("创建暂存照片目录失败: {error}")))?;
+    let temp_path = storage_path.with_extension("part");
+    fs::write(&temp_path, &input.content)
+        .await
+        .map_err(|error| storage_error(format!("写入暂存照片失败: {error}")))?;
+    fs::rename(&temp_path, &storage_path).await.map_err(|error| {
+        storage_error(format!("提交暂存照片文件失败: {error}"))
+    })?;
 
-    let row = sqlx::query(
+    let inserted = sqlx::query(
         "INSERT INTO photo_staging_items \
-         (id,user_id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,content,expires_at) \
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) \
+         (id,user_id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,storage_name,expires_at) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING \
          RETURNING id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at",
     )
     .bind(id)
@@ -249,12 +270,47 @@ pub(crate) async fn stage_for_user(
     .bind(&input.mime_type)
     .bind(input.content.len() as i64)
     .bind(input.captured_at)
-    .bind(&input.content)
+    .bind(&storage_name)
     .bind(expires_at)
-    .fetch_one(&state.pool)
+    .fetch_optional(&state.pool)
+    .await;
+
+    match inserted {
+        Ok(Some(row)) => row_to_metadata(&row),
+        Ok(None) => {
+            fs::remove_file(&storage_path).await.ok();
+            if let Some(client_asset_id) = input.client_asset_id.as_deref() {
+                if let Some(row) =
+                    existing_client_asset(state, owner, &input.source, client_asset_id).await?
+                {
+                    return row_to_metadata(&row);
+                }
+            }
+            Err(database_failure("暂存照片元数据写入发生唯一键冲突"))
+        }
+        Err(error) => {
+            fs::remove_file(&storage_path).await.ok();
+            Err(database_error(error))
+        }
+    }
+}
+
+async fn existing_client_asset(
+    state: &AppState,
+    owner: Uuid,
+    source: &str,
+    client_asset_id: &str,
+) -> Result<Option<sqlx::postgres::PgRow>, ApiError> {
+    sqlx::query(
+        "SELECT id,source,client_asset_id,sha256,original_name,media_type,mime_type,size_bytes,captured_at,created_at,expires_at \
+         FROM photo_staging_items WHERE user_id=$1 AND source=$2 AND client_asset_id=$3 AND expires_at>now()",
+    )
+    .bind(owner)
+    .bind(source)
+    .bind(client_asset_id)
+    .fetch_optional(&state.pool)
     .await
-    .map_err(database_error)?;
-    row_to_metadata(&row)
+    .map_err(database_error)
 }
 
 async fn read_upload(mut multipart: Multipart) -> Result<StageInput, ApiError> {
@@ -375,14 +431,82 @@ fn row_to_metadata(row: &sqlx::postgres::PgRow) -> Result<StagedPhoto, ApiError>
 }
 
 async fn cleanup_expired(state: &AppState) -> Result<(), ApiError> {
-    if !state.database_enabled {
-        return Ok(());
+    ensure_database(state)?;
+    let rows = sqlx::query(
+        "DELETE FROM photo_staging_items WHERE expires_at<=now() RETURNING storage_name",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(database_error)?;
+    for row in rows {
+        if let Ok(storage_name) = row.try_get::<String, _>("storage_name") {
+            remove_storage_file(&storage_name).await;
+        }
     }
-    sqlx::query("DELETE FROM photo_staging_items WHERE expires_at<=now()")
-        .execute(&state.pool)
-        .await
-        .map_err(database_error)?;
     Ok(())
+}
+
+async fn remove_storage_file(storage_name: &str) {
+    match resolve_storage_path(storage_name) {
+        Ok(path) => {
+            if let Err(error) = fs::remove_file(&path).await {
+                if error.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!(
+                        "LifeTrace photo staging file cleanup failed path={} error={error}",
+                        path.display()
+                    );
+                }
+            }
+        }
+        Err(error) => {
+            eprintln!("LifeTrace photo staging path cleanup rejected: {error}");
+        }
+    }
+}
+
+fn staging_root() -> PathBuf {
+    std::env::var("PHOTO_STAGING_DIR")
+        .ok()
+        .map(|value| value.trim().to_owned())
+        .filter(|value| !value.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            if std::env::var("LIFETRACE_ENV")
+                .ok()
+                .is_some_and(|value| value.eq_ignore_ascii_case("production"))
+            {
+                PathBuf::from("/data/photo-staging")
+            } else {
+                PathBuf::from("./data/photo-staging")
+            }
+        })
+}
+
+fn resolve_storage_path(storage_name: &str) -> Result<PathBuf, ApiError> {
+    let relative = Path::new(storage_name);
+    if relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(storage_error("暂存照片路径无效"));
+    }
+    Ok(staging_root().join(relative))
+}
+
+fn ensure_database(state: &AppState) -> Result<(), ApiError> {
+    if state.database_enabled {
+        Ok(())
+    } else {
+        Err(ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "照片云端暂存需要 PostgreSQL",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ))
+    }
 }
 
 fn user_uuid(user_id: &UserId) -> Result<Uuid, ApiError> {
@@ -396,7 +520,7 @@ fn user_uuid(user_id: &UserId) -> Result<Uuid, ApiError> {
 }
 
 fn clean_file_name(value: &str) -> String {
-    let raw = std::path::Path::new(value)
+    let raw = Path::new(value)
         .file_name()
         .and_then(|value| value.to_str())
         .unwrap_or("photo");
@@ -430,9 +554,21 @@ fn not_found() -> ApiError {
 }
 
 fn database_error(error: sqlx::Error) -> ApiError {
+    database_failure(format!("照片暂存数据库操作失败: {error}"))
+}
+
+fn database_failure(message: impl Into<String>) -> ApiError {
     ApiError::new(
         ErrorCode::TemporarilyUnavailable,
-        format!("照片暂存数据库操作失败: {error}"),
+        message,
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
+}
+
+fn storage_error(message: impl Into<String>) -> ApiError {
+    ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        message,
         StatusCode::SERVICE_UNAVAILABLE,
     )
 }
