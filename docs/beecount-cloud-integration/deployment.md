@@ -1,111 +1,76 @@
 # Deploying BeeCount compatibility with LifeTrace Cloud
 
+BeeCount compatibility is served directly by the unified LifeTrace Rust backend. The legacy `sunxiao0721/beecount-cloud` container is no longer part of the active production stack.
+
 ## 1. Configure DNS and environment
 
-Point a hostname such as `finance.example.com` to the LifeTrace server. Add the
-following values to `deploy/cloud/.env.production` (the file is intentionally
-git-ignored):
+Point a hostname such as `finance.example.com` to the LifeTrace server. Add the public compatibility hostname to `deploy/cloud/.env.production` or the Compose environment:
 
 ```dotenv
 BEECOUNT_DOMAIN=finance.example.com
-BEECOUNT_CLOUD_IMAGE=sunxiao0721/beecount-cloud:latest
-
-# Optional. Leave both unset for a generated first administrator.
-BEECOUNT_ADMIN_EMAIL=you@example.com
-BEECOUNT_ADMIN_PASSWORD=replace-with-a-long-random-password
-
-# Phase 2 read adapter. For a personal deployment these can initially match
-# the BeeCount administrator credentials. The account must not require 2FA.
-BEECOUNT_ADAPTER_ENABLED=true
-BEECOUNT_ADAPTER_BASE_URL=http://beecount-cloud:8080/
-BEECOUNT_ADAPTER_EMAIL=you@example.com
-BEECOUNT_ADAPTER_PASSWORD=replace-with-a-long-random-password
-BEECOUNT_ADAPTER_LIFETRACE_USER_ID=<userId returned by LifeTrace /api/v1/auth/me>
+BEECOUNT_ATTACHMENT_MAX_UPLOAD_BYTES=67108864
 ```
 
-The complete non-secret template is `deploy/cloud/beecount.env.example`.
+The non-secret template is `deploy/cloud/beecount.env.example`.
+
+The BeeCount hostname is still required: Caddy accepts the stock BeeCount protocol on that hostname and rewrites the public paths into LifeTrace's internal compatibility namespace.
 
 ## 2. Start or upgrade the stack
 
-From the repository root:
+Use the standard full-Docker deployment described in `docs/docker-deployment.md`:
 
 ```bash
-docker compose --env-file deploy/cloud/.env.production \
-  -f deploy/cloud/docker-compose.production.yml pull
-docker compose --env-file deploy/cloud/.env.production \
-  -f deploy/cloud/docker-compose.production.yml up -d --wait
+cd /opt/lifetrace/LifeTrace
+git switch main
+git pull --ff-only origin main
+cd deploy/cloud
+
+docker compose -f docker-compose.production.yml pull
+docker compose -f docker-compose.production.yml up -d
 ```
 
-If administrator credentials were not configured, retrieve the generated
-credentials immediately after first boot:
+No legacy BeeCount Cloud image needs to be pulled or started.
 
-```bash
-docker compose --env-file deploy/cloud/.env.production \
-  -f deploy/cloud/docker-compose.production.yml logs beecount-cloud
-```
+## 3. Routing contract
 
-BeeCount Cloud also persists the generated credential fallback inside its
-private `/data` volume. Log in and change the password before normal use.
+The production Caddy configuration routes BeeCount clients to `lifetrace-cloud:8787`:
 
-## 3. Verify
+- `/ready` → LifeTrace `/health/ready`
+- `/api/v1/*` → `/api/v1/integrations/beecount/compat/*`
+- `/ws` → `/api/v1/integrations/beecount/compat/ws`
+
+The primary LifeTrace host and the BeeCount compatibility host therefore share one authentication/data backend and one PostgreSQL deployment.
+
+## 4. Verify
 
 ```bash
 curl --fail --silent "https://${BEECOUNT_DOMAIN}/ready"
 curl --fail --silent "https://${BEECOUNT_DOMAIN}/api/v1/version"
 ```
 
-Expected readiness response:
+Expected readiness response is the normal LifeTrace ready payload.
 
-```json
-{"status":"ready"}
-```
+In the stock BeeCount client, configure the server as `https://finance.example.com` and authenticate with the account supported by the unified compatibility API.
 
-In the BeeCount iOS app, select **BeeCount Cloud**, enter
-`https://finance.example.com`, then sign in with the administrator/user account.
-
-After logging in to LifeTrace, verify the adapter through the LifeTrace origin:
+Also verify the native LifeTrace backend:
 
 ```bash
-curl --fail --silent \
-  -H "Authorization: Bearer ${LIFETRACE_ACCESS_TOKEN}" \
-  "https://example.com/api/v1/integrations/beecount/status"
-
-curl --fail --silent \
-  -H "Authorization: Bearer ${LIFETRACE_ACCESS_TOKEN}" \
-  "https://example.com/api/v1/integrations/beecount/ledgers"
+docker compose -f deploy/cloud/docker-compose.production.yml exec lifetrace-cloud \
+  curl --fail --silent http://127.0.0.1:8787/health/ready
 ```
 
-The ledger snapshot endpoint is:
+## 5. Backup and rollback boundary
 
-```text
-GET /api/v1/integrations/beecount/ledgers/{sourceLedgerId}/snapshot?limit=200&offset=0
-```
+Current BeeCount-compatible data belongs to the unified LifeTrace PostgreSQL storage and LifeTrace-managed attachment/storage paths.
 
-It is read-only and returns integer-cent, `beecount:`-namespaced data. It does
-not copy rows into LifeTrace sync storage.
+If an older deployment created a `beecount_data` Docker volume or exported BeeCount SQLite data, keep that historical data offline until migration/reconciliation is fully signed off. It does not need to remain attached to a running container.
 
-LifeTrace Web users bound to the adapter can open **资产与账单 → BeeCount
-云账本** (route `/finance/beecount`). The page uses the existing LifeTrace Web
-session; it never asks the browser for BeeCount credentials.
+Do not delete historical backup media merely because the legacy service was removed from Compose.
 
-## 4. Backup and restore boundary
+## 6. Security notes
 
-BeeCount data is not stored in LifeTrace PostgreSQL. Back up both stores:
-
-- `lifetrace_pgdata` for LifeTrace Cloud;
-- `beecount_data` for BeeCount accounts, SQLite database, attachments, secrets
-  and backup configuration.
-
-Do not delete `beecount_data` during routine upgrades. Use BeeCount Cloud's
-built-in encrypted backup feature or archive the Docker volume while the service
-is stopped.
-
-## 5. Security notes
-
-- Only Caddy publishes network ports; BeeCount's port 8080 stays private.
-- Public self-registration is disabled.
+- Only Caddy publishes the public HTTP/HTTPS ports.
+- Legacy BeeCount Cloud port 8080 is no longer part of production.
 - Caddy obtains and renews TLS certificates for `BEECOUNT_DOMAIN`.
-- Keep administrator passwords and optional AI keys only in the ignored
-  `.env.production` file or a deployment secret manager.
-- For reproducible upgrades, replace `latest` with a reviewed version tag or
-  image digest.
+- Keep passwords, database credentials and AI keys in ignored deployment environment files or a secret manager.
+- BeeCount and LifeTrace now share the authoritative backend, so account/session compatibility must be validated as part of backend CI rather than by keeping a second server running.
