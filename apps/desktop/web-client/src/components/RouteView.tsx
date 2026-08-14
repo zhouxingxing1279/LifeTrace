@@ -8,6 +8,7 @@ import { DevicesPage } from "../pages/DevicesPage";
 import { AssistantPage, CalendarPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from "../pages/GrowthPages";
 import { DashboardPage } from "../pages/DashboardPage";
 import { ExecutionPage } from "../pages/ExecutionPage";
+import { PhotoChallengePage } from "../pages/PhotoChallengePage";
 import { SearchPage } from "../pages/SearchPage";
 
 interface RouteViewProps {
@@ -28,6 +29,7 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
     case "/assistant": return <AssistantPage {...common} />;
     case "/execution": return <ExecutionPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
+    case "/photo-challenge": return <PhotoChallengePage />;
     case "/fitness": return <FitnessPage {...common} />;
     case "/calendar": return <CalendarPage {...common} />;
     case "/review": return <ReviewPage {...common} />;
