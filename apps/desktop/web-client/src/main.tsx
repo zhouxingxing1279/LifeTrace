@@ -5,21 +5,10 @@ import { installGlobalErrorHandlers } from "../../src/services/clientObservabili
 import { installGlobalFetchInstrumentation } from "../../src/services/fetchInstrumentation";
 import "./bootstrap";
 import App from "./App";
-import "../../app/globals.css";
-import "../../app/hengxu.css";
-import "../../app/fitness-app.css";
-import "../../app/english.css";
-import "../../app/english-desktop-pilot.css";
-import "../../app/xunji-import.css";
-import "../../app/notes.css";
-import "../../app/persist-project.css";
-import "../../app/settings.css";
-import "../../app/desktop-workspace.css";
-import "../../app/record-workspace.css";
 import "./styles.css";
 import "./cloud-pages.css";
+import "./web-shell.css";
 import "./browser.css";
-import "../../app/apple-polish.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
