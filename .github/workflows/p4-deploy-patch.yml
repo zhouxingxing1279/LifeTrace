@@ -1,0 +1,139 @@
+name: P4 Deploy Patch
+
+on:
+  push:
+    branches: [execution-workspace-p4]
+    paths: [".github/workflows/p4-deploy-patch.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: execution-workspace-p4
+      - name: Patch Docker and Compose
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          docker = Path("services/cloud/Dockerfile")
+          text = docker.read_text()
+          text = text.replace("    --bin mail_worker \\\n    --bin lifetrace-migrate", "    --bin mail_worker \\\n    --bin execution_worker \\\n    --bin lifetrace-migrate")
+          text = text.replace("COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker\n", "COPY --from=builder /build/services/cloud/target/release/mail_worker /app/mail_worker\nCOPY --from=builder /build/services/cloud/target/release/execution_worker /app/execution_worker\n")
+          docker.write_text(text)
+
+          def insert_service(path, service_block):
+              p = Path(path)
+              text = p.read_text()
+              if "  lifetrace-execution-worker:\n" in text:
+                  return
+              start = text.index("  lifetrace-mail-worker:\n")
+              match = re.search(r"\n  [A-Za-z0-9_-]+:\n", text[start + 1:])
+              if match:
+                  pos = start + 1 + match.start() + 1
+              else:
+                  marker = "\nvolumes:\n" if "\nvolumes:\n" in text else "\nsecrets:\n"
+                  pos = text.index(marker)
+              text = text[:pos] + service_block + "\n" + text[pos:]
+              p.write_text(text)
+
+          insert_service("deploy/cloud/docker-compose.local.yml", '''  lifetrace-execution-worker:
+            profiles: ["cloud"]
+            build:
+              context: ../..
+              dockerfile: services/cloud/Dockerfile
+            entrypoint: ["/app/execution_worker"]
+            healthcheck:
+              test: ["CMD-SHELL", "kill -0 1"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+              start_period: 2s
+            environment:
+              <<: *cloud_environment
+              MIGRATION_ON_STARTUP: "false"
+            depends_on:
+              postgres:
+                condition: service_healthy
+              lifetrace-cloud:
+                condition: service_healthy
+          '''.replace("          ", ""))
+
+          insert_service("deploy/cloud/docker-compose.production.yml", '''  lifetrace-execution-worker:
+            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+            entrypoint: ["/app/execution_worker"]
+            restart: unless-stopped
+            env_file:
+              - .env.production
+            environment:
+              MIGRATION_ON_STARTUP: "false"
+            depends_on:
+              postgres:
+                condition: service_healthy
+              lifetrace-cloud:
+                condition: service_healthy
+            healthcheck:
+              test: ["CMD-SHELL", "kill -0 1"]
+              interval: 10s
+              timeout: 5s
+              retries: 5
+              start_period: 5s
+            networks:
+              - lifetrace
+          '''.replace("          ", ""))
+
+          insert_service("deploy/cloud/docker-compose.production.example.yml", '''  lifetrace-execution-worker:
+            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+            entrypoint: ["/app/execution_worker"]
+            healthcheck:
+              test: ["CMD-SHELL", "kill -0 1"]
+              interval: 10s
+              timeout: 5s
+              retries: 5
+              start_period: 5s
+            environment:
+              <<: *cloud_environment
+              MIGRATION_ON_STARTUP: "false"
+            secrets:
+              - database_url
+            depends_on:
+              - lifetrace-cloud
+            restart: unless-stopped
+          '''.replace("          ", ""))
+
+          insert_service("deploy/cloud/docker-compose.wsl.yml", '''  lifetrace-execution-worker:
+            image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+            entrypoint: ["/app/execution_worker"]
+            environment:
+              <<: *cloud_environment
+              MIGRATION_ON_STARTUP: "false"
+            depends_on:
+              postgres:
+                condition: service_healthy
+              lifetrace-cloud:
+                condition: service_healthy
+            healthcheck:
+              test: ["CMD-SHELL", "kill -0 1"]
+              interval: 5s
+              timeout: 3s
+              retries: 5
+              start_period: 2s
+          '''.replace("          ", ""))
+          PY
+      - name: Validate compose syntax
+        run: |
+          docker compose -f deploy/cloud/docker-compose.local.yml config >/dev/null
+          docker compose -f deploy/cloud/docker-compose.wsl.yml config >/dev/null || true
+      - name: Commit deployment wiring
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add services/cloud/Dockerfile deploy/cloud
+          git commit -m "feat(execution): deploy dedicated maintenance worker"
+          git push origin HEAD:execution-workspace-p4
