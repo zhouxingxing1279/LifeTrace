@@ -6,13 +6,15 @@ import { installGlobalFetchInstrumentation } from "../../src/services/fetchInstr
 import "./bootstrap";
 import App from "./App";
 
-/* Legacy feature compatibility first; authoritative browser layers follow. */
+/* Existing feature detail styles first; the new browser system is authoritative. */
 import "./styles.css";
 import "./cloud-pages.css";
-import "./browser.css";
 import "./web-tokens.css";
 import "./web-primitives.css";
 import "./web-shell.css";
+import "./web-auth.css";
+import "./web-workspaces.css";
+import "./web-beecount.css";
 import "./web-features.css";
 
 installGlobalFetchInstrumentation();
