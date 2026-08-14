@@ -307,28 +307,28 @@ async fn persist_device_details(
         "UPDATE cloud_devices SET os_version=COALESCE($2,os_version), \
          device_model=COALESCE($3,device_model) WHERE id=$1",
     )
-        .bind(device_id)
-        .bind(
-            os_version
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty()),
+    .bind(device_id)
+    .bind(
+        os_version
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    )
+    .bind(
+        device_model
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty()),
+    )
+    .execute(&state.pool)
+    .await
+    .map_err(|_| {
+        ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "BeeCount device metadata temporarily unavailable",
+            StatusCode::SERVICE_UNAVAILABLE,
         )
-        .bind(
-            device_model
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty()),
-        )
-        .execute(&state.pool)
-        .await
-        .map_err(|_| {
-            ApiError::new(
-                ErrorCode::TemporarilyUnavailable,
-                "BeeCount device metadata temporarily unavailable",
-                StatusCode::SERVICE_UNAVAILABLE,
-            )
-        })?;
+    })?;
     Ok(())
 }
 
