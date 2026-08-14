@@ -9,6 +9,12 @@
   "theme_color": "#29382f",
   "icons": [
     {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
       "src": "/photo-challenge-upload/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
