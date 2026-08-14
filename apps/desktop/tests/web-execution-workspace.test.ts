@@ -2,27 +2,78 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import {
-  ENTITY_TYPES, REQUESTED_SCOPES, createExecutionCalendarEvent, createExecutionMemo,
-  createExecutionProject, createExecutionRecurrenceRule, createExecutionReminder,
-  createExecutionSubtask, createExecutionTask, createExecutionTaskDependency,
-  createExecutionWaitingItem, createMemoConversionLinks, createWaitingConversionLinks,
-  dependencyCreatesCycle, executionTaskDate, materializeCalendarOccurrences,
-  materializeTaskOccurrences, moveCalendarOccurrence, recurrenceLabel, reminderIsDue,
-  taskBlockers, taskIsInbox, taskMatchesToday,
+  ENTITY_TYPES, REQUESTED_SCOPES, atomicMutate, createExecutionCalendarEvent,
+  createExecutionGoal, createExecutionMemo, createExecutionProject, createExecutionRecurrenceRule,
+  createExecutionReminder, createExecutionSubtask, createExecutionTask,
+  createExecutionTaskDependency, createExecutionWaitingItem, createMemoConversionLinks,
+  createWaitingConversionLinks, dependencyCreatesCycle, executionTaskDate, goalProjectProgress,
+  materializeCalendarOccurrences, materializeTaskOccurrences, moveCalendarOccurrence,
+  recurrenceLabel, reminderIsDue, taskBlockers, taskIsInbox, taskMatchesToday,
+  type JsonEntity, type SyncChange,
 } from "../web-client/src/core";
 import { NAV_GROUPS, ROUTES } from "../web-client/src/navigation";
 
 const read = (path: string) => readFileSync(new URL(`../web-client/src/${path}`, import.meta.url), "utf8");
 
-test("browser cloud registry includes the existing execution domain", () => {
+test("browser cloud registry includes the shared execution domain including goals", () => {
   for (const entityType of [
-    "execution.project", "execution.recurrence_rule", "execution.task", "execution.task_dependency",
+    "execution.goal", "execution.project", "execution.recurrence_rule", "execution.task", "execution.task_dependency",
     "execution.task_occurrence", "execution.waiting_item", "execution.calendar_event",
     "execution.calendar_occurrence", "execution.memo", "execution.reminder",
     "execution.completion_result", "execution.entity_link",
   ]) assert.ok(ENTITY_TYPES.includes(entityType as never), entityType);
   assert.ok(REQUESTED_SCOPES.includes("execution:read" as never));
   assert.ok(REQUESTED_SCOPES.includes("execution:write" as never));
+});
+
+test("goals measure progress through projects and tasks instead of duplicating todo state", () => {
+  const goal = createExecutionGoal("u", "d", { name: "完成毕业论文" });
+  const project = { ...createExecutionProject("u", "d", { name: "实验章节" }), goalId: goal.meta.id };
+  const taskA = createExecutionTask("u", "d", { title: "补实验", projectId: project.meta.id });
+  const taskB = { ...createExecutionTask("u", "d", { title: "画图", projectId: project.meta.id }), status: "done" };
+  const progress = goalProjectProgress(goal.meta.id, [project], [taskA, taskB]);
+  assert.equal(goal.status, "active");
+  assert.equal(progress.projects, 1);
+  assert.equal(progress.tasks, 2);
+  assert.equal(progress.completedTasks, 1);
+  assert.equal(progress.rate, 50);
+});
+
+test("atomic mixed-entity writes send one non-null group id and publish local state only after success", async () => {
+  const goal = createExecutionGoal("u", "d", { name: "目标" });
+  const project = { ...createExecutionProject("u", "d", { name: "计划" }), goalId: goal.meta.id };
+  const groups: Array<string | null> = [];
+  const stored: string[] = [];
+  const state = { cursor: null, entities: {}, conflicts: [], lastLoadedAt: null };
+  let index = 0;
+  const fakeStore = {
+    state,
+    prepareUpsert(entityType: string, entity: JsonEntity) {
+      index += 1;
+      const change: SyncChange = {
+        changeId: `c${index}`, entityType: entityType as never, entityId: entity.meta.id,
+        operation: "upsert", baseServerVersion: "0", entitySchemaVersion: 1,
+        clientModifiedAt: new Date().toISOString(), payload: entity, atomicGroupId: null, dependencies: [],
+      };
+      return { entity: structuredClone(entity), change };
+    },
+    prepareDelete() { throw new Error("unused"); },
+    async push(changes: SyncChange[]) {
+      groups.push(...changes.map((change) => change.atomicGroupId));
+      return changes.map((change) => ({ status: "accepted", changeId: change.changeId, serverVersion: "1" }));
+    },
+    put(_entityType: string, entity: JsonEntity) { stored.push(entity.meta.id); },
+    remove() {},
+    snapshot() { return structuredClone(state); },
+  };
+  await atomicMutate(fakeStore as never, [
+    { operation: "upsert", entityType: "execution.goal", entity: goal },
+    { operation: "upsert", entityType: "execution.project", entity: project },
+  ]);
+  assert.equal(groups.length, 2);
+  assert.ok(groups[0]);
+  assert.equal(groups[0], groups[1]);
+  assert.deepEqual(stored, [goal.meta.id, project.meta.id]);
 });
 
 test("execution factories keep task plan memo and calendar semantics separate", () => {
@@ -123,35 +174,40 @@ test("calendar recurrence materializes independent occurrences with per-instance
   assert.equal(more.length, 0);
 });
 
-test("execution stays one global destination while control center remains an internal subroute", () => {
+test("execution stays one global destination while goals and control remain internal subroutes", () => {
   assert.ok(ROUTES.has("/execution"));
+  assert.ok(ROUTES.has("/execution/goals"));
   assert.ok(ROUTES.has("/execution/control"));
   const exposedRoutes = NAV_GROUPS.flatMap((group) => group.items).map((item) => item.route);
   assert.ok(exposedRoutes.includes("/execution"));
   assert.equal(exposedRoutes.filter((route) => route === "/execution").length, 1);
+  assert.equal(exposedRoutes.includes("/execution/goals"), false);
   assert.equal(exposedRoutes.includes("/execution/control"), false);
 });
 
-test("execution workspace exposes recurrence conversion review timeboxing and advanced controls", () => {
+test("execution workspace exposes goals dependency-aware Today and advanced controls", () => {
   const execution = read("pages/ExecutionPage.tsx");
+  const hub = read("pages/ExecutionHubPage.tsx");
+  const goals = read("pages/ExecutionGoalsPage.tsx");
+  const today = read("pages/DependencyAwareDashboardPage.tsx");
   const calendar = read("pages/ExecutionCalendarPage.tsx");
   const control = read("pages/ExecutionControlPage.tsx");
   const routes = read("components/RouteView.tsx");
-  const dashboard = read("pages/DashboardPage.tsx");
+  const atomic = read("cloud/atomic.ts");
   const search = read("cloud/search.ts");
   assert.match(execution, /QUICK CAPTURE/);
-  assert.match(execution, /RECURRENCE RULE/);
-  assert.match(execution, /MEMO → CALENDAR/);
-  assert.match(execution, /近 7 日计划/);
-  assert.match(calendar, /TASK → TIMEBOX/);
+  assert.match(hub, /execution\/goals/);
+  assert.match(goals, /Goal → Project → Task/);
+  assert.match(goals, /atomicMutate/);
+  assert.match(today, /DEPENDENCY-AWARE TODAY/);
+  assert.match(today, /dependsOnTaskId/);
+  assert.match(atomic, /atomicGroupId/);
+  assert.match(atomic, /internals\.push/);
   assert.match(calendar, /execution\.calendar_occurrence/);
-  assert.match(calendar, /execution\/control/);
   assert.match(control, /WAITING/);
   assert.match(control, /REMINDERS/);
   assert.match(control, /TASK STRUCTURE/);
-  assert.match(control, /OCCURRENCE EXCEPTIONS/);
-  assert.match(routes, /ExecutionControlPage/);
-  assert.match(dashboard, /execution\.task_occurrence/);
-  assert.match(search, /execution\.project/);
-  assert.match(search, /execution\.memo/);
+  assert.match(routes, /ExecutionGoalsPage/);
+  assert.match(routes, /DependencyAwareDashboardPage/);
+  assert.match(search, /execution\.goal/);
 });
