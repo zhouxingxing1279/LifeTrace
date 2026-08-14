@@ -1,12 +1,12 @@
 # LifeTrace Execution Workspace
 
-> Status: browser P1 implementation, reusing the execution domain that already exists in the desktop application and cloud contract registry.
+> Status: browser P2 implementation, reusing the execution domain that already exists in the desktop application and cloud contract registry.
 >
 > Updated: 2026-08-14
 
 ## 1. Goal
 
-LifeTrace does not model memo, todo, plan and calendar as unrelated islands. The execution workspace turns them into one capture-to-review loop:
+LifeTrace does not model memo, todo, plan, waiting and calendar as unrelated islands. The execution workspace turns them into one capture-to-review loop:
 
 ```text
 Quick Capture
@@ -16,10 +16,14 @@ Inbox / Memo
 Plan (Project)
     ↓
 Task ─────→ Recurrence Rule → Task Occurrence
-    ↓                           ↓
-Today / Timebox Calendar        Today
-    ↓                           ↓
-Execution ──────────────────────┘
+  │                           ↓
+  ├─→ Subtask / Dependency   Today
+  │
+  ├─→ Waiting Item ─→ Follow-up / Reminder
+  │
+  └─→ Timebox Calendar ─→ Calendar Recurrence → Calendar Occurrence / Exception
+    ↓
+Execution
     ↓
 Completion Result / Occurrence status
     ↓
@@ -47,30 +51,42 @@ The shared contract registry provides:
 - `execution.completion_result`
 - `execution.entity_link`
 
-The browser requests `execution:read` and `execution:write` and includes the execution entities in snapshot, pull and push operations.
+The browser requests `execution:read` and `execution:write` and includes these entities in snapshot, pull and push operations.
 
 ## 3. Browser information architecture
 
-The browser exposes one global destination: **计划与待办** (`/execution`). Internal views remain local to that domain:
+The global sidebar still exposes one execution destination: **计划与待办** (`/execution`). Detail functions stay inside the execution domain instead of fragmenting global navigation.
 
-1. **今天** — ordinary tasks due/scheduled today plus materialized recurring occurrences.
-2. **收件箱** — captured tasks that have not yet been organized.
+### `/execution`
+
+1. **今天** — ordinary tasks due/scheduled today plus recurring task occurrences.
+2. **收件箱** — captured tasks not yet organized.
 3. **计划** — projects and task progress.
-4. **备忘** — title-free memo timeline with pin/archive/conversion actions.
-5. **重复** — recurrence editor and occurrence materialization controls.
-6. **回顾** — seven-day planned-vs-completed execution analytics and overdue decisions.
+4. **备忘** — memo timeline and conversion.
+5. **重复** — recurring task editor.
+6. **回顾** — rolling seven-day execution analytics.
 7. **已完成** — non-recurring task completion history.
 
-The existing `/calendar` route is now the execution timeboxing calendar while still aggregating habits, finance, workouts, English and daily review records.
+### `/execution/control`
+
+1. **等待事项** — external dependencies and follow-up dates.
+2. **提醒** — reminder lifecycle for task/calendar/waiting/memo objects.
+3. **子任务与依赖** — parent-child task structure and finish-before-start dependencies.
+4. **重复日历** — calendar recurrence materialization and per-occurrence exceptions.
+
+### `/calendar`
+
+The existing calendar is the Timebox view over execution data while continuing to aggregate habits, finance, workouts, English and daily review records.
 
 ## 4. Capture semantics
 
 ### Task
 
-A task is an actionable item with explicit execution state, optional project, priority, date, schedule and estimate.
+A task is actionable work with explicit execution state, optional project, priority, due date, schedule and estimate.
 
 ```text
 todo → in_progress → done
+  ├──────────────→ waiting
   └──────────────→ cancelled
 ```
 
@@ -78,20 +94,34 @@ Quick-captured tasks use `context = "inbox"`. Scheduling or assigning them remov
 
 ### Memo
 
-A memo is lighter than a formal Note:
+A memo is lighter than a formal Note: no required title or folder, quick capture first, chronological timeline, optional pin/archive, and conversion into actionable objects. Formal knowledge remains in Notes.
 
-- no title required;
-- no folder required;
-- quick capture first;
-- chronological timeline;
-- optional pin/archive;
-- convertible into an actionable item.
+### Waiting item
 
-Formal knowledge remains in Notes.
+A waiting item represents work that cannot currently advance because the next change must come from another person, service or external condition.
+
+Core fields:
+
+- `waitingFor`
+- `expectedAt`
+- `followUpAt`
+- `sourceTaskId`
+- `status = open/resolved/cancelled`
+- `resolvedAt`
+- `resolutionSummary`
+
+Task → Waiting keeps the source task and changes its status to `waiting`. Resolving the waiting item does not silently complete the source task. The UI offers an explicit **恢复任务** action that resolves the waiting item and returns the source task to `todo`.
+
+Waiting → Task conversion writes provenance links:
+
+```text
+waiting_item --converted_to--> task
+waiting_item <--derived_from-- task
+```
 
 ### Plan / Project
 
-The current stable contract uses `execution.project` as the plan container. A browser-only Goal entity is intentionally not introduced.
+The stable contract still uses `execution.project` as the plan container. A browser-only Goal entity is intentionally not introduced.
 
 A future shared migration may add:
 
@@ -101,22 +131,18 @@ Goal → Project → Task → Completion / Occurrence
 
 ## 5. Timeboxing
 
-`/calendar` now supports real execution scheduling.
-
 When a task is placed into a time block, the browser writes both:
 
 1. `execution.task.scheduledStartAt / scheduledEndAt`;
 2. `execution.calendar_event` with `sourceTaskId`.
 
-Removing the time block clears the task schedule and cancels the linked calendar event. Independent calendar blocks can also be created without a source task.
+Removing a one-off task time block clears the task schedule and cancels the linked calendar event. Independent calendar blocks can also be created without a source task.
 
-This keeps Today and Calendar consistent: Calendar is a scheduling view over the same task data, not a second todo database.
+This keeps Today and Calendar consistent: Calendar is a scheduling view over the same execution data, not a second todo database.
 
 ## 6. Recurring tasks
 
-Recurring work follows the desktop execution semantics and **does not reset one task back to todo after completion**.
-
-The model is:
+Recurring tasks follow the desktop semantics and **do not reset one task back to todo after completion**.
 
 ```text
 Task definition
@@ -127,47 +153,94 @@ Task definition
                     Task Occurrence #3
 ```
 
-Supported Web recurrence frequencies:
+Supported browser recurrence fields:
 
-- daily;
-- weekly with weekday selection;
-- monthly with month day;
+- daily / weekly / monthly;
 - interval greater than one;
+- weekday selection for weekly rules;
+- month day for monthly rules;
 - optional end date;
 - optional maximum occurrence count.
 
-Saving a rule materializes missing occurrences for the next 30 days. Materialization is idempotent by `taskId + occurrenceKey`, respects `maxOccurrences`, and can be run again to extend the horizon.
+Saving a task rule materializes missing occurrences for the next 30 days. Completion updates the individual `execution.task_occurrence`; the recurring task definition remains intact.
 
-Completing a recurring occurrence updates that occurrence to `completed`. The parent task remains the recurring definition, so future occurrences and historical evidence are preserved.
+## 7. Repeating calendar events and exceptions
 
-## 7. Memo conversion lineage
+Calendar recurrence uses the same shared `execution.recurrence_rule` model but materializes `execution.calendar_occurrence` objects.
 
-Memo conversion follows the desktop domain convention. Converting Memo → Task or Memo → Calendar writes two `execution.entity_link` entities:
+The browser control center can:
+
+- attach a recurrence rule to an existing calendar event;
+- materialize missing occurrences for the next 60 days;
+- skip one occurrence without modifying the parent recurrence rule;
+- restore a skipped occurrence;
+- move one occurrence to another date/time without moving the entire series;
+- close the recurrence rule while preserving historical occurrences.
+
+`/calendar` renders scheduled calendar occurrences directly. Once an event becomes recurring, the parent event acts as the recurrence template and the calendar renders the materialized occurrences to avoid showing the template and occurrence twice.
+
+## 8. Reminder lifecycle
+
+`execution.reminder` references an existing subject instead of copying its content.
+
+Supported subjects:
+
+- `task`
+- `calendar_event`
+- `waiting_item`
+- `memo`
+
+Browser lifecycle:
+
+```text
+scheduled → dismissed
+     │
+     ├─ snooze → scheduled with snoozedUntil
+     └─ cancel → cancelled
+```
+
+Due state is derived from `COALESCE(snoozedUntil, triggerAt)`. The browser manages cloud reminder state; OS-level/background notification delivery remains the responsibility of the desktop/mobile notification executor.
+
+## 9. Subtasks and dependencies
+
+A subtask is a normal `execution.task` with `parentTaskId` and inherits the parent project.
+
+Dependencies use `execution.task_dependency` with:
+
+```text
+dependencyType = finish_before_start
+```
+
+The Web editor checks for cycles before writing a new dependency. A task is shown as blocked when any prerequisite is not `done`.
+
+This keeps hierarchy and dependency separate:
+
+- parent/child = decomposition;
+- dependency = execution ordering.
+
+## 10. Conversion lineage
+
+Memo conversion follows the desktop convention. Memo → Task and Memo → Calendar write two `execution.entity_link` records:
 
 ```text
 memo --converted_to--> target
 memo <--derived_from-- target
 ```
 
-The source Memo is then archived. This preserves provenance instead of silently copying text and losing where the actionable item came from.
+The source Memo is archived after conversion.
 
-The current browser conversion flow supports:
+Waiting → Task uses the same lineage convention with `waiting_item` as the source type.
 
-- Memo → Task;
-- Memo → Calendar time block.
-
-Waiting-item conversion remains a follow-up because the browser does not yet expose the waiting-item editor.
-
-## 8. Completion history
+## 11. Completion history
 
 Non-recurring task completion writes:
 
 1. `execution.task.status = "done"` and `completedAt`;
 2. one `execution.completion_result` for the task.
 
-Recurring task execution uses `execution.task_occurrence.status = "completed"` instead. `completion_result` is not repeatedly overwritten for recurring instances.
+Recurring task execution uses `execution.task_occurrence.status = "completed"`. Calendar recurrence uses calendar occurrence status and does not overwrite task completion evidence.
 
-## 9. Today dashboard
+## 12. Today dashboard and execution review
 
 The root dashboard calculates daily action progress from:
 
@@ -175,31 +248,25 @@ The root dashboard calculates daily action progress from:
 - recurring task occurrences for today;
 - active habits.
 
-It also surfaces Inbox size, active project count, memo count and recurring occurrence activity while retaining fitness, learning, finance and review summaries.
+The Execution **回顾** view computes a rolling seven-day review from execution evidence:
 
-## 10. Daily / weekly execution review
-
-The Execution **回顾** view computes a rolling seven-day review from execution evidence rather than introducing a second review database.
-
-Metrics include:
-
-- planned ordinary tasks + recurring occurrences;
+- planned actions;
 - completed actions;
 - completion rate;
-- estimated planned minutes;
-- actual minutes recorded in `completion_result`;
+- planned minutes;
+- recorded actual minutes;
 - overdue ordinary tasks;
-- overdue recurring occurrences.
+- overdue recurring task occurrences.
 
-Subjective mood/energy/reflection remains in the existing `/review` daily-review module. Execution review and subjective review therefore complement rather than duplicate each other.
+Subjective mood/energy/reflection remains in `/review`; execution review and subjective review are complementary.
 
-## 11. Search and sync
+## 13. Search and sync
 
-Global search includes tasks, projects, memos and waiting items. All browser writes continue through `CloudDataStore`, using the normal optimistic-versioned LifeTrace snapshot/pull/push protocol.
+Global search includes tasks, projects, memos and waiting items. All browser writes continue through `CloudDataStore`, using the normal optimistic-versioned snapshot/pull/push protocol.
 
 Photos, encrypted local albums, credentials and local secrets remain outside the browser sync boundary.
 
-## 12. Implementation status
+## 14. Implementation status
 
 Completed:
 
@@ -208,38 +275,37 @@ Completed:
 - [x] Quick task/memo capture
 - [x] Inbox and Today views
 - [x] Project/plan view
-- [x] Memo timeline
-- [x] Task state transitions
-- [x] Completion-result history
-- [x] Root dashboard aggregation
-- [x] Global search integration
-- [x] Mobile navigation integration
-- [x] Calendar timeboxing UI
-- [x] Task ↔ calendar scheduling consistency
-- [x] Recurrence editor on Web
-- [x] Recurrence occurrence materialization
-- [x] Memo → task conversion with lineage
-- [x] Memo → calendar conversion with lineage
-- [x] Seven-day execution review analytics
-- [x] Regression tests
+- [x] Memo timeline and conversion lineage
+- [x] Task state transitions and completion-result history
+- [x] Root dashboard aggregation and global search
+- [x] Calendar Timeboxing
+- [x] Task recurrence and task occurrence materialization
+- [x] Seven-day execution review
+- [x] Waiting-item editor and Task → Waiting flow
+- [x] Waiting → Task conversion lineage
+- [x] Reminder editor and snooze/dismiss/cancel lifecycle
+- [x] Subtask editor
+- [x] Task dependency editor with cycle prevention
+- [x] Calendar recurrence materialization
+- [x] Per-calendar-occurrence skip/restore/move exceptions
+- [x] Recurring calendar occurrences rendered in `/calendar`
+- [x] Regression coverage
 
 Follow-up work:
 
 - [ ] Shared Goal contract
-- [ ] Waiting-item editor on Web
-- [ ] Reminder editor on Web
-- [ ] Task dependency/subtask editor on Web
-- [ ] Calendar recurrence/occurrence exception editor on Web
 - [ ] Long-horizon/server-side recurrence materialization scheduler
 - [ ] Atomic multi-entity browser transaction API for conversion/scheduling writes
+- [ ] Browser/desktop reminder delivery convergence and notification permission UX
+- [ ] Dependency-aware Today ordering and automatic start blocking
 - [ ] Weekly review persistence and comparison across weeks
 - [ ] AI-assisted Inbox classification and project decomposition
 
-## 13. Consistency note
+## 15. Consistency note
 
-The desktop application already has richer local execution APIs. Browser P1 mirrors their entity semantics, but the browser cloud store currently performs cross-entity conversion/scheduling writes sequentially. The shared sync protocol already has `atomicGroupId`; a later backend/client increment should expose a public atomic multi-entity mutation helper so Memo conversion and task scheduling become server-atomic as well as semantically consistent.
+The desktop application has richer local transactional execution APIs. Browser P2 mirrors their entity semantics, but browser cloud writes that span multiple entities are still sequential. The sync protocol already carries `atomicGroupId`; a later backend/client increment should expose a public atomic multi-entity mutation helper so conversion and scheduling become server-atomic as well as semantically consistent.
 
-## 14. Verification
+## 16. Verification
 
 Relevant regression coverage:
 
@@ -249,4 +315,4 @@ apps/desktop/tests/browser-parity.test.ts
 apps/desktop/tests/browser-ui-architecture.test.ts
 ```
 
-The normal browser/desktop validation includes linting, unit tests, Web build and browser build. Cloud CI also runs Rust tests and clippy. Changes must not merge until GitHub Actions reports success.
+Validation includes linting, unit tests, Web build, browser build, Rust tests and clippy. Execution changes must not merge until GitHub Actions reports success.
