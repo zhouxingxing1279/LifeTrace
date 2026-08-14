@@ -5,7 +5,6 @@
 //! desktop acknowledges that the local photo library commit succeeded.
 
 use std::path::{Component, Path, PathBuf};
-use std::str::FromStr;
 
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Multipart, Path as AxumPath, Query, State};
