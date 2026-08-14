@@ -4,16 +4,20 @@ import test from "node:test";
 
 const browserEntry = readFileSync(new URL("../web-client/src/main.tsx", import.meta.url), "utf8");
 
-test("browser entry uses only browser-owned styles", () => {
-  assert.match(browserEntry, /import "\.\/web-shell\.css";/);
-  assert.match(browserEntry, /import "\.\/browser\.css";/);
-  assert.match(browserEntry, /import "\.\/styles\.css";/);
-  assert.match(browserEntry, /import "\.\/cloud-pages\.css";/);
+test("browser entry never imports desktop application css", () => {
   assert.doesNotMatch(browserEntry, /import "\.\.\/\.\.\/app\/[^\"]+\.css";/);
 });
 
-test("browser shell loads before browser feature overrides", () => {
+test("browser entry owns an explicit token -> primitive -> shell -> feature layer", () => {
+  const legacy = browserEntry.indexOf('import "./browser.css";');
+  const tokens = browserEntry.indexOf('import "./web-tokens.css";');
+  const primitives = browserEntry.indexOf('import "./web-primitives.css";');
   const shell = browserEntry.indexOf('import "./web-shell.css";');
-  const featureOverrides = browserEntry.indexOf('import "./browser.css";');
-  assert.ok(shell >= 0 && featureOverrides > shell, "browser.css must remain the final web override layer");
+  const features = browserEntry.indexOf('import "./web-features.css";');
+
+  assert.ok(legacy >= 0, "browser compatibility stylesheet must remain explicit while migration is in progress");
+  assert.ok(tokens > legacy, "design tokens must override compatibility variables");
+  assert.ok(primitives > tokens, "shared primitives must load after tokens");
+  assert.ok(shell > primitives, "application shell must compose primitives");
+  assert.ok(features > shell, "feature composition must be the final browser-owned layer");
 });
