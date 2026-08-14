@@ -12,19 +12,26 @@ use crate::database::migration_runner::{
 pub struct M0014ExecutionGoals;
 
 impl Migration for M0014ExecutionGoals {
-    fn version(&self) -> i64 { 14 }
+    fn version(&self) -> i64 {
+        14
+    }
 
-    fn name(&self) -> &'static str { "execution-goals" }
+    fn name(&self) -> &'static str {
+        "execution-goals"
+    }
 
-    fn checksum(&self) -> &'static str { "m0014-execution-goals-v1" }
+    fn checksum(&self) -> &'static str {
+        "m0014-execution-goals-v1"
+    }
 
     fn up(
         &self,
         transaction: &Transaction,
         _context: &MigrationContext,
     ) -> Result<MigrationReport, MigrationError> {
-        transaction.execute_batch(
-            r#"
+        transaction
+            .execute_batch(
+                r#"
             CREATE TABLE execution_goals (
               id TEXT PRIMARY KEY,
               user_id TEXT NOT NULL REFERENCES local_profiles(id) ON DELETE CASCADE,
@@ -103,14 +110,19 @@ impl Migration for M0014ExecutionGoals {
               );
             END;
             "#,
-        ).map_err(|error| MigrationError {
-            version: 14,
-            message: format!("create execution goal layer: {error}"),
-        })?;
+            )
+            .map_err(|error| MigrationError {
+                version: 14,
+                message: format!("create execution goal layer: {error}"),
+            })?;
 
         let mut report = MigrationReport::default();
-        report.metrics.insert("execution_goal_tables".to_owned(), 1);
-        report.metrics.insert("execution_goal_sync_triggers".to_owned(), 3);
+        report
+            .metrics
+            .insert("execution_goal_tables".to_owned(), 1);
+        report
+            .metrics
+            .insert("execution_goal_sync_triggers".to_owned(), 3);
         Ok(report)
     }
 }
@@ -124,32 +136,46 @@ mod tests {
 
     #[test]
     fn goal_and_project_link_are_syncable_locally() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
         let data_dir = std::env::temp_dir().join(format!("lifetrace-m0014-{unique}"));
         std::fs::create_dir_all(&data_dir).unwrap();
         let mut connection = Connection::open_in_memory().unwrap();
-        connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        connection
+            .execute_batch("PRAGMA foreign_keys=ON;")
+            .unwrap();
         run(&mut connection, &MigrationContext::new(data_dir), &all()).unwrap();
-        let profile: String = connection.query_row(
-            "SELECT active_profile_id FROM app_profile_state WHERE singleton=1", [], |row| row.get(0)
-        ).unwrap();
+        let profile = crate::database::profile::active_profile_id(&connection).unwrap();
 
-        connection.execute(
-            "INSERT INTO execution_goals(id,user_id,name,status,created_at,updated_at) VALUES('g1',?1,'Graduate','active','2026-08-14T00:00:00Z','2026-08-14T00:00:00Z')",
-            [&profile],
-        ).unwrap();
-        connection.execute(
-            "INSERT INTO execution_projects(id,user_id,name,status,sort_order,goal_id,created_at,updated_at) VALUES('p1',?1,'Thesis','active',0,'g1','2026-08-14T00:00:00Z','2026-08-14T00:00:00Z')",
-            [&profile],
-        ).unwrap();
+        connection
+            .execute(
+                "INSERT INTO execution_goals(id,user_id,name,status,created_at,updated_at) VALUES('g1',?1,'Graduate','active','2026-08-14T00:00:00Z','2026-08-14T00:00:00Z')",
+                [&profile],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO execution_projects(id,user_id,name,status,sort_order,goal_id,created_at,updated_at) VALUES('p1',?1,'Thesis','active',0,'g1','2026-08-14T00:00:00Z','2026-08-14T00:00:00Z')",
+                [&profile],
+            )
+            .unwrap();
 
-        let goal_changes: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM sync_outbox WHERE entity_type='execution.goal' AND entity_id='g1' AND operation='upsert'",
-            [], |row| row.get(0)
-        ).unwrap();
-        let project_goal: String = connection.query_row(
-            "SELECT goal_id FROM execution_projects WHERE id='p1'", [], |row| row.get(0)
-        ).unwrap();
+        let goal_changes: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM sync_outbox WHERE entity_type='execution.goal' AND entity_id='g1' AND operation='upsert'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let project_goal: String = connection
+            .query_row(
+                "SELECT goal_id FROM execution_projects WHERE id='p1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
         assert_eq!(goal_changes, 1);
         assert_eq!(project_goal, "g1");
     }
