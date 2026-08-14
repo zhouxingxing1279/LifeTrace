@@ -28,13 +28,18 @@ test("browser fetch preserves the global receiver before entering Chromium netwo
   }
 });
 
-test("browser navigation keeps every application module except photos", () => {
-  const routes = [...NAV_GROUPS.flatMap((group) => group.items), ...SECONDARY_NAV].map((item) => item.route);
-  for (const required of ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import", "/devices", "/settings"]) {
-    assert.ok(routes.includes(required as never), required);
-    assert.ok(ROUTES.has(required as never), required);
+test("browser keeps every application route while global navigation stays domain-level", () => {
+  const exposedRoutes = [...NAV_GROUPS.flatMap((group) => group.items), ...SECONDARY_NAV].map((item) => item.route);
+  const requiredRoutes = ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import", "/devices", "/settings"] as const;
+
+  for (const required of requiredRoutes) assert.ok(ROUTES.has(required), required);
+  for (const required of ["/", "/assistant", "/habits", "/english/articles", "/fitness", "/notes", "/calendar", "/review", "/finance", "/devices", "/settings"] as const) {
+    assert.ok(exposedRoutes.includes(required), `global nav missing ${required}`);
   }
-  assert.equal(routes.some((route) => route.includes("photo") || route.includes("vault")), false);
+  for (const localOnly of ["/finance/transactions", "/finance/accounts", "/finance/beecount", "/finance/import"] as const) {
+    assert.equal(exposedRoutes.includes(localOnly), false, `${localOnly} belongs in finance local navigation`);
+  }
+  assert.equal(exposedRoutes.some((route) => route.includes("photo") || route.includes("vault")), false);
 });
 
 test("BeeCount cloud transaction view filters the current page by type and metadata", () => {
