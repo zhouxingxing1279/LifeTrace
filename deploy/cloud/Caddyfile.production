@@ -1,6 +1,14 @@
 8-148-75-45.sslip.io {
     encode zstd gzip
 
+    redir /photo-challenge-upload /photo-challenge-upload/ 308
+
+    handle_path /photo-challenge-upload/* {
+        root * /srv-photo-challenge
+        try_files {path} /index.html
+        file_server
+    }
+
     handle /api/* {
         reverse_proxy lifetrace-cloud:8787
     }
