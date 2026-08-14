@@ -40,11 +40,9 @@ const TAURI_DESKTOP_ORIGINS: &[&str] = &["http://tauri.localhost", "https://taur
 
 fn cors_origins(config: &Config) -> Vec<axum::http::HeaderValue> {
     let mut values = config.cors_allowed_origins.clone();
-    if config.is_production() {
-        for origin in TAURI_DESKTOP_ORIGINS {
-            if !values.iter().any(|value| value == origin) {
-                values.push((*origin).to_owned());
-            }
+    for origin in TAURI_DESKTOP_ORIGINS {
+        if !values.iter().any(|value| value == origin) {
+            values.push((*origin).to_owned());
         }
     }
     values
