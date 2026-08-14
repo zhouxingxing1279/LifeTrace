@@ -1,16 +1,18 @@
 // LifeTrace Cloud API base URL.
 //
-// Default: talk to the LifeTrace Cloud listener on the same host the page is
-// served from (port 8787), so the web-session cookie stays same-site and is
-// sent on every API request. Set VITE_LIFETRACE_CLOUD_URL to override; the
-// page origin must then be listed in the backend CORS allowlist
-// (see deploy/cloud/docker-compose.local.yml).
+// Production defaults to same-origin requests (for example `/api/v1/web/session`).
+// Caddy owns the public listener and proxies `/api/*` and `/health/*` to the
+// internal `lifetrace-cloud:8787` service, so the browser must not bypass the
+// reverse proxy by connecting to port 8787 directly.
+//
+// Local development keeps the same relative URLs; vite.browser.config.ts
+// proxies them to http://127.0.0.1:8787. Set VITE_LIFETRACE_CLOUD_URL only
+// when an explicit cross-origin Cloud endpoint is required.
 const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env;
 const configuredBase = env?.VITE_LIFETRACE_CLOUD_URL;
 
-export const API_BASE: string = (
-  configuredBase
-  ?? (typeof window !== "undefined"
-    ? `${window.location.protocol}//${window.location.hostname}:8787`
-    : "")
-).toString().replace(/\/+$/, "");
+export function normalizeApiBase(value?: string): string {
+  return (value?.trim() ?? "").replace(/\/+$/, "");
+}
+
+export const API_BASE = normalizeApiBase(configuredBase);
