@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { SessionBindingResult } from "@/src/services/cloudSync";
 import { clientLogger } from "@/src/services/clientObservability";
+import { rawCloudAuthErrorMessage } from "@/src/services/cloudAuthError";
 
 export type CloudAuthUser = {
   id: string;
@@ -61,6 +62,7 @@ type NativeCloudAuthResponse = {
 };
 
 const APP_ID = "lifetrace-desktop";
+const CLIENT_VERSION = "0.2.9";
 const DEVICE_KEY = "lifetrace-cloud-device-id";
 const CLOUD_ORIGIN_KEY = "lifetrace-cloud-origin";
 
@@ -101,8 +103,8 @@ async function cloudAuthFetch(input: string, init: RequestInit = {}): Promise<Re
       },
     });
   } catch (cause) {
-    const message = typeof cause === "string" ? cause : cause instanceof Error ? cause.message : String(cause);
-    const error = new Error(message || "无法连接 LifeTrace 云端", { cause });
+    const message = rawCloudAuthErrorMessage(cause) || "无法连接 LifeTrace 云端";
+    const error = new Error(message, { cause });
     clientLogger.error("cloud.auth.native_transport_failed", { origin: url.origin, path: url.pathname, stage: "request.send" }, error);
     throw error;
   }
@@ -187,7 +189,7 @@ function nativeRequestPayload(email: string, password: string) {
     deviceId: deviceId(),
     deviceName: "LifeTrace Windows Desktop",
     platform: "windows",
-    clientVersion: "0.2.1",
+    clientVersion: CLIENT_VERSION,
     requestedScopes: [],
   };
 }
@@ -287,10 +289,42 @@ export class CloudAuthClient {
     return binding;
   }
 
+  private async revokeAcceptedSession(accessToken: string) {
+    if (!this.origin) return;
+    try {
+      await cloudAuthFetch(`${this.origin}/api/v1/auth/logout`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+    } catch (error) {
+      clientLogger.warn("cloud.auth.rollback_logout_failed", undefined, error);
+    }
+  }
+
   private async acceptTokens(tokens: CloudTokenResponse): Promise<CloudAuthSnapshot> {
     this.accessToken = tokens.accessToken;
-    if (tokens.refreshToken) await credentialApi().set(tokens.refreshToken);
-    const binding = await this.selectUserProfile(tokens);
+    if (tokens.refreshToken) {
+      try {
+        await credentialApi().set(tokens.refreshToken);
+      } catch (cause) {
+        await this.revokeAcceptedSession(tokens.accessToken);
+        this.accessToken = undefined;
+        const detail = rawCloudAuthErrorMessage(cause) || "未知错误";
+        throw new Error(`云端账号已验证，但无法保存 Windows 安全登录凭据：${detail}`, { cause });
+      }
+    }
+
+    let binding: SessionBindingResult | undefined;
+    try {
+      binding = await this.selectUserProfile(tokens);
+    } catch (cause) {
+      await credentialApi().clear().catch((error) => clientLogger.warn("cloud.auth.rollback_credential_clear_failed", undefined, error));
+      await this.revokeAcceptedSession(tokens.accessToken);
+      this.accessToken = undefined;
+      const detail = rawCloudAuthErrorMessage(cause) || "未知错误";
+      throw new Error(`云端账号已验证，但本地数据空间初始化失败：${detail}`, { cause });
+    }
+
     this.snapshot = { authenticated: true, binding, user: tokens.user, session: tokens.session, scopes: tokens.scopes };
     return this.state();
   }
