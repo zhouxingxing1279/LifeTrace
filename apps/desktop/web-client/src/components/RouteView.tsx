@@ -5,9 +5,10 @@ import { BeeCountFinancePage } from "../pages/BeeCountFinancePage";
 import { NotesPage } from "../pages/NotesPage";
 import { ArticlesPage, EnglishStatsPage, VocabularyPage } from "../pages/EnglishPages";
 import { DevicesPage } from "../pages/DevicesPage";
-import { AssistantPage, CalendarPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from "../pages/GrowthPages";
+import { AssistantPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from "../pages/GrowthPages";
 import { DashboardPage } from "../pages/DashboardPage";
 import { ExecutionPage } from "../pages/ExecutionPage";
+import { ExecutionCalendarPage } from "../pages/ExecutionCalendarPage";
 import { SearchPage } from "../pages/SearchPage";
 
 interface RouteViewProps {
@@ -29,7 +30,7 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
     case "/execution": return <ExecutionPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
     case "/fitness": return <FitnessPage {...common} />;
-    case "/calendar": return <CalendarPage {...common} />;
+    case "/calendar": return <ExecutionCalendarPage {...common} />;
     case "/review": return <ReviewPage {...common} />;
     case "/search": return <SearchPage state={state} />;
     case "/devices": return <DevicesPage session={session} auth={auth} online={online} />;
