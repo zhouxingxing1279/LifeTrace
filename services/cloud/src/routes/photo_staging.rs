@@ -4,10 +4,12 @@
 //! temporary delivery payloads. The desktop downloads an item, commits it to the
 //! local photo library, then DELETEs the cloud item as its acknowledgement.
 
+use std::str::FromStr;
+
 use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, Multipart, Path, Query, State};
 use axum::http::{header, HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::routing::get;
 use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
@@ -93,7 +95,10 @@ async fn list(
     .await
     .map_err(database_error)?;
     Ok(Json(StagedPhotoList {
-        items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()?,
+        items: rows
+            .iter()
+            .map(row_to_metadata)
+            .collect::<Result<_, _>>()?,
     }))
 }
 
@@ -154,7 +159,8 @@ async fn content(
     *response.status_mut() = StatusCode::OK;
     response.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_str(&mime_type).unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
+        HeaderValue::from_str(&mime_type)
+            .unwrap_or_else(|_| HeaderValue::from_static("application/octet-stream")),
     );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
@@ -258,16 +264,27 @@ async fn read_upload(mut multipart: Multipart) -> Result<StageInput, ApiError> {
     let mut file_name = None;
     let mut mime_type = None;
     let mut content = None;
-    while let Some(field) = multipart.next_field().await.map_err(|_| bad_request("上传表单无效"))? {
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| bad_request("上传表单无效"))?
+    {
         let name = field.name().unwrap_or_default().to_owned();
         match name.as_str() {
             "source" => source = field.text().await.map_err(|_| bad_request("source 无效"))?,
             "clientAssetId" => {
-                let value = field.text().await.map_err(|_| bad_request("clientAssetId 无效"))?;
-                client_asset_id = (!value.trim().is_empty()).then(|| value.trim().chars().take(180).collect());
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|_| bad_request("clientAssetId 无效"))?;
+                client_asset_id = (!value.trim().is_empty())
+                    .then(|| value.trim().chars().take(180).collect());
             }
             "capturedAt" => {
-                let value = field.text().await.map_err(|_| bad_request("capturedAt 无效"))?;
+                let value = field
+                    .text()
+                    .await
+                    .map_err(|_| bad_request("capturedAt 无效"))?;
                 if !value.trim().is_empty() {
                     captured_at = Some(
                         DateTime::parse_from_rfc3339(value.trim())
@@ -278,8 +295,14 @@ async fn read_upload(mut multipart: Multipart) -> Result<StageInput, ApiError> {
             }
             "file" => {
                 let incoming_name = field.file_name().unwrap_or("photo").to_owned();
-                let incoming_mime = field.content_type().unwrap_or("application/octet-stream").to_owned();
-                let bytes = field.bytes().await.map_err(|_| bad_request("读取上传照片失败"))?;
+                let incoming_mime = field
+                    .content_type()
+                    .unwrap_or("application/octet-stream")
+                    .to_owned();
+                let bytes = field
+                    .bytes()
+                    .await
+                    .map_err(|_| bad_request("读取上传照片失败"))?;
                 if bytes.len() > MAX_STAGED_PHOTO_BYTES {
                     return Err(bad_request("照片超过 64 MiB 暂存限制"));
                 }
@@ -295,7 +318,16 @@ async fn read_upload(mut multipart: Multipart) -> Result<StageInput, ApiError> {
         source,
         client_asset_id,
         original_name: file_name.unwrap_or_else(|| "photo".to_owned()),
-        media_type: if mime_type.as_deref().unwrap_or_default().starts_with("video/") { "video" } else { "image" }.to_owned(),
+        media_type: if mime_type
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("video/")
+        {
+            "video"
+        } else {
+            "image"
+        }
+        .to_owned(),
         mime_type: mime_type.unwrap_or_else(|| "application/octet-stream".to_owned()),
         captured_at,
         content,
@@ -325,7 +357,10 @@ fn validate_input(input: &mut StageInput) -> Result<(), ApiError> {
 
 fn row_to_metadata(row: &sqlx::postgres::PgRow) -> Result<StagedPhoto, ApiError> {
     Ok(StagedPhoto {
-        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        id: row
+            .try_get::<Uuid, _>("id")
+            .map_err(database_error)?
+            .to_string(),
         source: row.try_get("source").map_err(database_error)?,
         client_asset_id: row.try_get("client_asset_id").map_err(database_error)?,
         sha256: row.try_get("sha256").map_err(database_error)?,
@@ -375,7 +410,11 @@ fn clean_text(value: &str, max: usize, fallback: &str) -> String {
         .filter(|character| !character.is_control())
         .take(max)
         .collect();
-    if value.is_empty() { fallback.to_owned() } else { value }
+    if value.is_empty() {
+        fallback.to_owned()
+    } else {
+        value
+    }
 }
 
 fn bad_request(message: impl Into<String>) -> ApiError {
