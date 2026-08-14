@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const repo = (path: string) => readFileSync(new URL(`../../../${path}`, import.meta.url), "utf8");
+const repoUrl = (path: string) => new URL(`../../../${path}`, import.meta.url);
+const repo = (path: string) => readFileSync(repoUrl(path), "utf8");
 
 test("production web image packages browser, photo challenge and Caddy", () => {
   const dockerfile = repo("deploy/cloud/Dockerfile.web");
@@ -39,4 +42,21 @@ test("CI publishes a dedicated LifeTrace Web image", () => {
   assert.match(workflow, /file: deploy\/cloud\/Dockerfile\.web/);
   assert.match(workflow, /type=raw,value=main/);
   assert.match(workflow, /apps\/photo-challenge-pwa\/\*\*/);
+});
+
+test("production deploy script updates main, deploys images and verifies health", () => {
+  const scriptPath = fileURLToPath(repoUrl("deploy/cloud/deploy-production.sh"));
+  const script = readFileSync(scriptPath, "utf8");
+  const syntax = spawnSync("bash", ["-n", scriptPath], { encoding: "utf8" });
+
+  assert.equal(syntax.status, 0, syntax.stderr || syntax.stdout);
+  assert.match(script, /git -C "\$\{REPO_ROOT\}" pull --ff-only origin main/);
+  assert.match(script, /compose config --quiet/);
+  assert.match(script, /compose pull/);
+  assert.match(script, /compose up -d --remove-orphans/);
+  assert.match(script, /wait_for_migration/);
+  assert.match(script, /wait_for_service lifetrace-cloud true/);
+  assert.match(script, /wait_for_service lifetrace-execution-worker true/);
+  assert.match(script, /--skip-git-update/);
+  assert.doesNotMatch(script, /npm (ci|run)/);
 });
