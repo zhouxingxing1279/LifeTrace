@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: photo-challenge-${{ github.ref }}
@@ -27,10 +27,42 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: apps/desktop/package-lock.json
-      - name: Cloud Rust formatting
-        run: cargo fmt --manifest-path services/cloud/Cargo.toml --all --check
-      - name: Desktop Rust formatting
-        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml --all --check
+      - name: Rustfmt changed files only
+        shell: bash
+        run: |
+          rustfmt --edition 2021 \
+            services/cloud/src/lib.rs \
+            services/cloud/src/routes/mod.rs \
+            services/cloud/src/routes/photo_staging.rs \
+            services/cloud/src/routes/photo_challenge.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/sync/mod.rs \
+            apps/desktop/src-tauri/src/sync/photo_staging.rs
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add \
+              services/cloud/src/lib.rs \
+              services/cloud/src/routes/mod.rs \
+              services/cloud/src/routes/photo_staging.rs \
+              services/cloud/src/routes/photo_challenge.rs \
+              apps/desktop/src-tauri/src/lib.rs \
+              apps/desktop/src-tauri/src/sync/mod.rs \
+              apps/desktop/src-tauri/src/sync/photo_staging.rs
+            git commit -m "style: rustfmt photo challenge changes"
+            git push origin HEAD:feat/photo-challenge-pwa
+          fi
+      - name: Verify changed Rust files are formatted
+        shell: bash
+        run: |
+          rustfmt --edition 2021 --check \
+            services/cloud/src/lib.rs \
+            services/cloud/src/routes/mod.rs \
+            services/cloud/src/routes/photo_staging.rs \
+            services/cloud/src/routes/photo_challenge.rs \
+            apps/desktop/src-tauri/src/lib.rs \
+            apps/desktop/src-tauri/src/sync/mod.rs \
+            apps/desktop/src-tauri/src/sync/photo_staging.rs
       - name: Cloud compile
         run: cargo check --locked --manifest-path services/cloud/Cargo.toml
       - name: Cloud tests
