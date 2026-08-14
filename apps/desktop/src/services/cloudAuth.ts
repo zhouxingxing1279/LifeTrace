@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import type { SessionBindingResult } from "@/src/services/cloudSync";
 import { clientLogger } from "@/src/services/clientObservability";
 
@@ -54,6 +55,11 @@ type CredentialApi = {
   clear(): Promise<void>;
 };
 
+type NativeCloudAuthResponse = {
+  status: number;
+  body: string;
+};
+
 const APP_ID = "lifetrace-desktop";
 const DEVICE_KEY = "lifetrace-cloud-device-id";
 const CLOUD_ORIGIN_KEY = "lifetrace-cloud-origin";
@@ -68,6 +74,44 @@ function credentialApi(): CredentialApi {
     };
   }
   return api;
+}
+
+function isTauriRuntime(): boolean {
+  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+}
+
+async function cloudAuthFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  if (!isTauriRuntime()) return fetch(input, init);
+
+  const url = new URL(input);
+  if (url.search || url.hash) throw new Error("云认证请求不允许 URL 查询参数或片段");
+  if (init.body != null && typeof init.body !== "string") {
+    throw new Error("桌面端云认证只支持 JSON 文本请求体");
+  }
+  const headers = new Headers(init.headers);
+  let result: NativeCloudAuthResponse;
+  try {
+    result = await invoke<NativeCloudAuthResponse>("cloud_auth_http_request", {
+      request: {
+        origin: url.origin,
+        path: url.pathname,
+        method: (init.method || "GET").toUpperCase(),
+        body: typeof init.body === "string" ? init.body : null,
+        authorization: headers.get("authorization"),
+      },
+    });
+  } catch (cause) {
+    const message = typeof cause === "string" ? cause : cause instanceof Error ? cause.message : String(cause);
+    const error = new Error(message || "无法连接 LifeTrace 云端", { cause });
+    clientLogger.error("cloud.auth.native_transport_failed", { origin: url.origin, path: url.pathname, stage: "request.send" }, error);
+    throw error;
+  }
+
+  const body = [204, 205, 304].includes(result.status) ? null : result.body;
+  return new Response(body, {
+    status: result.status,
+    headers: { "content-type": "application/json" },
+  });
 }
 
 function browserStorage(): Storage | undefined {
@@ -171,13 +215,13 @@ export class CloudAuthClient {
 
   async capabilities(): Promise<CloudAuthCapabilities> {
     this.ensureOrigin();
-    return parseResponse<CloudAuthCapabilities>(await fetch(`${this.origin}/api/v1/auth/capabilities`), "capabilities");
+    return parseResponse<CloudAuthCapabilities>(await cloudAuthFetch(`${this.origin}/api/v1/auth/capabilities`), "capabilities");
   }
 
   async login(email: string, password: string): Promise<CloudAuthSnapshot> {
     this.ensureOrigin();
     clientLogger.info("cloud.auth.login_started", { origin: this.origin });
-    const response = await fetch(`${this.origin}/api/v1/auth/login`, {
+    const response = await cloudAuthFetch(`${this.origin}/api/v1/auth/login`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...nativeRequestPayload(email, password), publicDevice: false }),
     });
@@ -189,7 +233,7 @@ export class CloudAuthClient {
   async register(input: { email: string; password: string; displayName?: string; inviteToken?: string }): Promise<CloudAuthSnapshot> {
     this.ensureOrigin();
     clientLogger.info("cloud.auth.register_started", { origin: this.origin });
-    const response = await fetch(`${this.origin}/api/v1/auth/register`, {
+    const response = await cloudAuthFetch(`${this.origin}/api/v1/auth/register`, {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({
         ...nativeRequestPayload(input.email, input.password),
@@ -204,7 +248,7 @@ export class CloudAuthClient {
 
   async forgotPassword(email: string): Promise<void> {
     this.ensureOrigin();
-    const response = await fetch(`${this.origin}/api/v1/auth/password/forgot`, {
+    const response = await cloudAuthFetch(`${this.origin}/api/v1/auth/password/forgot`, {
       method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }),
     });
     await parseResponse<{ accepted: boolean }>(response, "forgot-password");
@@ -257,7 +301,7 @@ export class CloudAuthClient {
     this.refreshFlight = (async () => {
       const refreshToken = await credentialApi().get();
       if (!refreshToken) throw new Error("没有可用的安全 Refresh Token");
-      const response = await fetch(`${this.origin}/api/v1/auth/refresh`, {
+      const response = await cloudAuthFetch(`${this.origin}/api/v1/auth/refresh`, {
         method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ refreshToken, appId: APP_ID, deviceId: deviceId() }),
       });
       try {
@@ -282,7 +326,7 @@ export class CloudAuthClient {
   async request(input: string, init: RequestInit = {}): Promise<Response> {
     this.ensureOrigin();
     if (!this.accessToken) await this.refresh();
-    const execute = () => fetch(`${this.origin}${input}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${this.accessToken}` } });
+    const execute = () => cloudAuthFetch(`${this.origin}${input}`, { ...init, headers: { ...init.headers, authorization: `Bearer ${this.accessToken}` } });
     let response = await execute();
     if (response.status === 401) { clientLogger.warn("cloud.auth.request_unauthorized", { path: input, status: response.status }); await this.refresh(); response = await execute(); }
     return response;
@@ -291,7 +335,7 @@ export class CloudAuthClient {
   async logout(all = false): Promise<void> {
     try {
       if (this.accessToken && this.origin) {
-        const response = await fetch(`${this.origin}/api/v1/auth/${all ? "logout-all" : "logout"}`, { method: "POST", headers: { authorization: `Bearer ${this.accessToken}` } });
+        const response = await cloudAuthFetch(`${this.origin}/api/v1/auth/${all ? "logout-all" : "logout"}`, { method: "POST", headers: { authorization: `Bearer ${this.accessToken}` } });
         if (!response.ok) clientLogger.warn("cloud.auth.logout_http_failed", { all, status: response.status }, new Error(`退出登录请求失败 (${response.status})`));
       }
     } catch (error) { clientLogger.error("cloud.auth.logout_failed", { all }, error); throw error; }
