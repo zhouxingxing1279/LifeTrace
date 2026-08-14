@@ -1,5 +1,6 @@
 #[allow(unused_imports)]
 mod process;
+mod execution_guard;
 
 use std::collections::HashMap;
 
@@ -113,6 +114,13 @@ impl PostgresRepository {
         for indices in Self::group_indices(&request.changes) {
             if indices.len() == 1 {
                 let change = &request.changes[indices[0]];
+                if let Some(rejection) = self
+                    .validate_execution_transition(&mut tx, user_id, change)
+                    .await?
+                {
+                    results.push(rejection);
+                    continue;
+                }
                 results.push(
                     self.process_change(&mut tx, user_id, &request.client, change)
                         .await?,
@@ -124,14 +132,16 @@ impl PostgresRepository {
             let mut group_results = Vec::with_capacity(indices.len());
             let mut failed = false;
             for index in &indices {
-                let result = self
-                    .process_change(
-                        &mut nested,
-                        user_id,
-                        &request.client,
-                        &request.changes[*index],
-                    )
-                    .await?;
+                let change = &request.changes[*index];
+                let result = if let Some(rejection) = self
+                    .validate_execution_transition(&mut nested, user_id, change)
+                    .await?
+                {
+                    rejection
+                } else {
+                    self.process_change(&mut nested, user_id, &request.client, change)
+                        .await?
+                };
                 if !matches!(
                     result,
                     PushChangeResultV1::Accepted { .. } | PushChangeResultV1::Duplicate { .. }
