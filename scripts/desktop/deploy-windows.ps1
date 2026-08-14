@@ -62,7 +62,7 @@ function Get-DesktopVersion([string]$RepoRoot) {
     $cargoPath = Join-Path $RepoRoot "apps\desktop\src-tauri\Cargo.toml"
 
     $package = Get-Content $packagePath -Raw | ConvertFrom-Json
-    $packageLock = Get-Content $packageLockPath -Raw | ConvertFrom-Json
+    $packageLock = Get-Content $packageLockPath -Raw | ConvertFrom-Json -AsHashtable
     $tauri = Get-Content $tauriPath -Raw | ConvertFrom-Json
     $cargo = Get-Content $cargoPath -Raw
     $cargoMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"')
@@ -71,9 +71,8 @@ function Get-DesktopVersion([string]$RepoRoot) {
     }
 
     $packageVersion = [string]$package.version
-    $packageLockVersion = [string]$packageLock.version
-    $packageLockRoot = $packageLock.packages.PSObject.Properties[""].Value
-    $packageLockRootVersion = if ($null -eq $packageLockRoot) { "" } else { [string]$packageLockRoot.version }
+    $packageLockVersion = [string]$packageLock["version"]
+    $packageLockRootVersion = [string]$packageLock["packages"][""]["version"]
     $tauriVersion = [string]$tauri.version
     $cargoVersion = $cargoMatch.Groups[1].Value
     if ([string]::IsNullOrWhiteSpace($packageVersion) -or
