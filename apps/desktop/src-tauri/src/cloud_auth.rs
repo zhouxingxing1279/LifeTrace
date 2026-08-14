@@ -75,7 +75,9 @@ pub async fn cloud_auth_http_request(
         .redirect(Policy::none())
         .build()
         .map_err(|error| format!("无法初始化云端网络客户端: {error}"))?;
-    let mut builder = client.request(method, url).header(ACCEPT, "application/json");
+    let mut builder = client
+        .request(method, url)
+        .header(ACCEPT, "application/json");
     if let Some(body) = request.body {
         if body.len() > 64 * 1024 {
             return Err("云认证请求体超过安全上限".to_owned());
@@ -107,8 +109,8 @@ pub async fn cloud_auth_http_request(
     if bytes.len() > MAX_AUTH_RESPONSE_BYTES {
         return Err("云认证响应超过安全上限".to_owned());
     }
-    let body = String::from_utf8(bytes.to_vec())
-        .map_err(|_| "云认证响应不是有效 UTF-8".to_owned())?;
+    let body =
+        String::from_utf8(bytes.to_vec()).map_err(|_| "云认证响应不是有效 UTF-8".to_owned())?;
     Ok(CloudAuthHttpResponse { status, body })
 }
 
@@ -261,7 +263,10 @@ mod tests {
     #[test]
     fn native_auth_transport_only_accepts_server_origin_and_known_paths() {
         let url = auth_url("https://8-148-75-45.sslip.io", "/api/v1/auth/login").unwrap();
-        assert_eq!(url.as_str(), "https://8-148-75-45.sslip.io/api/v1/auth/login");
+        assert_eq!(
+            url.as_str(),
+            "https://8-148-75-45.sslip.io/api/v1/auth/login"
+        );
         assert!(auth_url("https://8-148-75-45.sslip.io/api", "/api/v1/auth/login").is_err());
         assert!(auth_url("https://8-148-75-45.sslip.io", "/api/v1/admin/users").is_err());
         assert!(auth_url("file:///tmp/lifetrace", "/api/v1/auth/login").is_err());
