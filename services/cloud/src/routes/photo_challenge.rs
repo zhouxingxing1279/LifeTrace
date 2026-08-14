@@ -1,51 +1,40 @@
-//! Public PWA photo scoring endpoint for the private LifeTrace photography challenge.
+//! Disposable photography challenge built on top of the reusable photo staging relay.
 //!
-//! The browser never receives the Zhipu API key. A separate challenge passphrase
-//! authorizes uploads, while scored records are written into the configured
-//! owner's normal LifeTrace sync stream as `photo.challenge_entry` entities.
+//! Original files are staged for the owner's desktop photo library. GLM only
+//! receives a client-generated preview, while the challenge keeps lightweight
+//! scoring metadata and a small thumbnail until the challenge is retired.
 
 use std::process::Stdio;
 use std::time::Duration;
 
-use axum::extract::State;
+use axum::extract::{DefaultBodyLimit, Multipart, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
-use chrono::Utc;
-use lifetrace_contracts::ids::{ChangeId, DeviceId, EntityId, RequestId};
-use lifetrace_contracts::json_value::JsonValue;
-use lifetrace_contracts::sync::v1::{
-    AppId, ChangeOperation, ClientPlatform, PushChangeResultV1, PushRequestV1, SyncChangeV1,
-    SyncClientInfo,
-};
-use lifetrace_contracts::{ErrorCode, UserId, PROTOCOL_VERSION, SCHEMA_VERSION};
+use chrono::{DateTime, Utc};
+use lifetrace_contracts::{ErrorCode, UserId};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use sqlx::types::Uuid;
+use sqlx::Row;
 use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
+use uuid::Uuid;
 
+use crate::auth::security::cookie_value;
+use crate::auth::{AuthCredential, AuthenticatedPrincipal};
 use crate::error::ApiError;
 use crate::state::AppState;
 
-const ENTITY_TYPE: &str = "photo.challenge_entry";
-const DEVICE_ID: &str = "photo-challenge-pwa";
-const MAX_IMAGE_BYTES: usize = 2 * 1024 * 1024;
+use super::photo_staging::{self, StageInput, MAX_STAGED_PHOTO_BYTES};
+
+const MAX_MODEL_PREVIEW_BYTES: usize = 2 * 1024 * 1024;
 const MAX_THUMBNAIL_BYTES: usize = 180 * 1024;
 const HIGH_SCORE_THRESHOLD: i64 = 90;
+// “超过 500 张” means the first winning state is 501 qualifying photos.
 const REQUIRED_HIGH_SCORE_COUNT: usize = 501;
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ScoreRequest {
-    file_name: Option<String>,
-    image_data_url: String,
-    thumbnail_data_url: String,
-    captured_at: Option<String>,
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -70,9 +59,9 @@ struct ModelScore {
     feedback: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ChallengeStats {
+pub struct ChallengeStats {
     total: usize,
     high_score_count: usize,
     remaining: usize,
@@ -81,7 +70,7 @@ struct ChallengeStats {
     average_score: f64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ScoreResponse {
     id: String,
@@ -91,6 +80,29 @@ struct ScoreResponse {
     feedback: String,
     duplicate: bool,
     stats: ChallengeStats,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChallengeEntry {
+    id: String,
+    file_name: Option<String>,
+    captured_at: Option<DateTime<Utc>>,
+    score: i64,
+    qualified: bool,
+    breakdown: ScoreBreakdown,
+    feedback: String,
+    model: String,
+    thumbnail_data_url: Option<String>,
+    scored_at: DateTime<Utc>,
+    staging_pending: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AdminResponse {
+    stats: ChallengeStats,
+    entries: Vec<ChallengeEntry>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -109,13 +121,24 @@ struct ProviderMessage {
     content: String,
 }
 
-pub fn router() -> Router<AppState> {
-    Router::<AppState>::new()
-        .route("/api/v1/photo-challenge/summary", get(summary))
-        .route("/api/v1/photo-challenge/score", post(score_photo))
+struct ChallengeUpload {
+    original_name: String,
+    mime_type: String,
+    original: Vec<u8>,
+    preview_base64: String,
+    thumbnail_data_url: String,
+    captured_at: Option<DateTime<Utc>>,
 }
 
-async fn summary(
+pub fn router() -> Router<AppState> {
+    Router::<AppState>::new()
+        .route("/api/v1/photo-challenge/summary", get(public_summary))
+        .route("/api/v1/photo-challenge/score", post(score_photo))
+        .route("/api/v1/photo-challenge/admin", get(admin))
+        .layer(DefaultBodyLimit::max(MAX_STAGED_PHOTO_BYTES + 4 * 1024 * 1024))
+}
+
+async fn public_summary(
     State(state): State<AppState>,
     headers: HeaderMap,
 ) -> Result<Json<ChallengeStats>, ApiError> {
@@ -124,29 +147,78 @@ async fn summary(
     Ok(Json(load_stats(&state, &owner).await?))
 }
 
+async fn admin(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<AdminResponse>, ApiError> {
+    let principal = web_principal(&state, &headers).await?;
+    let owner = challenge_owner(&state).await?;
+    if principal.user_id != owner {
+        return Err(ApiError::new(
+            ErrorCode::AuthScopeDenied,
+            "只有摄影挑战所属账号可以查看详情",
+            StatusCode::FORBIDDEN,
+        ));
+    }
+    let owner_uuid = user_uuid(&owner)?;
+    let rows = sqlx::query(
+        "SELECT id,file_name,captured_at,score,qualified,breakdown,feedback,model,thumbnail_data_url,scored_at,staging_id \
+         FROM photo_challenge_scores WHERE user_id=$1 ORDER BY scored_at DESC LIMIT 1000",
+    )
+    .bind(owner_uuid)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(database_error)?;
+    let entries = rows.iter().map(row_to_entry).collect::<Result<Vec<_>, _>>()?;
+    Ok(Json(AdminResponse {
+        stats: load_stats(&state, &owner).await?,
+        entries,
+    }))
+}
+
 async fn score_photo(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<ScoreRequest>,
+    multipart: Multipart,
 ) -> Result<Json<ScoreResponse>, ApiError> {
     verify_challenge_key(&headers)?;
     let owner = challenge_owner(&state).await?;
-    let image = decode_image(&request.image_data_url, MAX_IMAGE_BYTES, "照片")?;
-    let thumbnail = decode_image(&request.thumbnail_data_url, MAX_THUMBNAIL_BYTES, "缩略图")?;
-    let image_hash = hex::encode(Sha256::digest(&image.bytes));
+    let owner_uuid = user_uuid(&owner)?;
+    let upload = read_challenge_upload(multipart).await?;
+    let image_hash = hex::encode(Sha256::digest(&upload.original));
 
-    let current = state.store.list_entities(&owner, ENTITY_TYPE).await?;
-    if let Some(existing) = current.iter().find_map(|snapshot| {
-        let payload = &snapshot.payload.0;
-        (payload.get("imageHash").and_then(Value::as_str) == Some(image_hash.as_str()))
-            .then(|| response_from_payload(payload, true))
-            .flatten()
-    }) {
-        let stats = stats_from_snapshots(&current);
-        return Ok(Json(ScoreResponse { stats, ..existing }));
+    if let Some(row) = sqlx::query(
+        "SELECT id,score,qualified,breakdown,feedback FROM photo_challenge_scores WHERE user_id=$1 AND image_hash=$2",
+    )
+    .bind(owner_uuid)
+    .bind(&image_hash)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(database_error)?
+    {
+        let mut response = response_from_row(&row, true)?;
+        response.stats = load_stats(&state, &owner).await?;
+        return Ok(Json(response));
     }
 
-    let model_score = call_glm_score(&image.base64).await?;
+    // The original is queued first so even if the AI provider is temporarily
+    // unavailable, the photo still reaches the owner's desktop library.
+    let staged = photo_staging::stage_for_user(
+        &state,
+        &owner,
+        StageInput {
+            source: "photo-challenge".to_owned(),
+            client_asset_id: Some(image_hash.clone()),
+            original_name: upload.original_name.clone(),
+            media_type: "image".to_owned(),
+            mime_type: upload.mime_type.clone(),
+            captured_at: upload.captured_at,
+            content: upload.original,
+        },
+    )
+    .await?;
+
+    let model_score = call_glm_score(&upload.preview_base64).await?;
     let breakdown = ScoreBreakdown {
         composition: model_score.composition.clamp(0, 25),
         light_color: model_score.light_color.clamp(0, 20),
@@ -154,79 +226,119 @@ async fn score_photo(
         technical: model_score.technical.clamp(0, 20),
         originality: model_score.originality.clamp(0, 15),
     };
-    // Recompute the final score from the rubric so a malformed model total can
-    // never accidentally count as a qualifying photo.
     let score = breakdown.composition
         + breakdown.light_color
         + breakdown.subject_story
         + breakdown.technical
         + breakdown.originality;
     let qualified = score > HIGH_SCORE_THRESHOLD;
-    let id = Uuid::new_v4().to_string();
-    let now = Utc::now();
-    let thumbnail_data_url = format!("data:{};base64,{}", thumbnail.mime, thumbnail.base64);
-    let payload = json!({
-        "meta": {
-            "id": id,
-            "userId": owner.as_str(),
-            "createdAt": now,
-            "updatedAt": now,
-            "localVersion": 1,
-            "serverVersion": Value::Null,
-            "modifiedByDevice": DEVICE_ID,
-            "deletedAt": Value::Null
-        },
-        "score": score,
-        "qualified": qualified,
-        "threshold": HIGH_SCORE_THRESHOLD,
-        "imageHash": image_hash,
-        "fileName": clean_file_name(request.file_name.as_deref()),
-        "capturedAt": request.captured_at,
-        "scoredAt": now,
-        "model": env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned()),
-        "breakdown": breakdown,
-        "feedback": model_score.feedback.trim().chars().take(500).collect::<String>(),
-        "thumbnailDataUrl": thumbnail_data_url,
-    });
+    let id = Uuid::new_v4();
+    let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
+    let feedback: String = model_score.feedback.trim().chars().take(500).collect();
+    let staging_id = Uuid::parse_str(&staged.id).map_err(|_| bad_request("暂存照片编号无效"))?;
 
-    persist_entry(&state, &owner, &id, payload.clone()).await?;
-    let stats = load_stats(&state, &owner).await?;
-    let response = response_from_payload(&payload, false).ok_or_else(|| {
-        ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "评分记录生成失败",
-            StatusCode::INTERNAL_SERVER_ERROR,
-        )
-    })?;
-    Ok(Json(ScoreResponse { stats, ..response }))
+    let row = sqlx::query(
+        "INSERT INTO photo_challenge_scores \
+         (id,user_id,staging_id,image_hash,file_name,captured_at,score,qualified,breakdown,feedback,model,thumbnail_data_url) \
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) \
+         RETURNING id,score,qualified,breakdown,feedback",
+    )
+    .bind(id)
+    .bind(owner_uuid)
+    .bind(staging_id)
+    .bind(&image_hash)
+    .bind(&upload.original_name)
+    .bind(upload.captured_at)
+    .bind(score)
+    .bind(qualified)
+    .bind(serde_json::to_value(&breakdown).map_err(|_| bad_request("评分明细无效"))?)
+    .bind(&feedback)
+    .bind(&model)
+    .bind(&upload.thumbnail_data_url)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(database_error)?;
+
+    let mut response = response_from_row(&row, false)?;
+    response.stats = load_stats(&state, &owner).await?;
+    Ok(Json(response))
+}
+
+async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUpload, ApiError> {
+    let mut original_name = None;
+    let mut mime_type = None;
+    let mut original = None;
+    let mut preview_base64 = None;
+    let mut thumbnail_data_url = None;
+    let mut captured_at = None;
+
+    while let Some(field) = multipart.next_field().await.map_err(|_| bad_request("上传表单无效"))? {
+        let name = field.name().unwrap_or_default().to_owned();
+        match name.as_str() {
+            "file" => {
+                let file_name = field.file_name().unwrap_or("photo.jpg").to_owned();
+                let content_type = field.content_type().unwrap_or("application/octet-stream").to_owned();
+                if !matches!(content_type.as_str(), "image/jpeg" | "image/png" | "image/webp") {
+                    return Err(bad_request("摄影挑战仅支持 JPEG、PNG 或 WebP"));
+                }
+                let bytes = field.bytes().await.map_err(|_| bad_request("读取原始照片失败"))?;
+                if bytes.is_empty() || bytes.len() > MAX_STAGED_PHOTO_BYTES {
+                    return Err(bad_request("原始照片为空或超过 64 MiB"));
+                }
+                original_name = Some(clean_file_name(&file_name));
+                mime_type = Some(content_type);
+                original = Some(bytes.to_vec());
+            }
+            "previewDataUrl" => {
+                let value = field.text().await.map_err(|_| bad_request("评分预览无效"))?;
+                preview_base64 = Some(decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?.base64);
+            }
+            "thumbnailDataUrl" => {
+                let value = field.text().await.map_err(|_| bad_request("缩略图无效"))?;
+                let decoded = decode_data_url(&value, MAX_THUMBNAIL_BYTES, "缩略图")?;
+                thumbnail_data_url = Some(format!("data:{};base64,{}", decoded.mime, decoded.base64));
+            }
+            "capturedAt" => {
+                let value = field.text().await.map_err(|_| bad_request("拍摄时间无效"))?;
+                if !value.trim().is_empty() {
+                    captured_at = Some(
+                        DateTime::parse_from_rfc3339(value.trim())
+                            .map_err(|_| bad_request("拍摄时间格式无效"))?
+                            .with_timezone(&Utc),
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(ChallengeUpload {
+        original_name: original_name.ok_or_else(|| bad_request("缺少照片文件"))?,
+        mime_type: mime_type.ok_or_else(|| bad_request("缺少照片 MIME 类型"))?,
+        original: original.ok_or_else(|| bad_request("缺少照片文件"))?,
+        preview_base64: preview_base64.ok_or_else(|| bad_request("缺少评分预览"))?,
+        thumbnail_data_url: thumbnail_data_url.ok_or_else(|| bad_request("缺少缩略图"))?,
+        captured_at,
+    })
 }
 
 struct DecodedImage {
     mime: String,
     base64: String,
-    bytes: Vec<u8>,
 }
 
-fn decode_image(data_url: &str, max_bytes: usize, label: &str) -> Result<DecodedImage, ApiError> {
-    let (prefix, encoded) = data_url.split_once(',').ok_or_else(|| {
-        bad_request(format!("{label}格式无效"))
-    })?;
+fn decode_data_url(data_url: &str, max_bytes: usize, label: &str) -> Result<DecodedImage, ApiError> {
+    let (prefix, encoded) = data_url.split_once(',').ok_or_else(|| bad_request(format!("{label}格式无效")))?;
     let mime = prefix
         .strip_prefix("data:")
         .and_then(|value| value.strip_suffix(";base64"))
         .filter(|value| matches!(*value, "image/jpeg" | "image/png" | "image/webp"))
         .ok_or_else(|| bad_request(format!("{label}仅支持 JPEG、PNG 或 WebP")))?;
-    let bytes = STANDARD
-        .decode(encoded)
-        .map_err(|_| bad_request(format!("{label} Base64 数据无效")))?;
+    let bytes = STANDARD.decode(encoded).map_err(|_| bad_request(format!("{label} Base64 数据无效")))?;
     if bytes.is_empty() || bytes.len() > max_bytes {
         return Err(bad_request(format!("{label}大小超出限制")));
     }
-    Ok(DecodedImage {
-        mime: mime.to_owned(),
-        base64: encoded.to_owned(),
-        bytes,
-    })
+    Ok(DecodedImage { mime: mime.to_owned(), base64: encoded.to_owned() })
 }
 
 fn verify_challenge_key(headers: &HeaderMap) -> Result<(), ApiError> {
@@ -243,7 +355,7 @@ fn verify_challenge_key(headers: &HeaderMap) -> Result<(), ApiError> {
         .unwrap_or_default();
     if provided.is_empty() || provided != expected {
         return Err(ApiError::new(
-            ErrorCode::InvalidRequest,
+            ErrorCode::AuthInvalid,
             "摄影挑战口令无效",
             StatusCode::UNAUTHORIZED,
         ));
@@ -253,134 +365,72 @@ fn verify_challenge_key(headers: &HeaderMap) -> Result<(), ApiError> {
 
 async fn challenge_owner(state: &AppState) -> Result<UserId, ApiError> {
     if !state.database_enabled {
-        return Ok(UserId::new(state.config.dev_auth_user_id.clone()));
+        return Err(ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "摄影挑战云端模式需要 PostgreSQL",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ));
     }
     let email = env_non_empty("PHOTO_CHALLENGE_OWNER_EMAIL")
         .map(|value| value.to_lowercase())
-        .ok_or_else(|| {
-            ApiError::new(
-                ErrorCode::TemporarilyUnavailable,
-                "摄影挑战尚未配置所属账号",
-                StatusCode::SERVICE_UNAVAILABLE,
-            )
-        })?;
+        .ok_or_else(|| ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "摄影挑战尚未配置所属账号",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ))?;
     let id = sqlx::query_scalar::<_, Uuid>(
         "SELECT id FROM cloud_users WHERE email_normalized=$1 AND status='active' LIMIT 1",
     )
     .bind(email.trim())
     .fetch_optional(&state.pool)
     .await
-    .map_err(|error| {
-        ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            format!("查询摄影挑战所属账号失败: {error}"),
-            StatusCode::SERVICE_UNAVAILABLE,
-        )
-    })?
-    .ok_or_else(|| {
-        ApiError::new(
-            ErrorCode::InvalidRequest,
-            "摄影挑战所属账号不存在",
-            StatusCode::NOT_FOUND,
-        )
-    })?;
+    .map_err(database_error)?
+    .ok_or_else(|| ApiError::new(
+        ErrorCode::InvalidRequest,
+        "摄影挑战所属账号不存在",
+        StatusCode::NOT_FOUND,
+    ))?;
     Ok(UserId::new(id.to_string()))
 }
 
-async fn persist_entry(
-    state: &AppState,
-    owner: &UserId,
-    id: &str,
-    payload: Value,
-) -> Result<(), ApiError> {
-    let change = SyncChangeV1 {
-        change_id: ChangeId::new(Uuid::new_v4().to_string()),
-        entity_type: lifetrace_contracts::EntityType::new(ENTITY_TYPE),
-        entity_id: EntityId::new(id),
-        operation: ChangeOperation::new(ChangeOperation::UPSERT),
-        base_server_version: lifetrace_contracts::ServerVersion::zero(),
-        entity_schema_version: 1,
-        client_modified_at: Utc::now(),
-        payload: Some(JsonValue(payload)),
-        atomic_group_id: None,
-        dependencies: vec![],
-    };
-    let request = PushRequestV1 {
-        request_id: RequestId::new(Uuid::new_v4().to_string()),
-        client: SyncClientInfo {
-            app_id: AppId::new("photo-challenge-pwa"),
-            client_version: "1.0.0".to_owned(),
-            platform: ClientPlatform::new(ClientPlatform::WEB),
-            protocol_version: PROTOCOL_VERSION,
-            schema_version: SCHEMA_VERSION,
-            device_id: DeviceId::new(DEVICE_ID),
-        },
-        changes: vec![change],
-    };
-    let result = state.store.push(owner, &request).await?;
-    match result.results.first() {
-        Some(PushChangeResultV1::Accepted { .. }) => Ok(()),
-        Some(PushChangeResultV1::Duplicate { .. }) => Ok(()),
-        Some(PushChangeResultV1::Conflict { reason, .. }) => Err(ApiError::new(
-            ErrorCode::BaseVersionMismatch,
-            format!("保存评分记录冲突: {reason}"),
-            StatusCode::CONFLICT,
-        )),
-        Some(PushChangeResultV1::Rejected { code, message, .. }) => Err(ApiError::new(
-            code.clone(),
-            message,
-            StatusCode::BAD_REQUEST,
-        )),
-        None => Err(ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "云端未返回评分记录保存结果",
-            StatusCode::SERVICE_UNAVAILABLE,
-        )),
-    }
+async fn web_principal(state: &AppState, headers: &HeaderMap) -> Result<AuthenticatedPrincipal, ApiError> {
+    let raw = cookie_value(headers, &state.config.auth_cookie_name);
+    state.auth.authenticate(AuthCredential::WebSession(raw.as_deref())).await
 }
 
 async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, ApiError> {
-    let snapshots = state.store.list_entities(owner, ENTITY_TYPE).await?;
-    Ok(stats_from_snapshots(&snapshots))
-}
-
-fn stats_from_snapshots(snapshots: &[crate::repository::EntitySnapshot]) -> ChallengeStats {
-    let scores: Vec<i64> = snapshots
-        .iter()
-        .filter_map(|snapshot| snapshot.payload.0.get("score").and_then(Value::as_i64))
-        .collect();
-    let high_score_count = scores
-        .iter()
-        .filter(|score| **score > HIGH_SCORE_THRESHOLD)
-        .count();
-    let average_score = if scores.is_empty() {
-        0.0
-    } else {
-        scores.iter().sum::<i64>() as f64 / scores.len() as f64
-    };
-    ChallengeStats {
-        total: scores.len(),
+    let owner_uuid = user_uuid(owner)?;
+    let row = sqlx::query(
+        "SELECT COUNT(*) AS total,COUNT(*) FILTER (WHERE qualified) AS high_count,COALESCE(AVG(score),0)::float8 AS average_score \
+         FROM photo_challenge_scores WHERE user_id=$1",
+    )
+    .bind(owner_uuid)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(database_error)?;
+    let total = row.try_get::<i64, _>("total").map_err(database_error)?.max(0) as usize;
+    let high_score_count = row.try_get::<i64, _>("high_count").map_err(database_error)?.max(0) as usize;
+    let average_score = row.try_get::<f64, _>("average_score").map_err(database_error)?;
+    Ok(ChallengeStats {
+        total,
         high_score_count,
         remaining: REQUIRED_HIGH_SCORE_COUNT.saturating_sub(high_score_count),
         target: REQUIRED_HIGH_SCORE_COUNT,
         achieved: high_score_count >= REQUIRED_HIGH_SCORE_COUNT,
         average_score: (average_score * 10.0).round() / 10.0,
-    }
+    })
 }
 
-fn response_from_payload(payload: &Value, duplicate: bool) -> Option<ScoreResponse> {
-    let breakdown = serde_json::from_value(payload.get("breakdown")?.clone()).ok()?;
-    let score = payload.get("score")?.as_i64()?;
-    Some(ScoreResponse {
-        id: payload.get("meta")?.get("id")?.as_str()?.to_owned(),
-        score,
-        qualified: score > HIGH_SCORE_THRESHOLD,
+fn response_from_row(row: &sqlx::postgres::PgRow, duplicate: bool) -> Result<ScoreResponse, ApiError> {
+    let breakdown_value: Value = row.try_get("breakdown").map_err(database_error)?;
+    let breakdown: ScoreBreakdown = serde_json::from_value(breakdown_value)
+        .map_err(|_| bad_request("云端评分明细损坏"))?;
+    Ok(ScoreResponse {
+        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        score: row.try_get("score").map_err(database_error)?,
+        qualified: row.try_get("qualified").map_err(database_error)?,
         breakdown,
-        feedback: payload
-            .get("feedback")
-            .and_then(Value::as_str)
-            .unwrap_or_default()
-            .to_owned(),
+        feedback: row.try_get("feedback").map_err(database_error)?,
         duplicate,
         stats: ChallengeStats {
             total: 0,
@@ -393,14 +443,29 @@ fn response_from_payload(payload: &Value, duplicate: bool) -> Option<ScoreRespon
     })
 }
 
+fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<ChallengeEntry, ApiError> {
+    let breakdown_value: Value = row.try_get("breakdown").map_err(database_error)?;
+    Ok(ChallengeEntry {
+        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        file_name: row.try_get("file_name").map_err(database_error)?,
+        captured_at: row.try_get("captured_at").map_err(database_error)?,
+        score: row.try_get("score").map_err(database_error)?,
+        qualified: row.try_get("qualified").map_err(database_error)?,
+        breakdown: serde_json::from_value(breakdown_value).map_err(|_| bad_request("云端评分明细损坏"))?,
+        feedback: row.try_get("feedback").map_err(database_error)?,
+        model: row.try_get("model").map_err(database_error)?,
+        thumbnail_data_url: row.try_get("thumbnail_data_url").map_err(database_error)?,
+        scored_at: row.try_get("scored_at").map_err(database_error)?,
+        staging_pending: row.try_get::<Option<Uuid>, _>("staging_id").map_err(database_error)?.is_some(),
+    })
+}
+
 async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
-    let api_key = env_non_empty("ZHIPU_API_KEY").ok_or_else(|| {
-        ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "缺少 ZHIPU_API_KEY，无法进行照片评分",
-            StatusCode::SERVICE_UNAVAILABLE,
-        )
-    })?;
+    let api_key = env_non_empty("ZHIPU_API_KEY").ok_or_else(|| ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        "缺少 ZHIPU_API_KEY，无法进行照片评分",
+        StatusCode::SERVICE_UNAVAILABLE,
+    ))?;
     if api_key.contains(['\r', '\n']) {
         return Err(ApiError::new(
             ErrorCode::InvalidRequest,
@@ -410,8 +475,7 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
     }
     let base_url = env_non_empty("ZHIPU_BASE_URL")
         .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_owned());
-    let model = env_non_empty("PHOTO_CHALLENGE_MODEL")
-        .unwrap_or_else(|| "glm-4v-flash".to_owned());
+    let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
     let request = json!({
@@ -460,11 +524,7 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
     ))
 }
 
-async fn call_provider(
-    endpoint: &str,
-    api_key: &str,
-    request: &Value,
-) -> Result<ProviderResponse, String> {
+async fn call_provider(endpoint: &str, api_key: &str, request: &Value) -> Result<ProviderResponse, String> {
     let payload = serde_json::to_vec(request).map_err(|error| error.to_string())?;
     let mut child = Command::new("curl")
         .arg("--silent")
@@ -508,11 +568,19 @@ fn parse_model_score(content: &str) -> Option<ModelScore> {
     serde_json::from_str::<ModelScore>(&content[start..=end]).ok()
 }
 
-fn clean_file_name(value: Option<&str>) -> Option<String> {
-    value
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(|value| value.chars().take(120).collect())
+fn clean_file_name(value: &str) -> String {
+    std::path::Path::new(value)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("photo.jpg")
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(180)
+        .collect()
+}
+
+fn user_uuid(user_id: &UserId) -> Result<Uuid, ApiError> {
+    Uuid::parse_str(user_id.as_str()).map_err(|_| bad_request("摄影挑战所属账号无效"))
 }
 
 fn env_non_empty(name: &str) -> Option<String> {
@@ -524,6 +592,14 @@ fn env_non_empty(name: &str) -> Option<String> {
 
 fn bad_request(message: impl Into<String>) -> ApiError {
     ApiError::new(ErrorCode::InvalidRequest, message, StatusCode::BAD_REQUEST)
+}
+
+fn database_error(error: sqlx::Error) -> ApiError {
+    ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        format!("摄影挑战数据库操作失败: {error}"),
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
 }
 
 #[cfg(test)]
