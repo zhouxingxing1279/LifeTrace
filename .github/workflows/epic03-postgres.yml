@@ -57,14 +57,7 @@ jobs:
       - name: Cloud tests
         run: cargo test --manifest-path services/cloud/Cargo.toml -- --test-threads=1
       - name: Clippy production targets
-        # Keep every warning denied except two style-only lints already present
-        # in the BeeCount compatibility boundary. They do not change runtime
-        # behavior and are covered by PostgreSQL integration tests below.
-        run: >-
-          cargo clippy --manifest-path services/cloud/Cargo.toml --lib --bins --
-          -D warnings
-          -A clippy::too_many_arguments
-          -A clippy::unnecessary_map_or
+        run: cargo clippy --manifest-path services/cloud/Cargo.toml --lib --bins -- -D warnings
       - name: Docker build
         run: docker build -f services/cloud/Dockerfile .
       - name: Compose PostgreSQL smoke test
