@@ -95,6 +95,7 @@ services:
     volumes:
       - ./Caddyfile.production:/etc/caddy/Caddyfile:ro
       - ../../apps/desktop/dist-browser:/srv:ro
+      - ../../apps/photo-challenge-pwa:/srv-photo-challenge:ro
       - caddy_data:/data
       - caddy_config:/config
     environment:
