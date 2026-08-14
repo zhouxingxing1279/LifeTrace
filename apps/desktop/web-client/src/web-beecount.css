@@ -1,0 +1,362 @@
+/* BeeCount Cloud is a read-only source rendered inside the LifeTrace shell. */
+.privacy-on .metric-card strong,
+.privacy-on .hx-metric strong,
+.privacy-on .beecount-transaction > b,
+.privacy-on .beecount-entity-card > strong,
+.privacy-on .beecount-entity-card footer {
+  filter: blur(6px);
+  user-select: none;
+}
+
+.beecount-toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) minmax(220px, .55fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 15px;
+  border: 1px solid var(--lt-color-border);
+  border-radius: var(--lt-radius-lg);
+  background: var(--lt-color-surface-raised);
+}
+
+.beecount-source {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.beecount-source > svg {
+  width: 40px;
+  height: 40px;
+  padding: 10px;
+  border-radius: 11px;
+  background: var(--lt-color-primary-soft);
+  color: var(--lt-color-primary);
+}
+
+.beecount-source > div {
+  min-width: 0;
+}
+
+.beecount-source strong,
+.beecount-source small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.beecount-source strong {
+  font-size: var(--lt-font-size-sm);
+}
+
+.beecount-source small {
+  color: var(--lt-color-text-tertiary);
+  font-size: var(--lt-font-size-xs);
+}
+
+.beecount-source > span {
+  padding: 4px 7px;
+  border-radius: var(--lt-radius-full);
+  background: var(--lt-color-warning-soft);
+  color: var(--lt-color-warning);
+  font-size: 9px;
+  font-weight: 850;
+}
+
+.beecount-toolbar > label {
+  display: grid;
+  gap: 5px;
+  color: var(--lt-color-text-secondary);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 750;
+}
+
+.beecount-toolbar select,
+.beecount-filter input,
+.beecount-filter select {
+  min-height: var(--lt-control-md);
+  border: 1px solid var(--lt-color-border-strong);
+  border-radius: var(--lt-radius-sm);
+  padding: 7px 10px;
+  background: var(--lt-color-surface);
+  color: var(--lt-color-text);
+}
+
+.beecount-boundary {
+  margin: 12px 0 0;
+  padding-left: 11px;
+  border-left: 3px solid var(--lt-color-primary);
+  color: var(--lt-color-text-secondary);
+  font-size: var(--lt-font-size-xs);
+  line-height: var(--lt-line-normal);
+}
+
+.beecount-view-tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.beecount-view-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.beecount-view-tabs button {
+  min-height: 34px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  border: 1px solid var(--lt-color-border);
+  border-radius: var(--lt-radius-full);
+  background: var(--lt-color-surface);
+  color: var(--lt-color-text-secondary);
+  font-size: var(--lt-font-size-xs);
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.beecount-view-tabs button:hover,
+.beecount-view-tabs button.active {
+  border-color: var(--lt-color-primary);
+  background: var(--lt-color-primary);
+  color: var(--lt-color-primary-contrast);
+}
+
+.beecount-overview {
+  display: grid;
+  gap: var(--lt-space-5);
+}
+
+.beecount-ledger-summary {
+  min-height: 220px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  text-align: center;
+}
+
+.beecount-ledger-summary svg {
+  width: 46px;
+  height: 46px;
+  padding: 11px;
+  border-radius: 14px;
+  background: var(--lt-color-primary-soft);
+  color: var(--lt-color-primary);
+}
+
+.beecount-ledger-summary strong {
+  color: var(--lt-color-text);
+  font-size: 27px;
+}
+
+.beecount-ledger-summary p,
+.beecount-ledger-summary small {
+  margin: 0;
+  color: var(--lt-color-text-secondary);
+}
+
+.beecount-transactions {
+  display: grid;
+}
+
+.beecount-transaction {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 11px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--lt-color-border);
+}
+
+.beecount-transaction:last-child {
+  border-bottom: 0;
+}
+
+.beecount-transaction > div {
+  min-width: 0;
+}
+
+.beecount-transaction strong,
+.beecount-transaction small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.beecount-transaction strong {
+  font-size: var(--lt-font-size-sm);
+}
+
+.beecount-transaction small {
+  margin-top: 3px;
+  color: var(--lt-color-text-tertiary);
+  font-size: var(--lt-font-size-xs);
+}
+
+.beecount-transaction > b {
+  color: var(--lt-color-text);
+  font-size: var(--lt-font-size-sm);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.beecount-transaction > b.income { color: var(--lt-color-success); }
+.beecount-transaction > b.expense { color: var(--lt-color-danger); }
+.beecount-transaction > b.transfer { color: var(--lt-color-text); }
+
+.beecount-chips {
+  display: flex !important;
+  flex-direction: row !important;
+  gap: 4px !important;
+  flex-wrap: wrap;
+}
+
+.beecount-chips span {
+  padding: 2px 6px;
+  border-radius: var(--lt-radius-full);
+  background: var(--lt-color-primary-soft);
+  color: var(--lt-color-primary);
+  font-size: 9px;
+  font-weight: 750;
+}
+
+.beecount-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--lt-color-border);
+  color: var(--lt-color-text-secondary);
+  font-size: var(--lt-font-size-xs);
+}
+
+.beecount-pagination > div {
+  display: flex;
+  gap: 6px;
+}
+
+.beecount-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.beecount-entity-card {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--lt-color-border);
+  border-radius: var(--lt-radius-md);
+  background: var(--lt-color-surface);
+  box-shadow: var(--lt-shadow-xs);
+}
+
+.beecount-entity-card header,
+.beecount-entity-card footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.beecount-entity-card header > span {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: var(--lt-color-primary);
+  color: var(--lt-color-primary-contrast);
+  font-style: normal;
+  font-weight: 850;
+}
+
+.beecount-entity-card header > span.income { background: var(--lt-color-success); }
+.beecount-entity-card header > span.expense { background: var(--lt-color-danger); }
+.beecount-entity-card header > span.budget { background: var(--lt-color-info); }
+
+.beecount-entity-card header svg {
+  width: 17px;
+  height: 17px;
+}
+
+.beecount-entity-card header i {
+  color: var(--lt-color-text-tertiary);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 850;
+  text-transform: uppercase;
+}
+
+.beecount-entity-card h3,
+.beecount-entity-card p {
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.beecount-entity-card p,
+.beecount-entity-card footer {
+  color: var(--lt-color-text-secondary);
+  font-size: var(--lt-font-size-xs);
+}
+
+.beecount-entity-card > strong {
+  font-size: 21px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 1180px) {
+  .beecount-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(220px, .65fr);
+  }
+
+  .beecount-toolbar > .hx-btn {
+    grid-column: 1 / -1;
+  }
+
+  .beecount-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 780px) {
+  .beecount-toolbar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .beecount-toolbar > .hx-btn {
+    grid-column: auto;
+  }
+
+  .beecount-source > span {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .beecount-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .beecount-transaction {
+    grid-template-columns: 36px minmax(0, 1fr);
+  }
+
+  .beecount-transaction > b {
+    grid-column: 2;
+  }
+}
