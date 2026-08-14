@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use super::PostgresRepository;
 use crate::error::ApiError;
-use crate::sync::payload_hash::{empty_scope, scope_hash};
+use crate::sync::payload_hash::scope_hash;
 
 impl PostgresRepository {
     pub(super) async fn snapshot_impl(
@@ -123,7 +123,7 @@ impl PostgresRepository {
 
         let row = sqlx::query(
             r#"
-            SELECT snapshot_cursor, status, expires_at
+            SELECT scope_hash, snapshot_cursor, status, expires_at
             FROM sync_snapshots
             WHERE id = $1 AND user_id = $2
             "#,
@@ -150,6 +150,10 @@ impl PostgresRepository {
                 StatusCode::GONE,
             ));
         }
+        let scope = hex::encode(
+            row.try_get::<Vec<u8>, _>("scope_hash")
+                .map_err(Self::internal_error)?,
+        );
         let snapshot_cursor = row
             .try_get::<i64, _>("snapshot_cursor")
             .map_err(Self::internal_error)?
@@ -210,9 +214,7 @@ impl PostgresRepository {
         Ok(SnapshotResponseV1 {
             request_id: request.request_id.clone(),
             snapshot_id,
-            snapshot_cursor: self
-                .cursor_codec
-                .encode(user_id, &empty_scope(), snapshot_cursor),
+            snapshot_cursor: self.cursor_codec.encode(user_id, &scope, snapshot_cursor),
             items,
             next_page_token,
             completed,
