@@ -7,6 +7,7 @@ import { ArticlesPage, EnglishStatsPage, VocabularyPage } from "../pages/English
 import { DevicesPage } from "../pages/DevicesPage";
 import { AssistantPage, CalendarPage, FitnessPage, HabitsPage, ReviewPage, SettingsPage } from "../pages/GrowthPages";
 import { DashboardPage } from "../pages/DashboardPage";
+import { ExecutionPage } from "../pages/ExecutionPage";
 import { SearchPage } from "../pages/SearchPage";
 
 interface RouteViewProps {
@@ -25,6 +26,7 @@ export function RouteView({ route, auth, session, state, privacy, online, run }:
   switch (route) {
     case "/": return <DashboardPage state={state} privacy={privacy} />;
     case "/assistant": return <AssistantPage {...common} />;
+    case "/execution": return <ExecutionPage {...common} />;
     case "/habits": return <HabitsPage {...common} />;
     case "/fitness": return <FitnessPage {...common} />;
     case "/calendar": return <CalendarPage {...common} />;
