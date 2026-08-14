@@ -20,37 +20,83 @@ export type Route =
   | "/settings"
   | "/search";
 
+export type NavIcon =
+  | "home"
+  | "bot"
+  | "check"
+  | "languages"
+  | "dumbbell"
+  | "note"
+  | "calendar"
+  | "review"
+  | "chart"
+  | "money"
+  | "wallet"
+  | "upload"
+  | "cloud"
+  | "devices"
+  | "settings"
+  | "search";
+
 export interface NavItem {
   route: Route;
   label: string;
-  icon: "home" | "bot" | "check" | "languages" | "dumbbell" | "note" | "calendar" | "review" | "chart" | "money" | "wallet" | "upload" | "cloud" | "devices" | "settings" | "search";
+  icon: NavIcon;
 }
 
-export const NAV_GROUPS: Array<{ label: string; items: NavItem[] }> = [
-  { label: "工作台", items: [
-    { route: "/", label: "总览", icon: "home" },
-    { route: "/assistant", label: "AI 管家", icon: "bot" },
-  ] },
-  { label: "成长与健康", items: [
-    { route: "/habits", label: "坚持项目", icon: "check" },
-    { route: "/english/articles", label: "每日英语", icon: "languages" },
-    { route: "/fitness", label: "健身训练", icon: "dumbbell" },
-    { route: "/notes", label: "笔记", icon: "note" },
-    { route: "/calendar", label: "生活日历", icon: "calendar" },
-    { route: "/review", label: "每日复盘", icon: "review" },
-  ] },
-  { label: "资产与账单", items: [
-    { route: "/finance", label: "财务概览", icon: "chart" },
-    { route: "/finance/transactions", label: "账单管理", icon: "money" },
-    { route: "/finance/accounts", label: "账户管理", icon: "wallet" },
-    { route: "/finance/beecount", label: "BeeCount 云账本", icon: "cloud" },
-    { route: "/finance/import", label: "账单导入", icon: "upload" },
-  ] },
+export interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+/*
+ * Sidebar IA intentionally exposes destinations, not every sub-route.
+ * Finance and English detail routes live inside their own local tab bars,
+ * so the global navigation stays readable as LifeTrace grows.
+ */
+export const NAV_GROUPS: NavGroup[] = [
+  {
+    label: "工作台",
+    items: [
+      { route: "/", label: "今日总览", icon: "home" },
+      { route: "/assistant", label: "AI 管家", icon: "bot" },
+    ],
+  },
+  {
+    label: "成长健康",
+    items: [
+      { route: "/habits", label: "坚持项目", icon: "check" },
+      { route: "/fitness", label: "健身训练", icon: "dumbbell" },
+      { route: "/calendar", label: "生活日历", icon: "calendar" },
+      { route: "/review", label: "每日复盘", icon: "review" },
+    ],
+  },
+  {
+    label: "知识学习",
+    items: [
+      { route: "/notes", label: "笔记", icon: "note" },
+      { route: "/english/articles", label: "英语学习", icon: "languages" },
+    ],
+  },
+  {
+    label: "财务",
+    items: [
+      { route: "/finance", label: "财务中心", icon: "chart" },
+    ],
+  },
 ];
 
 export const SECONDARY_NAV: NavItem[] = [
   { route: "/devices", label: "设备与会话", icon: "devices" },
   { route: "/settings", label: "数据与设置", icon: "settings" },
+];
+
+export const MOBILE_NAV: NavItem[] = [
+  { route: "/", label: "总览", icon: "home" },
+  { route: "/habits", label: "坚持", icon: "check" },
+  { route: "/finance", label: "财务", icon: "chart" },
+  { route: "/notes", label: "笔记", icon: "note" },
+  { route: "/settings", label: "设置", icon: "settings" },
 ];
 
 export const ROUTES = new Set<Route>([
@@ -61,17 +107,17 @@ export const ROUTES = new Set<Route>([
 ]);
 
 export const PAGE_COPY: Record<Route, [string, string]> = {
-  "/": ["个人总览", "把坚持、训练、财务、英语、笔记和复盘放在同一个云端系统里。"],
+  "/": ["今日总览", "把今天真正需要关注的坚持、训练、学习、财务和复盘集中在一个工作台。"],
   "/assistant": ["AI 管家", "基于当前云端记录生成摘要、趋势和可执行建议。"],
   "/habits": ["坚持项目", "管理长期项目，关注完成率、累计量与真实趋势。"],
-  "/english/articles": ["每日英语", "阅读、总结、高亮、生词与长期能力成长。"],
+  "/english/articles": ["英语学习", "阅读、总结、高亮、生词与长期能力成长。"],
   "/english/vocabulary": ["生词本", "集中复习阅读中积累的词汇。"],
   "/english/stats": ["英语统计", "查看阅读、总结与词汇积累。"],
   "/fitness": ["健身训练", "记录训练、动作、组数和训练笔记。"],
   "/notes": ["笔记", "记录想法、知识与复盘，并跨设备同步。"],
   "/calendar": ["生活日历", "坚持、训练、账单、英语和复盘都落在具体的一天里。"],
   "/review": ["每日复盘", "每天两分钟，看清今天并为明天留下重点。"],
-  "/finance": ["财务概览", "看清资产、收支和消费结构。"],
+  "/finance": ["财务中心", "从资产、收支、预算和账本四个维度看清自己的钱。"],
   "/finance/transactions": ["账单管理", "搜索、筛选、编辑并维护全部收支记录。"],
   "/finance/accounts": ["账户管理", "集中维护银行卡、电子钱包、投资账户和现金。"],
   "/finance/categories": ["收支分类", "维护可复用的收入和支出分类。"],
@@ -95,7 +141,7 @@ export function navigate(route: Route): void {
 
 export function routeIsActive(current: Route, target: Route): boolean {
   if (target === "/") return current === "/";
-  if (target === "/finance") return current.startsWith("/finance");
-  if (target === "/english/articles") return current.startsWith("/english");
+  if (target === "/finance") return current === "/finance" || current.startsWith("/finance/");
+  if (target === "/english/articles") return current === "/english/articles" || current.startsWith("/english/");
   return current === target;
 }
