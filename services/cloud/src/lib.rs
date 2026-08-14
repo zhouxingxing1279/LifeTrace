@@ -36,17 +36,29 @@ use axum::{middleware, Router};
 use tower_http::cors::CorsLayer;
 use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 
+const TAURI_DESKTOP_ORIGINS: &[&str] = &["http://tauri.localhost", "https://tauri.localhost"];
+
+fn cors_origins(config: &Config) -> Vec<axum::http::HeaderValue> {
+    let mut values = config.cors_allowed_origins.clone();
+    if config.is_production() {
+        for origin in TAURI_DESKTOP_ORIGINS {
+            if !values.iter().any(|value| value == origin) {
+                values.push((*origin).to_owned());
+            }
+        }
+    }
+    values
+        .iter()
+        .filter_map(|value| value.parse().ok())
+        .collect()
+}
+
 /// Build the full application router.
 pub fn app(state: AppState) -> Router {
-    let cors = if state.config.cors_allowed_origins.is_empty() {
+    let origins = cors_origins(&state.config);
+    let cors = if origins.is_empty() {
         CorsLayer::new()
     } else {
-        let origins: Vec<axum::http::HeaderValue> = state
-            .config
-            .cors_allowed_origins
-            .iter()
-            .filter_map(|value| value.parse().ok())
-            .collect();
         CorsLayer::new()
             .allow_origin(origins)
             .allow_credentials(true)
