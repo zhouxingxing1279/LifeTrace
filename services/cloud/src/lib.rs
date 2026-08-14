@@ -8,8 +8,10 @@ pub mod auth;
 pub mod beecount_adapter;
 pub mod beecount_attachments;
 pub mod beecount_collaboration;
+#[allow(clippy::too_many_arguments)]
 pub mod beecount_compat;
 pub mod beecount_realtime;
+#[allow(clippy::unnecessary_map_or)]
 pub mod beecount_sync;
 pub mod config;
 pub mod error;
