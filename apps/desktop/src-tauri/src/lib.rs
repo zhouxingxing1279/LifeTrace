@@ -18,6 +18,7 @@ mod sync;
 mod vault;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use tauri::Manager;
 
@@ -120,6 +121,24 @@ pub fn run() {
             let scheduler_state = sync_state.clone();
             tauri::async_runtime::spawn(async move {
                 scheduler_state.scheduler().await;
+            });
+            let photo_relay_state = sync_state.clone();
+            tauri::async_runtime::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_secs(30));
+                interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+                loop {
+                    interval.tick().await;
+                    let authenticated = {
+                        let auth = photo_relay_state.auth.read().await;
+                        auth.access_token.is_some() && auth.cloud_user_id.is_some()
+                    };
+                    if !authenticated {
+                        continue;
+                    }
+                    if let Err(error) = sync::photo_staging::drain(&photo_relay_state).await {
+                        eprintln!("LifeTrace cloud photo staging drain skipped: {error}");
+                    }
+                }
             });
             tauri::async_runtime::spawn(async move {
                 if let Err(error) =
