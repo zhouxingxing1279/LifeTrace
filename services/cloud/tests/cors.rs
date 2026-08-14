@@ -11,9 +11,19 @@ use lifetrace_cloud::{app, AppState, Config};
 use tower::ServiceExt;
 
 const WEB_ORIGIN: &str = "http://127.0.0.1:4173";
+const TAURI_ORIGIN: &str = "http://tauri.localhost";
 
 fn cors_app() -> axum::Router {
     let config = Config {
+        cors_allowed_origins: vec![WEB_ORIGIN.to_owned()],
+        ..Config::default()
+    };
+    app(AppState::new(config))
+}
+
+fn production_cors_app() -> axum::Router {
+    let config = Config {
+        environment: "production".to_owned(),
         cors_allowed_origins: vec![WEB_ORIGIN.to_owned()],
         ..Config::default()
     };
@@ -98,4 +108,44 @@ async fn registration_preflight_allows_json_and_csrf_headers() {
     assert!(headers
         .split(',')
         .any(|value| value.trim() == "x-csrf-token"));
+}
+
+#[tokio::test]
+async fn production_allows_packaged_tauri_login_preflight() {
+    let response = production_cors_app()
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/api/v1/auth/login")
+                .header(ORIGIN, TAURI_ORIGIN)
+                .header(ACCESS_CONTROL_REQUEST_METHOD, "POST")
+                .header(ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert!(response.status().is_success());
+    assert_eq!(
+        response.headers().get(ACCESS_CONTROL_ALLOW_ORIGIN).unwrap(),
+        TAURI_ORIGIN
+    );
+    let methods = response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_METHODS)
+        .unwrap()
+        .to_str()
+        .unwrap();
+    assert!(methods.split(',').any(|value| value.trim() == "POST"));
+    let headers = response
+        .headers()
+        .get(ACCESS_CONTROL_ALLOW_HEADERS)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_ascii_lowercase();
+    assert!(headers
+        .split(',')
+        .any(|value| value.trim() == "content-type"));
 }
