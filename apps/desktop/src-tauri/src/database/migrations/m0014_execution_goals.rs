@@ -117,9 +117,7 @@ impl Migration for M0014ExecutionGoals {
             })?;
 
         let mut report = MigrationReport::default();
-        report
-            .metrics
-            .insert("execution_goal_tables".to_owned(), 1);
+        report.metrics.insert("execution_goal_tables".to_owned(), 1);
         report
             .metrics
             .insert("execution_goal_sync_triggers".to_owned(), 3);
@@ -143,9 +141,7 @@ mod tests {
         let data_dir = std::env::temp_dir().join(format!("lifetrace-m0014-{unique}"));
         std::fs::create_dir_all(&data_dir).unwrap();
         let mut connection = Connection::open_in_memory().unwrap();
-        connection
-            .execute_batch("PRAGMA foreign_keys=ON;")
-            .unwrap();
+        connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
         run(&mut connection, &MigrationContext::new(data_dir), &all()).unwrap();
         let profile = crate::database::profile::active_profile_id(&connection).unwrap();
 
