@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import {
   ArrowRight, BookOpen, CircleDollarSign, Dumbbell, NotebookPen, ShieldCheck, Sparkles, Target,
 } from "lucide-react";
@@ -121,7 +122,7 @@ export function DashboardPage({ state, privacy }: DashboardPageProps) {
   </div>;
 }
 
-function SummaryRow({ icon, label, value, detail, route }: { icon: React.ReactNode; label: string; value: string; detail?: string; route: Parameters<typeof navigate>[0] }) {
+function SummaryRow({ icon, label, value, detail, route }: { icon: ReactNode; label: string; value: string; detail?: string; route: Parameters<typeof navigate>[0] }) {
   return <button className="lt-summary-row" onClick={() => navigate(route)}>
     <span>{icon}</span><div><strong>{label}</strong><small>{detail || "查看详情"}</small></div><b>{value}</b><ArrowRight />
   </button>;
