@@ -37,6 +37,12 @@ struct StagedPhoto {
     captured_at: Option<String>,
 }
 
+enum InsertOutcome {
+    Inserted,
+    Existing(Option<String>),
+    Failed(String),
+}
+
 pub async fn drain(state: &SyncDesktopState) -> Result<usize, String> {
     let auth = state.auth.read().await.clone();
     let token = auth
@@ -103,7 +109,10 @@ async fn import_one(
         .await
         .map_err(|error| format!("下载暂存照片失败: {error}"))?;
     if !response.status().is_success() {
-        return Err(format!("下载暂存照片失败: HTTP {}", response.status().as_u16()));
+        return Err(format!(
+            "下载暂存照片失败: HTTP {}",
+            response.status().as_u16()
+        ));
     }
     let bytes = response
         .bytes()
@@ -140,26 +149,31 @@ async fn import_into_local_library(
     item: &StagedPhoto,
     bytes: &[u8],
 ) -> Result<String, String> {
-    let connection = open_database(data_dir)?;
-    if let Some(existing) = connection
-        .query_row(
-            "SELECT id FROM photos WHERE content_hash=?1 AND deleted_at IS NULL",
-            [&item.sha256],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?
     {
-        return Ok(existing);
+        let connection = open_database(data_dir)?;
+        if let Some(existing) = connection
+            .query_row(
+                "SELECT id FROM photos WHERE content_hash=?1 AND deleted_at IS NULL",
+                [&item.sha256],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?
+        {
+            return Ok(existing);
+        }
     }
-    drop(connection);
 
     let root = data_dir.join("photos");
     let originals = root.join("originals");
     let thumbnails = root.join("thumbnails");
     let incoming = root.join(".cloud-staging");
-    fs::create_dir_all(&originals).await.map_err(|error| error.to_string())?;
-    fs::create_dir_all(&incoming).await.map_err(|error| error.to_string())?;
+    fs::create_dir_all(&originals)
+        .await
+        .map_err(|error| error.to_string())?;
+    fs::create_dir_all(&incoming)
+        .await
+        .map_err(|error| error.to_string())?;
 
     let photo_id = format!("photo_{}", Uuid::new_v4());
     let extension = safe_extension(&item.original_name, &item.mime_type, &item.media_type);
@@ -167,7 +181,9 @@ async fn import_into_local_library(
     let original_relative = format!("originals/{stored_name}");
     let original_path = root.join(&original_relative);
     let temp_path = incoming.join(format!("{}.part", item.id));
-    fs::write(&temp_path, bytes).await.map_err(|error| error.to_string())?;
+    fs::write(&temp_path, bytes)
+        .await
+        .map_err(|error| error.to_string())?;
     fs::rename(&temp_path, &original_path)
         .await
         .or_else(|_| std::fs::copy(&temp_path, &original_path).map(|_| ()))
@@ -197,49 +213,64 @@ async fn import_into_local_library(
     }
 
     let imported_at = Utc::now().to_rfc3339();
-    let connection = open_database(data_dir)?;
-    let inserted = connection.execute(
-        "INSERT OR IGNORE INTO photos(
-            id,content_hash,original_file_name,stored_file_name,original_path,thumbnail_path,
-            media_type,mime_type,file_size,width,height,duration_ms,captured_at,imported_at,
-            processing_status,processing_error,source_device_id,deleted_at
-         ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,?12,?13,'completed',NULL,NULL,NULL)",
-        params![
-            photo_id,
-            item.sha256,
-            clean_name(&item.original_name),
-            stored_name,
-            original_relative,
-            thumbnail_relative,
-            item.media_type,
-            item.mime_type,
-            item.size_bytes,
-            width,
-            height,
-            item.captured_at,
-            imported_at,
-        ],
-    )
-    .map_err(|error| error.to_string())?;
-    if inserted == 1 {
-        return Ok(photo_id);
-    }
+    let outcome = {
+        let connection = open_database(data_dir)?;
+        match connection.execute(
+            "INSERT OR IGNORE INTO photos(
+                id,content_hash,original_file_name,stored_file_name,original_path,thumbnail_path,
+                media_type,mime_type,file_size,width,height,duration_ms,captured_at,imported_at,
+                processing_status,processing_error,source_device_id,deleted_at
+             ) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,NULL,?12,?13,'completed',NULL,NULL,NULL)",
+            params![
+                photo_id,
+                item.sha256,
+                clean_name(&item.original_name),
+                stored_name,
+                original_relative,
+                thumbnail_relative,
+                item.media_type,
+                item.mime_type,
+                item.size_bytes,
+                width,
+                height,
+                item.captured_at,
+                imported_at,
+            ],
+        ) {
+            Ok(1) => InsertOutcome::Inserted,
+            Ok(_) => {
+                let existing = connection
+                    .query_row(
+                        "SELECT id FROM photos WHERE content_hash=?1 AND deleted_at IS NULL",
+                        [&item.sha256],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()
+                    .map_err(|error| error.to_string())?;
+                InsertOutcome::Existing(existing)
+            }
+            Err(error) => InsertOutcome::Failed(error.to_string()),
+        }
+    };
 
-    // A concurrent import may have inserted the same content hash while the
-    // file was being written. Remove this redundant file and use that record.
-    fs::remove_file(&original_path).await.ok();
-    if let Some(path) = thumbnail_path {
-        fs::remove_file(path).await.ok();
+    match outcome {
+        InsertOutcome::Inserted => Ok(photo_id),
+        InsertOutcome::Existing(existing) => {
+            cleanup_written_files(&original_path, thumbnail_path.as_deref()).await;
+            existing.ok_or_else(|| "照片本地入库失败".to_owned())
+        }
+        InsertOutcome::Failed(error) => {
+            cleanup_written_files(&original_path, thumbnail_path.as_deref()).await;
+            Err(format!("照片本地入库失败: {error}"))
+        }
     }
-    connection
-        .query_row(
-            "SELECT id FROM photos WHERE content_hash=?1 AND deleted_at IS NULL",
-            [&item.sha256],
-            |row| row.get::<_, String>(0),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?
-        .ok_or_else(|| "照片本地入库失败".to_owned())
+}
+
+async fn cleanup_written_files(original: &Path, thumbnail: Option<&Path>) {
+    fs::remove_file(original).await.ok();
+    if let Some(thumbnail) = thumbnail {
+        fs::remove_file(thumbnail).await.ok();
+    }
 }
 
 fn open_database(data_dir: &Path) -> Result<Connection, String> {
