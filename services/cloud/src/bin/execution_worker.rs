@@ -345,8 +345,11 @@ fn task_occurrence_payload(
     let delta = date.signed_duration_since(anchor).num_days();
     let scheduled_start = shifted_timestamp(task.get("scheduledStartAt"), delta);
     let scheduled_end = shifted_timestamp(task.get("scheduledEndAt"), delta);
-    let due_at = shifted_timestamp(task.get("dueAt"), delta)
-        .or_else(|| (!scheduled_start.is_some()).then(|| format!("{date}T23:59:00Z")));
+    let due_at = shifted_timestamp(task.get("dueAt"), delta).or_else(|| {
+        scheduled_start
+            .is_none()
+            .then(|| format!("{date}T23:59:00Z"))
+    });
     json!({
         "meta": server_meta(user_id, deterministic_id(user_id, "task_occurrence", task_id, date)),
         "taskId": task_id,
