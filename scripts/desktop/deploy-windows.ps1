@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet("Publish", "InstallLatest", "PublishAndInstall")]
+    [ValidateSet("Validate", "Publish", "InstallLatest", "PublishAndInstall")]
     [string]$Mode = "Publish",
 
     [switch]$NoSyncMain,
@@ -296,6 +296,10 @@ $repoRoot = Get-RepoRoot
 $tagToInstall = $null
 
 switch ($Mode) {
+    "Validate" {
+        $version = Get-DesktopVersion $repoRoot
+        Write-Ok "部署脚本校验通过，桌面端版本：v$version"
+    }
     "Publish" {
         [void](Publish-Desktop $repoRoot)
     }
