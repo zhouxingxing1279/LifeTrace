@@ -137,20 +137,41 @@ wait_for_public_url() {
   local expected_fragment="${3:-}"
   local deadline=$((SECONDS + WAIT_SECONDS))
   local body=""
+  local curl_error=""
+  local attempt=0
+  local error_file
+  error_file="$(mktemp)"
 
   log "waiting for ${name}: ${url}"
   while (( SECONDS < deadline )); do
-    if body="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${url}" 2>/dev/null)"; then
+    attempt=$((attempt + 1))
+    : > "${error_file}"
+    if body="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${url}" 2>"${error_file}")"; then
       if [[ -z "${expected_fragment}" || "${body}" == *"${expected_fragment}"* ]]; then
+        rm -f "${error_file}"
         log "${name} is reachable with a trusted TLS certificate"
         return 0
+      fi
+      curl_error="HTTP request succeeded but response did not contain the expected marker"
+    else
+      curl_error="$(tr '\n' ' ' < "${error_file}")"
+    fi
+
+    if (( attempt == 1 || attempt % 5 == 0 )); then
+      log "${name} not ready yet: ${curl_error:-unknown curl failure}"
+      if ! compose ps caddy --status running --quiet | grep -q .; then
+        compose logs --tail=100 caddy >&2 || true
+        rm -f "${error_file}"
+        fail "caddy stopped while waiting for ${name}"
       fi
     fi
     sleep 3
   done
 
-  compose logs --tail=100 caddy >&2 || true
-  fail "timed out waiting for ${name} at ${url}"
+  rm -f "${error_file}"
+  printf '[LifeTrace deploy] last public endpoint error: %s\n' "${curl_error:-unknown curl failure}" >&2
+  compose logs --tail=150 caddy >&2 || true
+  fail "timed out waiting for ${name} at ${url}; verify inbound TCP 80/443/8869 and the Caddy ACME logs above"
 }
 
 for arg in "$@"; do
@@ -207,7 +228,7 @@ wait_for_service postgres true
 wait_for_service lifetrace-cloud true
 wait_for_service lifetrace-mail-worker true
 wait_for_service lifetrace-execution-worker true
-wait_for_service caddy false
+wait_for_service caddy true
 wait_for_public_url "LifeTrace public endpoint" "${PUBLIC_WEB_URL}/health/ready"
 wait_for_public_url "BeeCount compatibility endpoint" "${BEECOUNT_PUBLIC_URL}/api/v1/version" '"name":"BeeCount Cloud"'
 

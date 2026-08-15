@@ -25,6 +25,7 @@ test("production compose uses only packaged LifeTrace services", () => {
   assert.match(production, /lifetrace-execution-worker:/);
   assert.match(production, /PUBLIC_WEB_BASE_URL:-https:\/\/8\.148\.75\.45/);
   assert.match(production, /"8869:8869"/);
+  assert.match(production, /127\.0\.0\.1:2019\/config\//);
   assert.doesNotMatch(production, /\.\.\/\.\.\/apps\/desktop\/dist-browser/);
   assert.doesNotMatch(production, /\.\.\/\.\.\/apps\/photo-challenge-pwa/);
   assert.doesNotMatch(production, /sunxiao0721\/beecount-cloud/);
@@ -63,9 +64,12 @@ test("production deploy script updates main, deploys images and verifies health"
   assert.match(script, /wait_for_migration/);
   assert.match(script, /wait_for_service lifetrace-cloud true/);
   assert.match(script, /wait_for_service lifetrace-execution-worker true/);
+  assert.match(script, /wait_for_service caddy true/);
   assert.match(script, /wait_for_public_url "LifeTrace public endpoint"/);
   assert.match(script, /wait_for_public_url "BeeCount compatibility endpoint"/);
   assert.match(script, /https:\/\/8\.148\.75\.45:8869/);
+  assert.match(script, /last public endpoint error/);
+  assert.match(script, /verify inbound TCP 80\/443\/8869/);
   assert.match(script, /--skip-git-update/);
   assert.doesNotMatch(script, /npm (ci|run)/);
 });
