@@ -7,6 +7,8 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.production.yml"
 ENV_FILE="${SCRIPT_DIR}/.env.production"
 COMPOSE_ENV_FILE="${SCRIPT_DIR}/.env"
 WAIT_SECONDS="${LIFETRACE_DEPLOY_WAIT_SECONDS:-180}"
+PUBLIC_WEB_URL="${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
+BEECOUNT_PUBLIC_URL="${BEECOUNT_PUBLIC_BASE_URL:-https://8.148.75.45:8869}"
 SKIP_GIT_UPDATE="false"
 
 usage() {
@@ -21,7 +23,8 @@ By default the script:
   3. validates Docker Compose configuration;
   4. pulls the Cloud and Web images;
   5. starts the production stack with orphan cleanup;
-  6. verifies migration completion and core service health.
+  6. verifies migration completion and core service health;
+  7. verifies the public LifeTrace and BeeCount IP endpoints.
 
 Options:
   --skip-git-update  Deploy the current checkout without fetching/switching branches.
@@ -128,6 +131,28 @@ wait_for_service() {
   fail "timed out waiting for ${service} after ${WAIT_SECONDS}s"
 }
 
+wait_for_public_url() {
+  local name="$1"
+  local url="$2"
+  local expected_fragment="${3:-}"
+  local deadline=$((SECONDS + WAIT_SECONDS))
+  local body=""
+
+  log "waiting for ${name}: ${url}"
+  while (( SECONDS < deadline )); do
+    if body="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${url}" 2>/dev/null)"; then
+      if [[ -z "${expected_fragment}" || "${body}" == *"${expected_fragment}"* ]]; then
+        log "${name} is reachable with a trusted TLS certificate"
+        return 0
+      fi
+    fi
+    sleep 3
+  done
+
+  compose logs --tail=100 caddy >&2 || true
+  fail "timed out waiting for ${name} at ${url}"
+}
+
 for arg in "$@"; do
   case "${arg}" in
     --skip-git-update)
@@ -146,6 +171,7 @@ done
 
 require_command git
 require_command docker
+require_command curl
 docker compose version >/dev/null 2>&1 || fail "Docker Compose v2 is required (docker compose)"
 
 [[ -f "${COMPOSE_FILE}" ]] || fail "missing ${COMPOSE_FILE}"
@@ -182,7 +208,11 @@ wait_for_service lifetrace-cloud true
 wait_for_service lifetrace-mail-worker true
 wait_for_service lifetrace-execution-worker true
 wait_for_service caddy false
+wait_for_public_url "LifeTrace public endpoint" "${PUBLIC_WEB_URL}/health/ready"
+wait_for_public_url "BeeCount compatibility endpoint" "${BEECOUNT_PUBLIC_URL}/api/v1/version" '"name":"BeeCount Cloud"'
 
 log "production stack is healthy"
 compose ps -a
+log "LifeTrace URL: ${PUBLIC_WEB_URL}"
+log "BeeCount URL: ${BEECOUNT_PUBLIC_URL}"
 log "deployed repository revision: $(git -C "${REPO_ROOT}" rev-parse HEAD)"
