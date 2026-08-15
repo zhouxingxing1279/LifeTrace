@@ -39,11 +39,10 @@ services:
       LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
       MIGRATION_ON_STARTUP: "false"
       PHOTO_STAGING_DIR: "/data/photo-staging"
-      # Production auth requires HTTPS. Default all public browser traffic to
-      # the server IP while still allowing an explicit override in deploy/cloud/.env.
-      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
-      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-https://8.148.75.45}"
-      AUTH_COOKIE_SECURE: "true"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://8.148.75.45}"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_COOKIE_NAME: "lifetrace_session"
     volumes:
       - lifetrace_photo_staging:/data/photo-staging
     depends_on:
@@ -67,7 +66,7 @@ services:
       - .env.production
     environment:
       MIGRATION_ON_STARTUP: "false"
-      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,7 +89,7 @@ services:
       - .env.production
     environment:
       MIGRATION_ON_STARTUP: "false"
-      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -110,11 +109,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
       - "8869:8869"
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
     depends_on:
       lifetrace-cloud:
         condition: service_healthy
@@ -130,8 +125,6 @@ services:
 volumes:
   lifetrace_pgdata:
   lifetrace_photo_staging:
-  caddy_data:
-  caddy_config:
 
 networks:
   lifetrace:
