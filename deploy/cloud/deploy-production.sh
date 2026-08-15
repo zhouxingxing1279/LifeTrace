@@ -7,8 +7,8 @@ COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.production.yml"
 ENV_FILE="${SCRIPT_DIR}/.env.production"
 COMPOSE_ENV_FILE="${SCRIPT_DIR}/.env"
 WAIT_SECONDS="${LIFETRACE_DEPLOY_WAIT_SECONDS:-180}"
-PUBLIC_WEB_URL="${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
-BEECOUNT_PUBLIC_URL="${BEECOUNT_PUBLIC_BASE_URL:-https://8.148.75.45:8869}"
+PUBLIC_WEB_URL="${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
+BEECOUNT_PUBLIC_URL="${BEECOUNT_PUBLIC_BASE_URL:-http://8.148.75.45:8869}"
 SKIP_GIT_UPDATE="false"
 
 usage() {
@@ -24,7 +24,7 @@ By default the script:
   4. pulls the Cloud and Web images;
   5. starts the production stack with orphan cleanup;
   6. verifies migration completion and core service health;
-  7. verifies the public LifeTrace and BeeCount IP endpoints.
+  7. verifies the public LifeTrace and BeeCount HTTP endpoints.
 
 Options:
   --skip-git-update  Deploy the current checkout without fetching/switching branches.
@@ -149,7 +149,7 @@ wait_for_public_url() {
     if body="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${url}" 2>"${error_file}")"; then
       if [[ -z "${expected_fragment}" || "${body}" == *"${expected_fragment}"* ]]; then
         rm -f "${error_file}"
-        log "${name} is reachable with a trusted TLS certificate"
+        log "${name} is reachable"
         return 0
       fi
       curl_error="HTTP request succeeded but response did not contain the expected marker"
@@ -171,7 +171,7 @@ wait_for_public_url() {
   rm -f "${error_file}"
   printf '[LifeTrace deploy] last public endpoint error: %s\n' "${curl_error:-unknown curl failure}" >&2
   compose logs --tail=150 caddy >&2 || true
-  fail "timed out waiting for ${name} at ${url}; verify inbound TCP 80/443/8869 and the Caddy ACME logs above"
+  fail "timed out waiting for ${name} at ${url}; verify inbound TCP 80/8869 and the Caddy logs above"
 }
 
 for arg in "$@"; do
