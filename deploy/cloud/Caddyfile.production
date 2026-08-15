@@ -2,12 +2,15 @@
 # the LifeTrace production auth configuration requires secure cookies and an
 # HTTPS PUBLIC_WEB_BASE_URL.
 #
-# Let's Encrypt IP certificates use the short-lived certificate profile. Caddy
-# 2.11+ supports public IPv4 certificate automation with this profile.
+# Public IPv4 certificates from Let's Encrypt are short-lived. Force the ACME
+# issuer to Let's Encrypt and use HTTP-01 only. IP-certificate support has had
+# edge cases in TLS-ALPN validation, while HTTP-01 is sufficient here because
+# production already exposes port 80 for certificate validation and redirects.
 (ip_tls) {
     tls {
-        issuer acme {
+        issuer acme https://acme-v02.api.letsencrypt.org/directory {
             profile shortlived
+            disable_tlsalpn_challenge
         }
     }
 }
