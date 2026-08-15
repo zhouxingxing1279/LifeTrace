@@ -276,6 +276,8 @@ async fn score_photo(
     .await?;
 
     let model_score = call_glm_score(&upload.preview_data_url).await?;
+    // Keep the provider-reported total parseable for compatibility, but never trust it.
+    let _reported_score = model_score.score;
     let breakdown = ScoreBreakdown {
         composition: model_score.composition.clamp(0, 25),
         light_color: model_score.light_color.clamp(0, 20),
