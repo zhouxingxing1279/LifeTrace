@@ -24,6 +24,9 @@ services:
     restart: "no"
     env_file:
       - .env.production
+    environment:
+      LIFETRACE_ENV: "development"
+      DEV_AUTH_ENABLED: "false"
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,6 +39,8 @@ services:
     env_file:
       - .env.production
     environment:
+      LIFETRACE_ENV: "development"
+      DEV_AUTH_ENABLED: "false"
       LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
       MIGRATION_ON_STARTUP: "false"
       PHOTO_STAGING_DIR: "/data/photo-staging"
@@ -65,8 +70,12 @@ services:
     env_file:
       - .env.production
     environment:
+      LIFETRACE_ENV: "development"
+      DEV_AUTH_ENABLED: "false"
       MIGRATION_ON_STARTUP: "false"
       PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_COOKIE_NAME: "lifetrace_session"
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,8 +97,12 @@ services:
     env_file:
       - .env.production
     environment:
+      LIFETRACE_ENV: "development"
+      DEV_AUTH_ENABLED: "false"
       MIGRATION_ON_STARTUP: "false"
       PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_COOKIE_NAME: "lifetrace_session"
     depends_on:
       postgres:
         condition: service_healthy
