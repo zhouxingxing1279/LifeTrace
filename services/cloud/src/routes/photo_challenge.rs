@@ -15,7 +15,8 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use lifetrace_contracts::{ErrorCode, UserId};
-use serde::{Deserialize, Serialize};
+use serde::de::Error as _;
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::Row;
@@ -46,16 +47,67 @@ struct ScoreBreakdown {
     originality: i64,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct ModelScore {
-    #[serde(default)]
+    #[serde(
+        default,
+        alias = "total",
+        alias = "totalScore",
+        alias = "total_score",
+        deserialize_with = "deserialize_score_number"
+    )]
     score: i64,
+    #[serde(
+        alias = "composition_score",
+        alias = "compositionScore",
+        alias = "构图",
+        deserialize_with = "deserialize_score_number"
+    )]
     composition: i64,
+    #[serde(
+        alias = "light_color",
+        alias = "lightAndColor",
+        alias = "lightingColor",
+        alias = "lighting_color",
+        alias = "光线与色彩",
+        alias = "光线色彩",
+        deserialize_with = "deserialize_score_number"
+    )]
     light_color: i64,
+    #[serde(
+        alias = "subject_story",
+        alias = "subjectAndStory",
+        alias = "subjectNarrative",
+        alias = "subject_narrative",
+        alias = "主体与叙事",
+        alias = "主体叙事",
+        deserialize_with = "deserialize_score_number"
+    )]
     subject_story: i64,
+    #[serde(
+        alias = "technicalQuality",
+        alias = "technical_quality",
+        alias = "技术质量",
+        deserialize_with = "deserialize_score_number"
+    )]
     technical: i64,
+    #[serde(
+        alias = "originalityMoment",
+        alias = "originality_moment",
+        alias = "原创性与瞬间感",
+        alias = "原创性",
+        deserialize_with = "deserialize_score_number"
+    )]
     originality: i64,
+    #[serde(
+        default,
+        alias = "comment",
+        alias = "comments",
+        alias = "review",
+        alias = "评价",
+        alias = "反馈"
+    )]
     feedback: String,
 }
 
@@ -125,7 +177,7 @@ struct ChallengeUpload {
     original_name: String,
     mime_type: String,
     original: Vec<u8>,
-    preview_base64: String,
+    preview_data_url: String,
     thumbnail_data_url: String,
     captured_at: Option<DateTime<Utc>>,
 }
@@ -223,7 +275,9 @@ async fn score_photo(
     )
     .await?;
 
-    let model_score = call_glm_score(&upload.preview_base64).await?;
+    let model_score = call_glm_score(&upload.preview_data_url).await?;
+    // Keep the provider-reported total parseable for compatibility, but never trust it.
+    let _reported_score = model_score.score;
     let breakdown = ScoreBreakdown {
         composition: model_score.composition.clamp(0, 25),
         light_color: model_score.light_color.clamp(0, 20),
@@ -273,7 +327,7 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
     let mut original_name = None;
     let mut mime_type = None;
     let mut original = None;
-    let mut preview_base64 = None;
+    let mut preview_data_url = None;
     let mut thumbnail_data_url = None;
     let mut captured_at = None;
 
@@ -312,8 +366,8 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
                     .text()
                     .await
                     .map_err(|_| bad_request("评分预览无效"))?;
-                preview_base64 =
-                    Some(decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?.base64);
+                let decoded = decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?;
+                preview_data_url = Some(format!("data:{};base64,{}", decoded.mime, decoded.base64));
             }
             "thumbnailDataUrl" => {
                 let value = field.text().await.map_err(|_| bad_request("缩略图无效"))?;
@@ -342,7 +396,7 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
         original_name: original_name.ok_or_else(|| bad_request("缺少照片文件"))?,
         mime_type: mime_type.ok_or_else(|| bad_request("缺少照片 MIME 类型"))?,
         original: original.ok_or_else(|| bad_request("缺少照片文件"))?,
-        preview_base64: preview_base64.ok_or_else(|| bad_request("缺少评分预览"))?,
+        preview_data_url: preview_data_url.ok_or_else(|| bad_request("缺少评分预览"))?,
         thumbnail_data_url: thumbnail_data_url.ok_or_else(|| bad_request("缺少缩略图"))?,
         captured_at,
     })
@@ -528,7 +582,7 @@ fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<ChallengeEntry, ApiError>
     })
 }
 
-async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
+async fn call_glm_score(image_data_url: &str) -> Result<ModelScore, ApiError> {
     let api_key = env_non_empty("ZHIPU_API_KEY").ok_or_else(|| {
         ApiError::new(
             ErrorCode::TemporarilyUnavailable,
@@ -547,7 +601,7 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
         .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_owned());
     let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
+    let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。所有分数字段必须是JSON数字，不要带“分”、斜杠或其他单位；feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
     let request = json!({
         "model": model,
         "temperature": 0.1,
@@ -556,7 +610,7 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
         "messages": [{
             "role": "user",
             "content": [
-                {"type": "image_url", "image_url": {"url": image_base64}},
+                {"type": "image_url", "image_url": {"url": image_data_url}},
                 {"type": "text", "text": rubric}
             ]
         }]
@@ -593,13 +647,17 @@ async fn call_glm_score(image_base64: &str) -> Result<ModelScore, ApiError> {
                 StatusCode::BAD_GATEWAY,
             )
         })?;
-    parse_model_score(&content).ok_or_else(|| {
-        ApiError::new(
-            ErrorCode::TemporarilyUnavailable,
-            "GLM-4V-Flash 返回的评分格式无效",
-            StatusCode::BAD_GATEWAY,
-        )
-    })
+    if let Some(score) = parse_model_score(&content) {
+        return Ok(score);
+    }
+
+    let raw_sample: String = content.chars().take(2_000).collect();
+    eprintln!("[photo-challenge] failed to parse GLM score response: {raw_sample}");
+    Err(ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        "GLM-4V-Flash 返回的评分格式无效",
+        StatusCode::BAD_GATEWAY,
+    ))
 }
 
 async fn call_provider(
@@ -656,13 +714,70 @@ async fn call_provider(
     serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())
 }
 
+fn deserialize_score_number<'de, D>(deserializer: D) -> Result<i64, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    match value {
+        Value::Number(number) => number
+            .as_i64()
+            .or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|v| v.is_finite())
+                    .map(|v| v.round() as i64)
+            })
+            .ok_or_else(|| D::Error::custom("score must be numeric")),
+        Value::String(text) => parse_score_text(&text)
+            .ok_or_else(|| D::Error::custom("score string must start with a number")),
+        _ => Err(D::Error::custom("score must be a number or numeric string")),
+    }
+}
+
+fn parse_score_text(text: &str) -> Option<i64> {
+    let trimmed = text.trim();
+    if let Ok(value) = trimmed.parse::<i64>() {
+        return Some(value);
+    }
+    if let Ok(value) = trimmed.parse::<f64>() {
+        if value.is_finite() {
+            return Some(value.round() as i64);
+        }
+    }
+
+    let numeric_prefix: String = trimmed
+        .chars()
+        .take_while(|character| character.is_ascii_digit() || matches!(*character, '+' | '-' | '.'))
+        .collect();
+    if numeric_prefix.is_empty() || matches!(numeric_prefix.as_str(), "+" | "-" | ".") {
+        return None;
+    }
+    numeric_prefix
+        .parse::<f64>()
+        .ok()
+        .filter(|value| value.is_finite())
+        .map(|value| value.round() as i64)
+}
+
 fn parse_model_score(content: &str) -> Option<ModelScore> {
     if let Ok(parsed) = serde_json::from_str::<ModelScore>(content.trim()) {
         return Some(parsed);
     }
-    let start = content.find('{')?;
-    let end = content.rfind('}')?;
-    serde_json::from_str::<ModelScore>(&content[start..=end]).ok()
+
+    // Model providers sometimes wrap JSON in Markdown or add a sentence before/after it.
+    // Try each object start and deserialize one JSON object without requiring the rest of
+    // the response to be empty.
+    for (start, character) in content.char_indices() {
+        if character != '{' {
+            continue;
+        }
+        let mut deserializer = serde_json::Deserializer::from_str(&content[start..]);
+        if let Ok(parsed) = ModelScore::deserialize(&mut deserializer) {
+            return Some(parsed);
+        }
+    }
+    None
 }
 
 fn clean_file_name(value: &str) -> String {
@@ -721,5 +836,33 @@ mod tests {
     fn model_score_parser_accepts_fenced_noise() {
         let content = "```json\n{\"score\":91,\"composition\":23,\"lightColor\":18,\"subjectStory\":18,\"technical\":18,\"originality\":14,\"feedback\":\"ok\"}\n```";
         assert_eq!(parse_model_score(content).expect("score").score, 91);
+    }
+
+    #[test]
+    fn model_score_parser_accepts_aliases_and_numeric_strings() {
+        let content = r#"评分如下：
+        {"total_score":"91","composition":"23/25","light_color":"18分","subject_story":18.0,"technical_quality":"18","originality_moment":14,"review":"构图稳定"}
+        请参考。"#;
+        let parsed = parse_model_score(content).expect("score");
+        assert_eq!(parsed.score, 91);
+        assert_eq!(parsed.composition, 23);
+        assert_eq!(parsed.light_color, 18);
+        assert_eq!(parsed.subject_story, 18);
+        assert_eq!(parsed.technical, 18);
+        assert_eq!(parsed.originality, 14);
+        assert_eq!(parsed.feedback, "构图稳定");
+    }
+
+    #[test]
+    fn model_score_parser_accepts_chinese_field_names() {
+        let content = r#"{"构图":22,"光线与色彩":17,"主体与叙事":18,"技术质量":17,"原创性与瞬间感":13,"反馈":"不错"}"#;
+        let parsed = parse_model_score(content).expect("score");
+        assert_eq!(parsed.score, 0);
+        assert_eq!(parsed.composition, 22);
+        assert_eq!(parsed.light_color, 17);
+        assert_eq!(parsed.subject_story, 18);
+        assert_eq!(parsed.technical, 17);
+        assert_eq!(parsed.originality, 13);
+        assert_eq!(parsed.feedback, "不错");
     }
 }
