@@ -290,11 +290,9 @@ async fn score_photo(
         + breakdown.originality;
     let qualified = score > HIGH_SCORE_THRESHOLD;
     let id = Uuid::new_v4();
-    let model = env_non_empty("PHOTO_CHALLENGE_MODEL")
-        .unwrap_or_else(|| "glm-4v-flash".to_owned());
+    let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
     let feedback: String = model_score.feedback.trim().chars().take(500).collect();
-    let staging_id =
-        Uuid::parse_str(&staged.id).map_err(|_| bad_request("暂存照片编号无效"))?;
+    let staging_id = Uuid::parse_str(&staged.id).map_err(|_| bad_request("暂存照片编号无效"))?;
 
     let row = sqlx::query(
         "INSERT INTO photo_challenge_scores \
@@ -367,10 +365,7 @@ async fn read_challenge_upload(mut multipart: Multipart) -> Result<ChallengeUplo
                     .await
                     .map_err(|_| bad_request("评分预览无效"))?;
                 let decoded = decode_data_url(&value, MAX_MODEL_PREVIEW_BYTES, "评分预览")?;
-                preview_data_url = Some(format!(
-                    "data:{};base64,{}",
-                    decoded.mime, decoded.base64
-                ));
+                preview_data_url = Some(format!("data:{};base64,{}", decoded.mime, decoded.base64));
             }
             "thumbnailDataUrl" => {
                 let value = field.text().await.map_err(|_| bad_request("缩略图无效"))?;
@@ -602,8 +597,7 @@ async fn call_glm_score(image_data_url: &str) -> Result<ModelScore, ApiError> {
     }
     let base_url = env_non_empty("ZHIPU_BASE_URL")
         .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_owned());
-    let model = env_non_empty("PHOTO_CHALLENGE_MODEL")
-        .unwrap_or_else(|| "glm-4v-flash".to_owned());
+    let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。所有分数字段必须是JSON数字，不要带“分”、斜杠或其他单位；feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
     let request = json!({
@@ -726,12 +720,7 @@ where
     match value {
         Value::Number(number) => number
             .as_i64()
-            .or_else(|| {
-                number
-                    .as_f64()
-                    .filter(|value| value.is_finite())
-                    .map(|value| value.round() as i64)
-            })
+            .or_else(|| number.as_f64().filter(|v| v.is_finite()).map(|v| v.round() as i64))
             .ok_or_else(|| D::Error::custom("score must be numeric")),
         Value::String(text) => parse_score_text(&text)
             .ok_or_else(|| D::Error::custom("score string must start with a number")),
@@ -752,9 +741,7 @@ fn parse_score_text(text: &str) -> Option<i64> {
 
     let numeric_prefix: String = trimmed
         .chars()
-        .take_while(|character| {
-            character.is_ascii_digit() || matches!(*character, '+' | '-' | '.')
-        })
+        .take_while(|character| character.is_ascii_digit() || matches!(*character, '+' | '-' | '.'))
         .collect();
     if numeric_prefix.is_empty() || matches!(numeric_prefix.as_str(), "+" | "-" | ".") {
         return None;
