@@ -1,4 +1,19 @@
-8-148-75-45.sslip.io {
+# Production is exposed directly from the server IP. Keep HTTPS enabled because
+# the LifeTrace production auth configuration requires secure cookies and an
+# HTTPS PUBLIC_WEB_BASE_URL.
+#
+# Let's Encrypt IP certificates use the short-lived certificate profile. Caddy
+# 2.11+ supports public IPv4 certificate automation with this profile.
+(ip_tls) {
+    tls {
+        issuer acme {
+            profile shortlived
+        }
+    }
+}
+
+https://8.148.75.45 {
+    import ip_tls
     encode zstd gzip
 
     redir /photo-challenge-upload /photo-challenge-upload/ 308
@@ -24,29 +39,26 @@
     }
 }
 
-# Stock BeeCount clients keep using the original public protocol on a dedicated
-# finance host. The Rust LifeTrace backend owns the data; Caddy only translates
-# the public BeeCount paths into the internal compatibility namespace.
-{$BEECOUNT_DOMAIN:finance.8-148-75-45.sslip.io} {
+# Stock BeeCount clients use a dedicated port so their original /api/v1 and /ws
+# paths cannot collide with native LifeTrace routes. The same public IP
+# certificate is valid on this port; clients should configure exactly:
+# https://8.148.75.45:8869
+https://8.148.75.45:8869 {
+    import ip_tls
     encode zstd gzip
 
-    # BeeCount Cloud exposes /ready directly. Preserve that probe contract while
-    # delegating readiness to the unified LifeTrace backend.
     handle /ready {
         rewrite * /health/ready
         reverse_proxy lifetrace-cloud:8787
     }
 
-    # Every stock BeeCount REST endpoint lives under /api/v1. The compatibility
-    # routers use an internal prefix to avoid collisions with native LifeTrace
-    # auth/sync APIs on the primary host.
     handle /api/v1/* {
         uri replace /api/v1/ /api/v1/integrations/beecount/compat/
         reverse_proxy lifetrace-cloud:8787
     }
 
-    # Some BeeCount builds use /ws directly while newer builds use /api/v1/ws.
-    # The latter is covered by the rule above; keep the legacy direct path too.
+    # Older BeeCount builds connect to /ws directly. Newer /api/v1/ws is
+    # already covered by the /api/v1/* compatibility rewrite above.
     handle /ws {
         rewrite * /api/v1/integrations/beecount/compat/ws
         reverse_proxy lifetrace-cloud:8787

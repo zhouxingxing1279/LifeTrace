@@ -21,18 +21,21 @@ test("legacy BeeCount Cloud is absent from active deployment stacks", async () =
   assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-web:main/);
 });
 
-test("Caddy cuts stock BeeCount traffic over to the unified LifeTrace backend", async () => {
+test("Caddy exposes stock BeeCount compatibility on the direct public IP", async () => {
   const [compose, caddy] = await Promise.all([
     readFile(composePath, "utf8"),
     readFile(caddyPath, "utf8"),
   ]);
 
-  assert.match(compose, /BEECOUNT_DOMAIN:/);
   const caddyService = compose.match(/\n  caddy:\n([\s\S]*?)\n\nvolumes:/)?.[1] ?? "";
+  assert.match(caddyService, /"8869:8869"/);
   assert.match(caddyService, /lifetrace-cloud:[\s\S]*?condition: service_healthy/);
+  assert.doesNotMatch(caddyService, /BEECOUNT_DOMAIN:/);
   assert.doesNotMatch(caddyService, /beecount-cloud:/);
 
-  assert.match(caddy, /\{\$BEECOUNT_DOMAIN:finance\.8-148-75-45\.sslip\.io\}/);
+  assert.match(caddy, /https:\/\/8\.148\.75\.45:8869/);
+  assert.match(caddy, /profile shortlived/);
+  assert.doesNotMatch(caddy, /sslip\.io/);
   assert.match(caddy, /handle \/ready/);
   assert.match(caddy, /rewrite \* \/health\/ready/);
   assert.match(caddy, /handle \/api\/v1\/\*/);

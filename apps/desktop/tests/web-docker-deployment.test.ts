@@ -7,26 +7,30 @@ import test from "node:test";
 const repoUrl = (path: string) => new URL(`../../../${path}`, import.meta.url);
 const repo = (path: string) => readFileSync(repoUrl(path), "utf8");
 
-test("production web image packages browser, photo challenge and Caddy", () => {
+test("production web image packages browser, photo challenge and direct-IP Caddy", () => {
   const dockerfile = repo("deploy/cloud/Dockerfile.web");
   assert.match(dockerfile, /FROM node:22-alpine AS browser-builder/);
   assert.match(dockerfile, /RUN npm ci/);
   assert.match(dockerfile, /RUN npm run browser:build/);
-  assert.match(dockerfile, /FROM caddy:2-alpine/);
+  assert.match(dockerfile, /FROM caddy:2\.11\.4-alpine/);
   assert.match(dockerfile, /dist-browser \/srv/);
   assert.match(dockerfile, /apps\/photo-challenge-pwa \/srv-photo-challenge/);
   assert.match(dockerfile, /Caddyfile\.production \/etc\/caddy\/Caddyfile/);
+  assert.match(dockerfile, /EXPOSE 80 443 8869/);
 });
 
 test("production compose uses only packaged LifeTrace services", () => {
   const production = repo("deploy/cloud/docker-compose.production.yml");
   assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-web:main/);
   assert.match(production, /lifetrace-execution-worker:/);
+  assert.match(production, /PUBLIC_WEB_BASE_URL:-https:\/\/8\.148\.75\.45/);
+  assert.match(production, /"8869:8869"/);
   assert.doesNotMatch(production, /\.\.\/\.\.\/apps\/desktop\/dist-browser/);
   assert.doesNotMatch(production, /\.\.\/\.\.\/apps\/photo-challenge-pwa/);
   assert.doesNotMatch(production, /sunxiao0721\/beecount-cloud/);
   assert.doesNotMatch(production, /^\s{2}beecount-cloud:/m);
   assert.doesNotMatch(production, /^\s{2}beecount_data:/m);
+  assert.doesNotMatch(production, /sslip\.io/);
 });
 
 test("WSL compatibility stack no longer pulls legacy BeeCount Cloud", () => {
@@ -42,6 +46,8 @@ test("CI publishes a dedicated LifeTrace Web image", () => {
   assert.match(workflow, /file: deploy\/cloud\/Dockerfile\.web/);
   assert.match(workflow, /type=raw,value=main/);
   assert.match(workflow, /apps\/photo-challenge-pwa\/\*\*/);
+  assert.match(workflow, /Validate production Caddy config/);
+  assert.match(workflow, /Validate production Compose config/);
 });
 
 test("production deploy script updates main, deploys images and verifies health", () => {
@@ -57,6 +63,9 @@ test("production deploy script updates main, deploys images and verifies health"
   assert.match(script, /wait_for_migration/);
   assert.match(script, /wait_for_service lifetrace-cloud true/);
   assert.match(script, /wait_for_service lifetrace-execution-worker true/);
+  assert.match(script, /wait_for_public_url "LifeTrace public endpoint"/);
+  assert.match(script, /wait_for_public_url "BeeCount compatibility endpoint"/);
+  assert.match(script, /https:\/\/8\.148\.75\.45:8869/);
   assert.match(script, /--skip-git-update/);
   assert.doesNotMatch(script, /npm (ci|run)/);
 });
