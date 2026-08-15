@@ -8,10 +8,13 @@ RUN npm ci
 COPY apps/desktop/ ./
 RUN npm run browser:build
 
-FROM caddy:2-alpine
+# Caddy 2.11 includes the public IP certificate support required by the
+# production Caddyfile. Pin the known-good release instead of relying on the
+# moving caddy:2 tag.
+FROM caddy:2.11.4-alpine
 
 COPY deploy/cloud/Caddyfile.production /etc/caddy/Caddyfile
 COPY --from=browser-builder /workspace/apps/desktop/dist-browser /srv
 COPY apps/photo-challenge-pwa /srv-photo-challenge
 
-EXPOSE 80 443
+EXPOSE 80 443 8869
