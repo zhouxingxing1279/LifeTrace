@@ -1,7 +1,7 @@
 # Simple direct-IP production routing.
 #
-# This deployment intentionally uses plain HTTP to avoid DNS, ACME, SNI and
-# certificate-management dependencies for this personal server.
+# This deployment intentionally uses plain HTTP to avoid DNS, certificate
+# automation, SNI and certificate-management dependencies for this personal server.
 http://:80 {
     encode zstd gzip
 
