@@ -39,6 +39,11 @@ services:
       LIFETRACE_BIND_ADDRESS: "0.0.0.0:8787"
       MIGRATION_ON_STARTUP: "false"
       PHOTO_STAGING_DIR: "/data/photo-staging"
+      # Production auth requires HTTPS. Default all public browser traffic to
+      # the server IP while still allowing an explicit override in deploy/cloud/.env.
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-https://8.148.75.45}"
+      AUTH_COOKIE_SECURE: "true"
     volumes:
       - lifetrace_photo_staging:/data/photo-staging
     depends_on:
@@ -62,6 +67,7 @@ services:
       - .env.production
     environment:
       MIGRATION_ON_STARTUP: "false"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +90,7 @@ services:
       - .env.production
     environment:
       MIGRATION_ON_STARTUP: "false"
+      PUBLIC_WEB_BASE_URL: "${PUBLIC_WEB_BASE_URL:-https://8.148.75.45}"
     depends_on:
       postgres:
         condition: service_healthy
@@ -104,11 +111,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+      - "8869:8869"
     volumes:
       - caddy_data:/data
       - caddy_config:/config
-    environment:
-      BEECOUNT_DOMAIN: "${BEECOUNT_DOMAIN:-finance.8-148-75-45.sslip.io}"
     depends_on:
       lifetrace-cloud:
         condition: service_healthy
