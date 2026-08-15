@@ -55,6 +55,19 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Validate production Caddy config
+        run: |
+          docker run --rm \
+            -v "$PWD/deploy/cloud/Caddyfile.production:/etc/caddy/Caddyfile:ro" \
+            caddy:2.11.4-alpine \
+            caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: Validate production Compose config
+        run: |
+          touch deploy/cloud/.env.production
+          POSTGRES_PASSWORD=ci-placeholder \
+            docker compose -f deploy/cloud/docker-compose.production.yml config --quiet
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
