@@ -57,7 +57,7 @@ test("CI publishes a dedicated LifeTrace Web image", () => {
   assert.match(workflow, /Validate production Compose config/);
 });
 
-test("production deploy script updates main, deploys images and verifies health", () => {
+test("production deploy script updates main, deploys images and verifies health locally", () => {
   const scriptPath = fileURLToPath(repoUrl("deploy/cloud/deploy-production.sh"));
   const script = readFileSync(scriptPath, "utf8");
   const syntax = spawnSync("bash", ["-n", scriptPath], { encoding: "utf8" });
@@ -71,12 +71,16 @@ test("production deploy script updates main, deploys images and verifies health"
   assert.match(script, /wait_for_service lifetrace-cloud true/);
   assert.match(script, /wait_for_service lifetrace-execution-worker true/);
   assert.match(script, /wait_for_service caddy true/);
-  assert.match(script, /wait_for_public_url "LifeTrace public endpoint"/);
-  assert.match(script, /wait_for_public_url "BeeCount compatibility endpoint"/);
+  assert.match(script, /LOCAL_WEB_HEALTH_URL="\$\{LIFETRACE_LOCAL_HEALTH_URL:-http:\/\/127\.0\.0\.1\/health\/ready\}"/);
+  assert.match(script, /LOCAL_BEECOUNT_HEALTH_URL="\$\{BEECOUNT_LOCAL_HEALTH_URL:-http:\/\/127\.0\.0\.1:8869\/api\/v1\/version\}"/);
+  assert.match(script, /wait_for_local_url "LifeTrace local endpoint"/);
+  assert.match(script, /wait_for_local_url "BeeCount local compatibility endpoint"/);
+  assert.doesNotMatch(script, /wait_for_public_url/);
+  assert.match(script, /public reachability is not probed from this host/);
   assert.match(script, /http:\/\/8\.148\.75\.45:8869/);
   assert.doesNotMatch(script, /https:\/\/8\.148\.75\.45/);
-  assert.match(script, /last public endpoint error/);
-  assert.match(script, /verify inbound TCP 80\/8869/);
+  assert.match(script, /last local endpoint error/);
+  assert.match(script, /local Caddy listeners on TCP 80\/8869/);
   assert.match(script, /--skip-git-update/);
   assert.doesNotMatch(script, /npm (ci|run)/);
 });
