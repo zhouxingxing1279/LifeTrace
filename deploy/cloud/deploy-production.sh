@@ -9,6 +9,8 @@ COMPOSE_ENV_FILE="${SCRIPT_DIR}/.env"
 WAIT_SECONDS="${LIFETRACE_DEPLOY_WAIT_SECONDS:-180}"
 PUBLIC_WEB_URL="${PUBLIC_WEB_BASE_URL:-http://8.148.75.45}"
 BEECOUNT_PUBLIC_URL="${BEECOUNT_PUBLIC_BASE_URL:-http://8.148.75.45:8869}"
+LOCAL_WEB_HEALTH_URL="${LIFETRACE_LOCAL_HEALTH_URL:-http://127.0.0.1/health/ready}"
+LOCAL_BEECOUNT_HEALTH_URL="${BEECOUNT_LOCAL_HEALTH_URL:-http://127.0.0.1:8869/api/v1/version}"
 SKIP_GIT_UPDATE="false"
 
 usage() {
@@ -24,7 +26,10 @@ By default the script:
   4. pulls the Cloud and Web images;
   5. starts the production stack with orphan cleanup;
   6. verifies migration completion and core service health;
-  7. verifies the public LifeTrace and BeeCount HTTP endpoints.
+  7. verifies the local LifeTrace and BeeCount HTTP listeners through 127.0.0.1.
+
+The public URLs are printed after deployment, but are not probed from the server
+because some cloud networks do not support public-IP hairpin connections.
 
 Options:
   --skip-git-update  Deploy the current checkout without fetching/switching branches.
@@ -131,7 +136,7 @@ wait_for_service() {
   fail "timed out waiting for ${service} after ${WAIT_SECONDS}s"
 }
 
-wait_for_public_url() {
+wait_for_local_url() {
   local name="$1"
   local url="$2"
   local expected_fragment="${3:-}"
@@ -146,7 +151,7 @@ wait_for_public_url() {
   while (( SECONDS < deadline )); do
     attempt=$((attempt + 1))
     : > "${error_file}"
-    if body="$(curl --fail --silent --show-error --connect-timeout 5 --max-time 10 "${url}" 2>"${error_file}")"; then
+    if body="$(curl --fail --silent --show-error --connect-timeout 2 --max-time 5 "${url}" 2>"${error_file}")"; then
       if [[ -z "${expected_fragment}" || "${body}" == *"${expected_fragment}"* ]]; then
         rm -f "${error_file}"
         log "${name} is reachable"
@@ -169,9 +174,9 @@ wait_for_public_url() {
   done
 
   rm -f "${error_file}"
-  printf '[LifeTrace deploy] last public endpoint error: %s\n' "${curl_error:-unknown curl failure}" >&2
+  printf '[LifeTrace deploy] last local endpoint error: %s\n' "${curl_error:-unknown curl failure}" >&2
   compose logs --tail=150 caddy >&2 || true
-  fail "timed out waiting for ${name} at ${url}; verify inbound TCP 80/8869 and the Caddy logs above"
+  fail "timed out waiting for ${name} at ${url}; verify local Caddy listeners on TCP 80/8869 and the logs above"
 }
 
 for arg in "$@"; do
@@ -229,11 +234,12 @@ wait_for_service lifetrace-cloud true
 wait_for_service lifetrace-mail-worker true
 wait_for_service lifetrace-execution-worker true
 wait_for_service caddy true
-wait_for_public_url "LifeTrace public endpoint" "${PUBLIC_WEB_URL}/health/ready"
-wait_for_public_url "BeeCount compatibility endpoint" "${BEECOUNT_PUBLIC_URL}/api/v1/version" '"name":"BeeCount Cloud"'
+wait_for_local_url "LifeTrace local endpoint" "${LOCAL_WEB_HEALTH_URL}"
+wait_for_local_url "BeeCount local compatibility endpoint" "${LOCAL_BEECOUNT_HEALTH_URL}" '"name":"BeeCount Cloud"'
 
 log "production stack is healthy"
 compose ps -a
 log "LifeTrace URL: ${PUBLIC_WEB_URL}"
 log "BeeCount URL: ${BEECOUNT_PUBLIC_URL}"
+log "public reachability is not probed from this host; verify TCP 80/8869 from an external device if needed"
 log "deployed repository revision: $(git -C "${REPO_ROOT}" rev-parse HEAD)"
