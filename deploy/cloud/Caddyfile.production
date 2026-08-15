@@ -1,3 +1,10 @@
+{
+    # TLS clients connecting to a literal IP generally omit SNI because the
+    # SNI HostName field is defined for DNS names. Tell Caddy which certificate
+    # to present when ClientHello.ServerName is empty so direct-IP HTTPS works.
+    default_sni 8.148.75.45
+}
+
 # Production is exposed directly from the server IP. Keep HTTPS enabled because
 # the LifeTrace production auth configuration requires secure cookies and an
 # HTTPS PUBLIC_WEB_BASE_URL.
