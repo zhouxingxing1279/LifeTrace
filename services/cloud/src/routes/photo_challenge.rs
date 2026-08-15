@@ -720,7 +720,12 @@ where
     match value {
         Value::Number(number) => number
             .as_i64()
-            .or_else(|| number.as_f64().filter(|v| v.is_finite()).map(|v| v.round() as i64))
+            .or_else(|| {
+                number
+                    .as_f64()
+                    .filter(|v| v.is_finite())
+                    .map(|v| v.round() as i64)
+            })
             .ok_or_else(|| D::Error::custom("score must be numeric")),
         Value::String(text) => parse_score_text(&text)
             .ok_or_else(|| D::Error::custom("score string must start with a number")),
