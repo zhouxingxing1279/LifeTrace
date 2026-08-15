@@ -1,22 +1,8 @@
-# Production is exposed directly from the server IP. Keep HTTPS enabled because
-# the LifeTrace production auth configuration requires secure cookies and an
-# HTTPS PUBLIC_WEB_BASE_URL.
+# Simple direct-IP production routing.
 #
-# Public IPv4 certificates from Let's Encrypt are short-lived. Force the ACME
-# issuer to Let's Encrypt and use HTTP-01 only. IP-certificate support has had
-# edge cases in TLS-ALPN validation, while HTTP-01 is sufficient here because
-# production already exposes port 80 for certificate validation and redirects.
-(ip_tls) {
-    tls {
-        issuer acme https://acme-v02.api.letsencrypt.org/directory {
-            profile shortlived
-            disable_tlsalpn_challenge
-        }
-    }
-}
-
-https://8.148.75.45 {
-    import ip_tls
+# This deployment intentionally uses plain HTTP to avoid DNS, certificate
+# automation, SNI and certificate-management dependencies for this personal server.
+http://:80 {
     encode zstd gzip
 
     redir /photo-challenge-upload /photo-challenge-upload/ 308
@@ -42,12 +28,10 @@ https://8.148.75.45 {
     }
 }
 
-# Stock BeeCount clients use a dedicated port so their original /api/v1 and /ws
-# paths cannot collide with native LifeTrace routes. The same public IP
-# certificate is valid on this port; clients should configure exactly:
-# https://8.148.75.45:8869
-https://8.148.75.45:8869 {
-    import ip_tls
+# Stock BeeCount clients keep their original /api/v1 and /ws paths on a
+# dedicated HTTP port so they cannot collide with native LifeTrace routes.
+# Configure BeeCount with exactly: http://8.148.75.45:8869
+http://:8869 {
     encode zstd gzip
 
     handle /ready {
@@ -60,8 +44,6 @@ https://8.148.75.45:8869 {
         reverse_proxy lifetrace-cloud:8787
     }
 
-    # Older BeeCount builds connect to /ws directly. Newer /api/v1/ws is
-    # already covered by the /api/v1/* compatibility rewrite above.
     handle /ws {
         rewrite * /api/v1/integrations/beecount/compat/ws
         reverse_proxy lifetrace-cloud:8787

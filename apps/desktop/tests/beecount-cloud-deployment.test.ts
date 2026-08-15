@@ -21,7 +21,7 @@ test("legacy BeeCount Cloud is absent from active deployment stacks", async () =
   assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-web:main/);
 });
 
-test("Caddy exposes stock BeeCount compatibility on the direct public IP", async () => {
+test("Caddy exposes stock BeeCount compatibility over direct HTTP", async () => {
   const [compose, caddy] = await Promise.all([
     readFile(composePath, "utf8"),
     readFile(caddyPath, "utf8"),
@@ -31,13 +31,14 @@ test("Caddy exposes stock BeeCount compatibility on the direct public IP", async
   assert.match(caddyService, /"8869:8869"/);
   assert.match(caddyService, /lifetrace-cloud:[\s\S]*?condition: service_healthy/);
   assert.match(caddyService, /wget[\s\S]*?127\.0\.0\.1:2019\/config\//);
+  assert.doesNotMatch(caddyService, /"443:443"/);
   assert.doesNotMatch(caddyService, /BEECOUNT_DOMAIN:/);
   assert.doesNotMatch(caddyService, /beecount-cloud:/);
 
-  assert.match(caddy, /https:\/\/8\.148\.75\.45:8869/);
-  assert.match(caddy, /issuer acme https:\/\/acme-v02\.api\.letsencrypt\.org\/directory/);
-  assert.match(caddy, /profile shortlived/);
-  assert.match(caddy, /disable_tlsalpn_challenge/);
+  assert.match(caddy, /http:\/\/:8869/);
+  assert.doesNotMatch(caddy, /https:\/\//);
+  assert.doesNotMatch(caddy, /tls\s*\{/);
+  assert.doesNotMatch(caddy, /acme/i);
   assert.doesNotMatch(caddy, /sslip\.io/);
   assert.match(caddy, /handle \/ready/);
   assert.match(caddy, /rewrite \* \/health\/ready/);

@@ -1,52 +1,47 @@
 # Direct-IP production access
 
-LifeTrace production no longer requires `sslip.io` hostnames. Public clients connect directly to the server IPv4 address while keeping TLS enabled.
+LifeTrace production on the personal server uses the public IPv4 address directly and plain HTTP. This intentionally removes DNS, TLS, certificate, ACME and SNI dependencies from the deployment path.
 
 ## Public endpoints
 
 | Service | Public URL | Notes |
 | --- | --- | --- |
-| LifeTrace Web | `https://8.148.75.45` | Main browser UI and native `/api/*` routes |
-| LifeTrace readiness | `https://8.148.75.45/health/ready` | Public deployment check |
-| BeeCount Cloud compatibility | `https://8.148.75.45:8869` | Dedicated stock BeeCount entrypoint |
-| BeeCount version | `https://8.148.75.45:8869/api/v1/version` | Expected BeeCount Cloud compatibility response |
-| BeeCount WebSocket | `wss://8.148.75.45:8869/ws` | Legacy direct WS path; `/api/v1/ws` is also routed |
+| LifeTrace Web | `http://8.148.75.45` | Main browser UI and native `/api/*` routes |
+| LifeTrace readiness | `http://8.148.75.45/health/ready` | Public deployment check |
+| BeeCount Cloud compatibility | `http://8.148.75.45:8869` | Dedicated stock BeeCount entrypoint |
+| BeeCount version | `http://8.148.75.45:8869/api/v1/version` | Expected BeeCount Cloud compatibility response |
+| BeeCount WebSocket | `ws://8.148.75.45:8869/ws` | Legacy direct WS path; `/api/v1/ws` is also routed |
 
 Stock BeeCount should be configured with:
 
-- **Server URL:** `https://8.148.75.45:8869`
+- **Server URL:** `http://8.148.75.45:8869`
 - **API prefix:** `/api/v1`
 
 Do not append `/api/v1` to the server URL itself.
 
-## Why HTTPS is retained
+## Deployment profile
 
-The LifeTrace production runtime intentionally requires secure cookies and an HTTPS `PUBLIC_WEB_BASE_URL`. Dropping the main deployment to clear-text HTTP would make the production configuration fail validation and would weaken authentication transport security.
+Caddy is retained only as a small HTTP static-file server and reverse proxy. It does not manage HTTPS or certificates. The public stack exposes only:
 
-The production Caddy image is pinned to Caddy 2.11.4. The Caddyfile explicitly uses Let's Encrypt with the `shortlived` ACME profile for the public IPv4 certificate. TLS-ALPN validation is disabled for this deployment so certificate issuance consistently uses HTTP-01 through public port 80. Caddy persists certificate state in the existing `caddy_data` volume and renews the short-lived certificate automatically.
+- `80/tcp` — LifeTrace HTTP
+- `8869/tcp` — BeeCount HTTP compatibility entrypoint
 
-## Required public ports
+Port `443` is not required. The Rust service on `8787` remains internal to the Docker network and must not be exposed publicly.
 
-The server and cloud-provider security group must allow inbound TCP traffic for:
+The HTTP self-host profile explicitly disables development authentication while using a non-production validation mode so the existing backend does not require HTTPS-only secure cookies. The browser session cookie is named `lifetrace_session` and is intentionally not marked `Secure` for this HTTP-only deployment.
 
-- `80/tcp` — required for the Let's Encrypt HTTP-01 IP-certificate challenge
-- `443/tcp` — LifeTrace HTTPS
-- `8869/tcp` — BeeCount HTTPS compatibility entrypoint
-
-The Rust service on `8787` remains internal to the Docker network and must not be exposed publicly.
-
-If port 80 is not reachable from the public Internet, Let's Encrypt cannot validate the raw IPv4 identifier in this configuration and Caddy will not be able to obtain the trusted certificate.
+> This profile is deliberately optimized for simplicity on a personal server. HTTP traffic is not encrypted in transit. If the service is later exposed to untrusted users or networks, switch back to a normal domain-backed HTTPS deployment instead of weakening TLS verification.
 
 ## Routing model
 
 ```text
-https://8.148.75.45
+http://8.148.75.45
         |
         +-- /api/* ----------------------> lifetrace-cloud:8787
         +-- /health/* -------------------> lifetrace-cloud:8787
         +-- everything else -------------> LifeTrace browser build
 
-https://8.148.75.45:8869
+http://8.148.75.45:8869
         |
         +-- /ready -----------------------> /health/ready
         +-- /api/v1/* --------------------> /api/v1/integrations/beecount/compat/*
@@ -64,15 +59,13 @@ git pull --ff-only origin main
 bash deploy/cloud/deploy-production.sh
 ```
 
-The deployment script validates Compose, starts the stack, waits for service health, then verifies both public HTTPS entrypoints with certificate validation enabled. Caddy itself is health-checked through its local admin API before public endpoint testing begins.
-
-When a public endpoint is not ready, the deployment script now prints the latest `curl` failure while retrying. On timeout it prints the recent Caddy logs and explicitly points to the required `80/443/8869` inbound rules instead of silently waiting for the full timeout.
+The deployment script validates Compose, starts the stack, waits for service health, then verifies both public HTTP entrypoints. There is no certificate wait or ACME validation step.
 
 ## Manual verification
 
 ```bash
-curl -v https://8.148.75.45/health/ready
-curl -v https://8.148.75.45:8869/api/v1/version
+curl -v http://8.148.75.45/health/ready
+curl -v http://8.148.75.45:8869/api/v1/version
 ```
 
 The BeeCount version endpoint should return a JSON payload identifying `BeeCount Cloud`.
@@ -81,7 +74,7 @@ WebSocket transport can be checked with an HTTP/1.1 upgrade request against eith
 
 ## Failure diagnosis
 
-If deployment reports certificate or connectivity failures, first inspect:
+If deployment reports connectivity failures, inspect:
 
 ```bash
 docker compose --env-file deploy/cloud/.env \
@@ -91,8 +84,4 @@ docker compose --env-file deploy/cloud/.env \
   -f deploy/cloud/docker-compose.production.yml logs --tail=150 caddy
 ```
 
-For direct-IP HTTPS, do not work around failures by exposing `8787`, disabling TLS verification, or switching the stock BeeCount client to an untrusted certificate. Confirm that Caddy remains healthy and that Alibaba Cloud plus any host firewall permits inbound TCP 80, 443 and 8869.
-
-## Rollback
-
-If direct-IP certificate issuance or the `8869` entrypoint fails, do not expose `lifetrace-cloud:8787` directly and do not disable TLS verification in clients. Roll back the deployment commit and inspect Caddy logs before changing authentication or BeeCount compatibility code.
+Also verify Alibaba Cloud and any host firewall allow inbound TCP `80` and `8869`.
