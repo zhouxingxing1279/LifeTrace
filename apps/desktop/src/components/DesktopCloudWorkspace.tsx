@@ -97,6 +97,11 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
   return response;
 }
 
+// This module is bundled only by the Tauri entrypoint. Install the transport
+// once at module load so React StrictMode remounts cannot clear it between the
+// shared child pages' effects. The browser bundle never imports this module.
+setCloudFetchOverride(desktopCloudFetch);
+
 function syncLocalReplica(): void {
   const api = window.syncApi;
   if (!api) return;
@@ -104,10 +109,6 @@ function syncLocalReplica(): void {
 }
 
 export default function DesktopCloudWorkspace() {
-  // Install before child effects run. Shared browser API clients keep their
-  // normal interface while Tauri delegates authenticated requests to Rust.
-  setCloudFetchOverride(desktopCloudFetch);
-
   const user = useCloudAuthStore((value) => value.user);
   const desktopSession = useCloudAuthStore((value) => value.session);
   const scopes = useCloudAuthStore((value) => value.scopes);
@@ -141,8 +142,6 @@ export default function DesktopCloudWorkspace() {
       csrfToken: "",
     };
   }, [desktopSession, scopes, user]);
-
-  useEffect(() => () => setCloudFetchOverride(undefined), []);
 
   useEffect(() => {
     const routeChanged = () => {
