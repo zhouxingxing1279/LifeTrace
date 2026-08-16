@@ -156,7 +156,12 @@ mod tests {
             url.as_str(),
             "https://life.example/api/v1/integrations/beecount/ledgers?limit=20&offset=0"
         );
-        assert!(api_url("https://life.example", "https://evil.example/api/v1/x", None).is_err());
+        assert!(api_url(
+            "https://life.example",
+            "https://evil.example/api/v1/x",
+            None
+        )
+        .is_err());
         assert!(api_url("https://life.example", "/health", None).is_err());
         assert!(api_url("https://life.example", "/api/v1/../../secret", None).is_err());
     }
