@@ -18,3 +18,11 @@ test("Windows updater manifest is rebuilt from the uploaded NSIS installer and s
   assert.match(workflow, /"windows-x86_64-nsis"/);
   assert.match(workflow, /browser_download_url/);
 });
+
+test("Windows release keeps lint unit tests and frontend build as independent gates", async () => {
+  const workflow = await readFile("../../.github/workflows/release-windows.yml", "utf8");
+  assert.match(workflow, /- name: Lint\s+[\s\S]*?run: npm run lint/);
+  assert.match(workflow, /- name: Unit tests\s+[\s\S]*?run: npm run test:unit/);
+  assert.match(workflow, /- name: Frontend build\s+[\s\S]*?run: npm run web:build/);
+  assert.doesNotMatch(workflow, /- name: Lint, unit tests and frontend build/);
+});
