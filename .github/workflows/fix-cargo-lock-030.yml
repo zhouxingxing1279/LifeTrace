@@ -40,7 +40,7 @@ jobs:
           path.write_text(updated)
           PY
 
-          cargo metadata --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --format-version 1 > /dev/null
+          cargo metadata --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --format-version 1 > /dev/null
           git diff --check
           git diff -- apps/desktop/src-tauri/Cargo.lock
 
