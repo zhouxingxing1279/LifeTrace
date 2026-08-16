@@ -2,11 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("signed-out desktop does not mount the business shell", async () => {
+test("signed-out desktop gates both cloud and local business workspaces", async () => {
   const source = await readFile("src/components/DesktopApp.tsx", "utf8");
   assert.match(source, /const hasIdentity = Boolean\(user && \(authenticated \|\| phase === "offline"\)\)/);
-  assert.match(source, /if \(!hasIdentity\)[\s\S]*SignedOutShell/);
-  assert.match(source, /return <><HengXuShell\/><AccountEntryHost\/><\/>/);
+  assert.match(source, /if \(!hasIdentity\)[\s\S]*return <SignedOutShell restoring=\{restoring\}\/>/);
+
+  const identityGate = source.indexOf("if (!hasIdentity)");
+  const signedOutReturn = source.indexOf("return <SignedOutShell", identityGate);
+  const cloudWorkspace = source.indexOf("<DesktopCloudWorkspace", signedOutReturn);
+  const localWorkspace = source.indexOf("<HengXuShell", signedOutReturn);
+
+  assert.ok(identityGate >= 0, "desktop must gate business UI on an authenticated identity");
+  assert.ok(signedOutReturn > identityGate, "signed-out users must return before business workspaces render");
+  assert.ok(cloudWorkspace > signedOutReturn, "cloud workspace must stay behind the identity gate");
+  assert.ok(localWorkspace > signedOutReturn, "local workspace must stay behind the identity gate");
 });
 
 test("signed-out shell keeps the account entry visible and opens login automatically", async () => {
