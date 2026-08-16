@@ -105,3 +105,24 @@ test("photo challenge keeps browser cookie auth and maps desktop to a bearer-onl
   assert.match(desktopRoute, /PHOTO_CHALLENGE_OWNER_EMAIL/);
   assert.match(cloudRoutes, /photo_challenge_desktop::router\(\)/);
 });
+
+test("photo staging originals are imported only by the authenticated native desktop relay", () => {
+  const tauriLib = readFileSync("src-tauri/src/lib.rs", "utf8");
+  const nativeRelay = readFileSync("src-tauri/src/sync/photo_staging.rs", "utf8");
+  const browserApi = readFileSync("web-client/src/cloud/api.ts", "utf8");
+  const browserChallenge = readFileSync("web-client/src/pages/PhotoChallengePage.tsx", "utf8");
+
+  assert.match(tauriLib, /auth\.access_token\.is_some\(\) && auth\.cloud_user_id\.is_some\(\)/);
+  assert.match(tauriLib, /sync::photo_staging::drain\(&photo_relay_state\)\.await/);
+  assert.match(nativeRelay, /\.bearer_auth\(&token\)/);
+  assert.match(nativeRelay, /SHA-256 校验失败，云端副本不会删除/);
+  assert.match(nativeRelay, /INSERT OR IGNORE INTO photos/);
+
+  const localCommit = nativeRelay.indexOf("import_into_local_library(data_dir, item, &bytes).await?");
+  const cloudAck = nativeRelay.indexOf(".delete(format!(\"{base}/api/v1/photo-staging/{}\", item.id))");
+  assert.ok(localCommit >= 0, "native relay must commit the original into the LifeTrace photo library");
+  assert.ok(cloudAck > localCommit, "cloud staging ACK must happen only after the local album commit");
+
+  assert.doesNotMatch(browserApi, /\/api\/v1\/photo-staging/);
+  assert.doesNotMatch(browserChallenge, /\/api\/v1\/photo-staging/);
+});
