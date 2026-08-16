@@ -50,10 +50,7 @@ struct AdminResponse {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::<AppState>::new().route(
-        "/api/v1/photo-challenge/desktop-admin",
-        get(desktop_admin),
-    )
+    Router::<AppState>::new().route("/api/v1/photo-challenge/desktop-admin", get(desktop_admin))
 }
 
 async fn desktop_admin(
@@ -153,9 +150,7 @@ async fn desktop_admin(
                 breakdown: row.try_get("breakdown").map_err(database_error)?,
                 feedback: row.try_get("feedback").map_err(database_error)?,
                 model: row.try_get("model").map_err(database_error)?,
-                thumbnail_data_url: row
-                    .try_get("thumbnail_data_url")
-                    .map_err(database_error)?,
+                thumbnail_data_url: row.try_get("thumbnail_data_url").map_err(database_error)?,
                 scored_at: row.try_get("scored_at").map_err(database_error)?,
                 staging_pending: row
                     .try_get::<Option<Uuid>, _>("staging_id")
