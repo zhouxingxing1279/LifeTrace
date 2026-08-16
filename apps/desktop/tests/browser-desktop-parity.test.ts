@@ -28,6 +28,8 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
   const routes = readFileSync("web-client/src/navigation.ts", "utf8");
   const routeView = readFileSync("web-client/src/components/RouteView.tsx", "utf8");
   const tauriMain = readFileSync("tauri-ui/main.tsx", "utf8");
+  const tauriLib = readFileSync("src-tauri/src/lib.rs", "utf8");
+  const cloudApi = readFileSync("src-tauri/src/cloud_api.rs", "utf8");
 
   assert.match(desktopApp, /DesktopCloudWorkspace/);
   assert.match(desktopApp, /HengXuShell/);
@@ -35,8 +37,12 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
   assert.match(desktopApp, /本地功能/);
   assert.match(workspace, /<RouteView/);
   assert.match(workspace, /setCloudFetchOverride\(desktopCloudFetch\)/);
-  assert.match(workspace, /cloudAuthClient\.request/);
+  assert.match(workspace, /invoke<NativeCloudApiResponse>\("cloud_api_http_request"/);
+  assert.match(workspace, /cloudAuthClient\.refresh\(\)/);
   assert.match(workspace, /syncLocalReplica/);
+  assert.match(tauriLib, /cloud_api::cloud_api_http_request/);
+  assert.match(cloudApi, /path\.starts_with\("\/api\/v1\/"\)/);
+  assert.match(cloudApi, /bearer_auth\(access_token\)/);
 
   for (const route of [
     "/execution/goals",
@@ -66,8 +72,16 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
   }
 });
 
-test("photo challenge uses the shared cloud transport so it works in browser and Tauri", () => {
+test("photo challenge keeps browser cookie auth and maps desktop to a bearer-only owner endpoint", () => {
   const page = readFileSync("web-client/src/pages/PhotoChallengePage.tsx", "utf8");
+  const workspace = readFileSync("src/components/DesktopCloudWorkspace.tsx", "utf8");
+  const desktopRoute = readFileSync("../../services/cloud/src/routes/photo_challenge_desktop.rs", "utf8");
+  const cloudRoutes = readFileSync("../../services/cloud/src/routes/mod.rs", "utf8");
+
   assert.match(page, /browserFetch\(`/);
   assert.doesNotMatch(page, /await fetch\(`/);
+  assert.match(workspace, /\/api\/v1\/photo-challenge\/desktop-admin/);
+  assert.match(desktopRoute, /AuthenticatedPrincipal/);
+  assert.match(desktopRoute, /PHOTO_CHALLENGE_OWNER_EMAIL/);
+  assert.match(cloudRoutes, /photo_challenge_desktop::router\(\)/);
 });

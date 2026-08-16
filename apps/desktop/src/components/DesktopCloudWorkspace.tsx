@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShell as CloudAppShell } from "@/web-client/src/components/AppShell";
 import { RouteView } from "@/web-client/src/components/RouteView";
@@ -15,22 +16,33 @@ import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
-function headersRecord(...sources: Array<HeadersInit | undefined>): Record<string, string> {
-  const merged = new Headers();
-  for (const source of sources) {
-    if (!source) continue;
-    new Headers(source).forEach((value, key) => merged.set(key, value));
-  }
-  return Object.fromEntries(merged.entries());
+type NativeCloudApiResponse = {
+  status: number;
+  body: string;
+  contentType?: string | null;
+};
+
+function requestHeaders(request: Request | undefined, init: RequestInit): Headers {
+  const merged = new Headers(request?.headers);
+  new Headers(init.headers).forEach((value, key) => merged.set(key, value));
+  return merged;
+}
+
+function desktopApiPath(path: string): string {
+  // The browser admin endpoint intentionally requires an HttpOnly WebSession.
+  // The desktop route returns the same shape but authenticates with the native
+  // Bearer session stored in the Rust sync state.
+  return path === "/api/v1/photo-challenge/admin"
+    ? "/api/v1/photo-challenge/desktop-admin"
+    : path;
 }
 
 async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const request = input instanceof Request ? input : undefined;
   const rawUrl = request?.url ?? (input instanceof URL ? input.toString() : String(input));
   const url = new URL(rawUrl, window.location.href);
-  const path = `${url.pathname}${url.search}`;
-  if (!path.startsWith("/api/") && !path.startsWith("/health")) {
-    throw new Error(`桌面云工作台拒绝非 LifeTrace API 请求：${path}`);
+  if (!url.pathname.startsWith("/api/v1/")) {
+    throw new Error(`桌面云工作台拒绝非 LifeTrace API 请求：${url.pathname}`);
   }
 
   const method = (init.method ?? request?.method ?? "GET").toUpperCase();
@@ -43,12 +55,36 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
     else throw new Error("桌面云工作台当前只支持 JSON/文本请求体");
   }
 
-  return cloudAuthClient.request(path, {
-    ...init,
-    method,
-    headers: headersRecord(request?.headers, init.headers),
-    body,
-  });
+  const headers = requestHeaders(request, init);
+  if (body != null) {
+    const contentType = headers.get("content-type")?.toLowerCase() ?? "application/json";
+    if (!contentType.includes("application/json")) {
+      throw new Error("桌面云工作台当前只允许 JSON API 请求体");
+    }
+  }
+
+  const invokeApi = async (): Promise<Response> => {
+    const result = await invoke<NativeCloudApiResponse>("cloud_api_http_request", {
+      request: {
+        path: desktopApiPath(url.pathname),
+        query: url.search ? url.search.slice(1) : null,
+        method,
+        body: typeof body === "string" ? body : null,
+      },
+    });
+    const responseBody = [204, 205, 304].includes(result.status) ? null : result.body;
+    return new Response(responseBody, {
+      status: result.status,
+      headers: result.contentType ? { "content-type": result.contentType } : { "content-type": "application/json" },
+    });
+  };
+
+  let response = await invokeApi();
+  if (response.status === 401) {
+    await cloudAuthClient.refresh();
+    response = await invokeApi();
+  }
+  return response;
 }
 
 function syncLocalReplica(): void {
@@ -58,8 +94,8 @@ function syncLocalReplica(): void {
 }
 
 export default function DesktopCloudWorkspace() {
-  // Install before child effects run. Every browser cloud API keeps using the
-  // same exported browserFetch function, which now delegates to native auth.
+  // Install before child effects run. Shared browser API clients keep their
+  // normal interface while Tauri delegates authenticated requests to Rust.
   setCloudFetchOverride(desktopCloudFetch);
 
   const user = useCloudAuthStore((value) => value.user);
