@@ -29,11 +29,14 @@ function requestHeaders(request: Request | undefined, init: RequestInit): Header
 }
 
 function desktopApiPath(path: string): string {
-  // Browser-only management endpoints use an HttpOnly cookie and CSRF. The
-  // native API exposes the same contracts behind the desktop Bearer session,
-  // so reuse those routes instead of weakening the browser security model.
+  // Browser-only management/assistant endpoints use an HttpOnly cookie and
+  // CSRF. The native API exposes equivalent contracts behind the desktop
+  // Bearer session, so reuse those routes instead of weakening Web security.
   if (path === "/api/v1/photo-challenge/admin") {
     return "/api/v1/photo-challenge/desktop-admin";
+  }
+  if (path === "/api/v1/web/assistant") {
+    return "/api/v1/assistant";
   }
   if (path === "/api/v1/web/devices" || path.startsWith("/api/v1/web/devices/")) {
     return path.replace("/api/v1/web/devices", "/api/v1/auth/devices");
