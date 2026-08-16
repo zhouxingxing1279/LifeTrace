@@ -18,6 +18,21 @@ test("signed-out desktop gates both cloud and local business workspaces", async 
   assert.ok(localWorkspace > signedOutReturn, "local workspace must stay behind the identity gate");
 });
 
+test("desktop updater is available before login and outside workspace-specific UI", async () => {
+  const [desktop, cloudWorkspace] = await Promise.all([
+    readFile("src/components/DesktopApp.tsx", "utf8"),
+    readFile("src/components/DesktopCloudWorkspace.tsx", "utf8"),
+  ]);
+  const signedOutStart = desktop.indexOf("function SignedOutShell");
+  const desktopStart = desktop.indexOf("export default function DesktopApp");
+  const signedOut = desktop.slice(signedOutStart, desktopStart);
+  const authenticatedRoot = desktop.slice(desktopStart);
+
+  assert.match(signedOut, /<AppUpdaterHost \/>/, "signed-out desktop must still check for updates");
+  assert.match(authenticatedRoot, /<AppUpdaterHost \/>/, "authenticated desktop root must own update checks");
+  assert.doesNotMatch(cloudWorkspace, /AppUpdaterHost/, "cloud workspace must not own or duplicate updater lifecycle");
+});
+
 test("signed-out shell keeps the account entry visible and opens login automatically", async () => {
   const [desktop, account] = await Promise.all([
     readFile("src/components/DesktopApp.tsx", "utf8"),
