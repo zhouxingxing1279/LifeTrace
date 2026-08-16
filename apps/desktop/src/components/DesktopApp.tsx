@@ -1,11 +1,19 @@
-import { useEffect } from "react";
-import { LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Cloud, HardDrive, LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
 import HengXuShell from "@/src/components/HengXuShell";
+import DesktopCloudWorkspace from "@/src/components/DesktopCloudWorkspace";
 import { AccountEntry, AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { clientLogger } from "@/src/services/clientObservability";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
 const OFFLINE_RECONNECT_INTERVAL_MS = 10_000;
+const WORKSPACE_KEY = "lifetrace:desktop-workspace";
+type DesktopWorkspace = "cloud" | "local";
+
+function preferredWorkspace(): DesktopWorkspace {
+  if (typeof window === "undefined") return "cloud";
+  return window.localStorage.getItem(WORKSPACE_KEY) === "local" ? "local" : "cloud";
+}
 
 function SignedOutShell({ restoring }: { restoring: boolean }) {
   const openLogin = () => window.dispatchEvent(new Event("lifetrace:open-auth"));
@@ -31,10 +39,12 @@ function SignedOutShell({ restoring }: { restoring: boolean }) {
 
 export default function DesktopApp() {
   const user = useCloudAuthStore((state) => state.user);
+  const session = useCloudAuthStore((state) => state.session);
   const authenticated = useCloudAuthStore((state) => state.authenticated);
   const phase = useCloudAuthStore((state) => state.phase);
   const initialize = useCloudAuthStore((state) => state.initialize);
   const reconnect = useCloudAuthStore((state) => state.reconnect);
+  const [workspace, setWorkspace] = useState<DesktopWorkspace>(preferredWorkspace);
 
   useEffect(() => {
     clientLogger.info("cloud.auth.auto_restore_started");
@@ -77,5 +87,29 @@ export default function DesktopApp() {
     return <SignedOutShell restoring={restoring}/>;
   }
 
-  return <><HengXuShell/><AccountEntryHost/></>;
+  const cloudAvailable = Boolean(authenticated && session && phase === "authenticated");
+  const activeWorkspace: DesktopWorkspace = cloudAvailable ? workspace : "local";
+  const selectWorkspace = (next: DesktopWorkspace) => {
+    if (next === "cloud" && !cloudAvailable) return;
+    setWorkspace(next);
+    window.localStorage.setItem(WORKSPACE_KEY, next);
+  };
+
+  return <>
+    {activeWorkspace === "cloud" ? <DesktopCloudWorkspace /> : <><HengXuShell/><AccountEntryHost/></>}
+    <div className="lt-desktop-workspace-switch" role="group" aria-label="桌面工作区">
+      <button
+        type="button"
+        className={activeWorkspace === "cloud" ? "active" : ""}
+        disabled={!cloudAvailable}
+        title={cloudAvailable ? "打开与 Web 端一致的云端功能" : "离线时云端工作台不可用"}
+        onClick={() => selectWorkspace("cloud")}
+      ><Cloud/><span>云端功能</span></button>
+      <button
+        type="button"
+        className={activeWorkspace === "local" ? "active" : ""}
+        onClick={() => selectWorkspace("local")}
+      ><HardDrive/><span>本地功能</span></button>
+    </div>
+  </>;
 }

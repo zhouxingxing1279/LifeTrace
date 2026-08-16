@@ -1,0 +1,65 @@
+.lt-desktop-workspace-switch {
+  position: fixed;
+  z-index: 1400;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid color-mix(in srgb, var(--lt-color-border, #dfe6e1) 88%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lt-color-surface, #fff) 94%, transparent);
+  box-shadow: 0 10px 34px rgba(21, 38, 31, .13);
+  backdrop-filter: blur(18px);
+}
+
+.lt-desktop-workspace-switch button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--lt-color-text-secondary, #596761);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+
+.lt-desktop-workspace-switch button:hover:not(:disabled) {
+  background: var(--lt-color-hover, #e9efeb);
+}
+
+.lt-desktop-workspace-switch button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.lt-desktop-workspace-switch button.active {
+  background: var(--lt-color-primary, #176b54);
+  color: var(--lt-color-primary-contrast, #fff);
+}
+
+.lt-desktop-workspace-switch button:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+}
+
+.lt-desktop-workspace-switch svg {
+  width: 15px;
+  height: 15px;
+}
+
+@media (max-width: 760px) {
+  .lt-desktop-workspace-switch {
+    bottom: 72px;
+  }
+
+  .lt-desktop-workspace-switch button span {
+    display: none;
+  }
+}

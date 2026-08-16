@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Camera, CheckCircle2, Cloud, RefreshCw, Trophy } from "lucide-react";
 import { API_BASE } from "../cloud/base";
+import { browserFetch } from "../cloud/http";
 import { Empty, Metric, MetricGrid, Panel } from "../ui";
 
 interface ChallengeStats {
@@ -37,7 +38,7 @@ export function PhotoChallengePage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`${API_BASE}/api/v1/photo-challenge/admin`, { credentials: "include" });
+      const response = await browserFetch(`${API_BASE}/api/v1/photo-challenge/admin`, { credentials: "include" });
       const payload = await readJson(response);
       if (!response.ok) throw new Error(errorMessage(payload, `读取摄影挑战失败 (${response.status})`));
       setData(payload as AdminResponse);

@@ -1,5 +1,6 @@
 #![allow(linker_messages)]
 
+mod cloud_api;
 mod cloud_auth;
 pub mod contracts;
 mod database;
@@ -30,6 +31,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            cloud_api::cloud_api_http_request,
             cloud_auth::cloud_auth_http_request,
             cloud_auth::cloud_credential_set,
             cloud_auth::cloud_credential_get,

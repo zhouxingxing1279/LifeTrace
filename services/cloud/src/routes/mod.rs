@@ -14,6 +14,7 @@ pub mod mail_attachment;
 pub mod mail_list;
 pub mod meta;
 pub mod photo_challenge;
+pub mod photo_challenge_desktop;
 pub mod photo_staging;
 pub mod privacy;
 pub mod sync;
@@ -40,6 +41,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .merge(meta::router())
         .merge(photo_staging::router())
         .merge(photo_challenge::router())
+        .merge(photo_challenge_desktop::router())
         .merge(finance::router())
         .merge(mail::router())
         .merge(mail_attachment::router())

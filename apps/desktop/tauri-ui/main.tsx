@@ -11,6 +11,19 @@ import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 import { fitWindowToWorkArea } from "./windowFit";
 
+/* Shared browser workspaces are also rendered inside Tauri. Load their visual
+ * contract first, then let native/local styles keep authority over local tools. */
+import "@/web-client/src/styles.css";
+import "@/web-client/src/cloud-pages.css";
+import "@/web-client/src/web-tokens.css";
+import "@/web-client/src/web-primitives.css";
+import "@/web-client/src/web-shell.css";
+import "@/web-client/src/web-auth.css";
+import "@/web-client/src/web-workspaces.css";
+import "@/web-client/src/web-beecount.css";
+import "@/web-client/src/web-features.css";
+import "@/web-client/src/web-photo-challenge.css";
+
 import "@/app/tokens.css";
 import "@/app/globals.css";
 import "@/app/hengxu.css";
@@ -34,6 +47,7 @@ import "@/app/record-workspace.css";
 import "@/app/module-layout-overrides.css";
 import "@/app/apple-polish.css";
 import "@/app/interaction-performance.css";
+import "@/app/desktop-cloud-workspace.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
