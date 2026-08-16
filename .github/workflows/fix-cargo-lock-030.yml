@@ -1,0 +1,57 @@
+name: Fix desktop Cargo.lock 0.3.0
+
+on:
+  push:
+    branches:
+      - fix/desktop-cargo-lock-030
+    paths:
+      - .github/workflows/fix-cargo-lock-030.yml
+
+permissions:
+  contents: write
+
+jobs:
+  fix-lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/desktop-cargo-lock-030
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - name: Synchronize root package version in Cargo.lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('apps/desktop/src-tauri/Cargo.lock')
+          text = path.read_text()
+          pattern = r'(\[\[package\]\]\nname = "lifetrace"\nversion = ")0\.2\.9("\n)'
+          updated, count = re.subn(pattern, r'\g<1>0.3.0\2', text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected exactly one LifeTrace 0.2.9 root entry, found {count}')
+          path.write_text(updated)
+          PY
+
+          cargo metadata --manifest-path apps/desktop/src-tauri/Cargo.toml --locked --offline --format-version 1 > /dev/null
+          git diff --check
+          git diff -- apps/desktop/src-tauri/Cargo.lock
+
+      - name: Commit lockfile fix and remove helper workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-cargo-lock-030.yml
+          git add apps/desktop/src-tauri/Cargo.lock
+          git diff --cached --check
+          git commit -m "fix(desktop): sync Cargo.lock version for 0.3.0"
+          git push origin HEAD:fix/desktop-cargo-lock-030
