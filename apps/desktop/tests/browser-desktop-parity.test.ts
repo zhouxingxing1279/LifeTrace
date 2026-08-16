@@ -72,6 +72,19 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
   }
 });
 
+test("desktop management routes reuse native bearer endpoints instead of cookie-only web endpoints", () => {
+  const workspace = readFileSync("src/components/DesktopCloudWorkspace.tsx", "utf8");
+  const management = readFileSync("web-client/src/cloud/management.ts", "utf8");
+  const nativeAuth = readFileSync("../../services/cloud/src/routes/auth.rs", "utf8");
+
+  assert.match(management, /\/api\/v1\/web\/devices/);
+  assert.match(management, /\/api\/v1\/web\/sessions/);
+  assert.match(workspace, /\/api\/v1\/auth\/devices/);
+  assert.match(workspace, /\/api\/v1\/auth\/sessions/);
+  assert.match(nativeAuth, /\.route\("\/api\/v1\/auth\/devices"/);
+  assert.match(nativeAuth, /\.route\("\/api\/v1\/auth\/sessions"/);
+});
+
 test("photo challenge keeps browser cookie auth and maps desktop to a bearer-only owner endpoint", () => {
   const page = readFileSync("web-client/src/pages/PhotoChallengePage.tsx", "utf8");
   const workspace = readFileSync("src/components/DesktopCloudWorkspace.tsx", "utf8");
