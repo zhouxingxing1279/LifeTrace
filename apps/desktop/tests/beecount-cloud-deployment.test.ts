@@ -27,7 +27,7 @@ test("Caddy exposes stock BeeCount compatibility over direct HTTP", async () => 
     readFile(caddyPath, "utf8"),
   ]);
 
-  const caddyService = compose.match(/\n  caddy:\n([\s\S]*?)\n\nvolumes:/)?.[1] ?? "";
+  const caddyService = compose.match(/\r?\n  caddy:\r?\n([\s\S]*?)\r?\n\r?\nvolumes:/)?.[1] ?? "";
   assert.match(caddyService, /"8869:8869"/);
   assert.match(caddyService, /lifetrace-cloud:[\s\S]*?condition: service_healthy/);
   assert.match(caddyService, /wget[\s\S]*?127\.0\.0\.1:2019\/config\//);
