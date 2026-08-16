@@ -1,0 +1,78 @@
+name: Temporary photo challenge score boundary fix
+
+on:
+  push:
+    branches:
+      - fix/photo-challenge-score-decoding-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/photo-challenge-score-decoding-v2
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Make score SQL boundary INT8 explicit
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/cloud/src/routes/photo_challenge.rs')
+          text = path.read_text(encoding='utf-8')
+
+          replacements = {
+              'SELECT id,file_name,captured_at,score,qualified,breakdown,feedback,model,thumbnail_data_url,scored_at,staging_id ': 'SELECT id,file_name,captured_at,score::bigint AS score,qualified,breakdown,feedback,model,thumbnail_data_url,scored_at,staging_id ',
+              'SELECT id,score,qualified,breakdown,feedback FROM photo_challenge_scores WHERE user_id=$1 AND image_hash=$2': 'SELECT id,score::bigint AS score,qualified,breakdown,feedback FROM photo_challenge_scores WHERE user_id=$1 AND image_hash=$2',
+              'RETURNING id,score,qualified,breakdown,feedback': 'RETURNING id,score::bigint AS score,qualified,breakdown,feedback',
+          }
+          for old, new in replacements.items():
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'expected exactly one occurrence of {old!r}, found {count}')
+              text = text.replace(old, new, 1)
+
+          old_helper = '''fn read_db_score(row: &sqlx::postgres::PgRow) -> Result<i64, ApiError> {\n    // PostgreSQL migration 0020 defines photo_challenge_scores.score as INTEGER (INT4).\n    // Decode with the matching Rust type first, then widen for the public API model.\n    row.try_get::<i32, _>("score")\n        .map(i64::from)\n        .map_err(database_error)\n}\n'''
+          new_helper = '''fn read_db_score(row: &sqlx::postgres::PgRow) -> Result<i64, ApiError> {\n    // Every score projection casts the INT4 storage column to BIGINT so the SQL\n    // result type exactly matches the API's i64 representation. This keeps the\n    // database schema compact while eliminating SQLx INT4/INT8 decode ambiguity.\n    row.try_get::<i64, _>("score").map_err(database_error)\n}\n'''
+          if old_helper not in text:
+              raise SystemExit('score helper did not match expected source')
+          text = text.replace(old_helper, new_helper, 1)
+
+          old_test = '''    #[test]\n    fn int4_score_widens_losslessly_for_api() {\n        let db_score: i32 = 93;\n        let api_score = i64::from(db_score);\n        assert_eq!(api_score, 93_i64);\n    }\n\n'''
+          if old_test not in text:
+              raise SystemExit('old INT4 widening test not found')
+          text = text.replace(old_test, '', 1)
+
+          # Guard against reintroducing a raw INT4 score result in the three row paths.
+          required = [
+              'score::bigint AS score,qualified,breakdown,feedback,model',
+              'SELECT id,score::bigint AS score,qualified,breakdown,feedback FROM photo_challenge_scores',
+              'RETURNING id,score::bigint AS score,qualified,breakdown,feedback',
+              'row.try_get::<i64, _>("score")',
+          ]
+          for needle in required:
+              if needle not in text:
+                  raise SystemExit(f'missing required score boundary: {needle}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          cargo test --manifest-path services/cloud/Cargo.toml routes::photo_challenge::tests -- --test-threads=1
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/cloud/src/routes/photo_challenge.rs
+          git commit -m "fix: make photo challenge score SQL type explicit"
+          git push origin HEAD:fix/photo-challenge-score-decoding-v2
