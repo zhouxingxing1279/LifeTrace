@@ -72,17 +72,24 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
   }
 });
 
-test("desktop management routes reuse native bearer endpoints instead of cookie-only web endpoints", () => {
+test("desktop cookie-only web routes map to equivalent bearer endpoints", () => {
   const workspace = readFileSync("src/components/DesktopCloudWorkspace.tsx", "utf8");
   const management = readFileSync("web-client/src/cloud/management.ts", "utf8");
+  const assistantClient = readFileSync("web-client/src/cloud/assistant.ts", "utf8");
   const nativeAuth = readFileSync("../../services/cloud/src/routes/auth.rs", "utf8");
+  const assistantRoute = readFileSync("../../services/cloud/src/routes/assistant.rs", "utf8");
 
   assert.match(management, /\/api\/v1\/web\/devices/);
   assert.match(management, /\/api\/v1\/web\/sessions/);
+  assert.match(assistantClient, /\/api\/v1\/web\/assistant/);
   assert.match(workspace, /\/api\/v1\/auth\/devices/);
   assert.match(workspace, /\/api\/v1\/auth\/sessions/);
+  assert.match(workspace, /\/api\/v1\/assistant/);
   assert.match(nativeAuth, /\.route\("\/api\/v1\/auth\/devices"/);
   assert.match(nativeAuth, /\.route\("\/api\/v1\/auth\/sessions"/);
+  assert.match(assistantRoute, /\.route\("\/api\/v1\/assistant", post\(native_assistant\)\)/);
+  assert.match(assistantRoute, /AuthenticatedPrincipal/);
+  assert.match(assistantRoute, /run_assistant\(request\)\.await/);
 });
 
 test("photo challenge keeps browser cookie auth and maps desktop to a bearer-only owner endpoint", () => {
