@@ -29,12 +29,19 @@ function requestHeaders(request: Request | undefined, init: RequestInit): Header
 }
 
 function desktopApiPath(path: string): string {
-  // The browser admin endpoint intentionally requires an HttpOnly WebSession.
-  // The desktop route returns the same shape but authenticates with the native
-  // Bearer session stored in the Rust sync state.
-  return path === "/api/v1/photo-challenge/admin"
-    ? "/api/v1/photo-challenge/desktop-admin"
-    : path;
+  // Browser-only management endpoints use an HttpOnly cookie and CSRF. The
+  // native API exposes the same contracts behind the desktop Bearer session,
+  // so reuse those routes instead of weakening the browser security model.
+  if (path === "/api/v1/photo-challenge/admin") {
+    return "/api/v1/photo-challenge/desktop-admin";
+  }
+  if (path === "/api/v1/web/devices" || path.startsWith("/api/v1/web/devices/")) {
+    return path.replace("/api/v1/web/devices", "/api/v1/auth/devices");
+  }
+  if (path === "/api/v1/web/sessions" || path.startsWith("/api/v1/web/sessions/")) {
+    return path.replace("/api/v1/web/sessions", "/api/v1/auth/sessions");
+  }
+  return path;
 }
 
 async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
