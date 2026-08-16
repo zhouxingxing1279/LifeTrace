@@ -1,0 +1,138 @@
+name: Temporary photo challenge feedback patch
+
+on:
+  push:
+    branches:
+      - fix/photo-challenge-feedback-shape
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/photo-challenge-feedback-shape
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Patch parser and regression test
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('services/cloud/src/routes/photo_challenge.rs')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''        alias = "review",
+                  alias = "评价",
+                  alias = "反馈"
+              )]
+              feedback: String,'''
+          new = '''        alias = "review",
+                  alias = "评价",
+                  alias = "反馈",
+                  deserialize_with = "deserialize_feedback"
+              )]
+              feedback: String,'''
+          if old not in text:
+              raise SystemExit('feedback serde block not found')
+          text = text.replace(old, new, 1)
+
+          old_prompt = 'feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。'
+          new_prompt = 'feedback必须是JSON字符串，绝不能是对象或数组；用中文，最多80字，指出最关键优点和一个最值得改进的点。'
+          if old_prompt not in text:
+              raise SystemExit('rubric feedback instruction not found')
+          text = text.replace(old_prompt, new_prompt, 1)
+
+          marker = '''fn parse_score_text(text: &str) -> Option<i64> {'''
+          helper = r'''fn deserialize_feedback<'de, D>(deserializer: D) -> Result<String, D::Error>
+          where
+              D: Deserializer<'de>,
+          {
+              let value = Value::deserialize(deserializer)?;
+              Ok(feedback_value_to_text(value))
+          }
+
+          fn feedback_value_to_text(value: Value) -> String {
+              match value {
+                  Value::String(text) => text,
+                  Value::Object(mut object) => {
+                      let strength = object
+                          .remove("优点")
+                          .or_else(|| object.remove("优势"))
+                          .or_else(|| object.remove("strength"))
+                          .or_else(|| object.remove("strengths"))
+                          .map(feedback_value_to_text);
+                      let improvement = object
+                          .remove("建议改进")
+                          .or_else(|| object.remove("改进建议"))
+                          .or_else(|| object.remove("建议"))
+                          .or_else(|| object.remove("improvement"))
+                          .or_else(|| object.remove("suggestion"))
+                          .map(feedback_value_to_text);
+
+                      match (strength, improvement) {
+                          (Some(strength), Some(improvement)) => {
+                              format!("优点：{}；建议：{}", strength.trim(), improvement.trim())
+                          }
+                          (Some(strength), None) => strength,
+                          (None, Some(improvement)) => improvement,
+                          (None, None) => serde_json::to_string(&Value::Object(object))
+                              .unwrap_or_default(),
+                      }
+                  }
+                  Value::Array(values) => values
+                      .into_iter()
+                      .map(feedback_value_to_text)
+                      .filter(|text| !text.trim().is_empty())
+                      .collect::<Vec<_>>()
+                      .join("；"),
+                  Value::Null => String::new(),
+                  other => other.to_string(),
+              }
+          }
+
+          '''
+          if marker not in text:
+              raise SystemExit('parse_score_text marker not found')
+          text = text.replace(marker, helper + marker, 1)
+
+          test_marker = '''    #[test]
+              fn model_score_parser_accepts_chinese_field_names() {'''
+          test = r'''    #[test]
+              fn model_score_parser_accepts_structured_feedback() {
+                  let content = r#"```json
+          {"score":85,"composition":22,"lightColor":18,"subjectStory":19,"technical":21,"originality":14,"feedback":{"优点":"照片展示了笔记本电脑的细节和背景环境","建议改进":"可以考虑调整角度以获得更好的视角"}}
+          ```"#;
+                  let parsed = parse_model_score(content).expect("score");
+                  assert_eq!(parsed.technical, 21);
+                  assert_eq!(
+                      parsed.feedback,
+                      "优点：照片展示了笔记本电脑的细节和背景环境；建议：可以考虑调整角度以获得更好的视角"
+                  );
+              }
+
+          '''
+          if test_marker not in text:
+              raise SystemExit('test insertion marker not found')
+          text = text.replace(test_marker, test + test_marker, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          cargo test --manifest-path services/cloud/Cargo.toml routes::photo_challenge::tests -- --test-threads=1
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add services/cloud/src/routes/photo_challenge.rs
+          git commit -m "fix: accept structured GLM photo feedback"
+          git push origin HEAD:fix/photo-challenge-feedback-shape
