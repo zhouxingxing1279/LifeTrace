@@ -217,7 +217,7 @@ async fn admin(
     }
     let owner_uuid = user_uuid(&owner)?;
     let rows = sqlx::query(
-        "SELECT id,file_name,captured_at,score,qualified,breakdown,feedback,model,thumbnail_data_url,scored_at,staging_id \
+        "SELECT id,file_name,captured_at,score::bigint AS score,qualified,breakdown,feedback,model,thumbnail_data_url,scored_at,staging_id \
          FROM photo_challenge_scores WHERE user_id=$1 ORDER BY scored_at DESC LIMIT 1000",
     )
     .bind(owner_uuid)
@@ -246,7 +246,7 @@ async fn score_photo(
     let image_hash = hex::encode(Sha256::digest(&upload.original));
 
     if let Some(row) = sqlx::query(
-        "SELECT id,score,qualified,breakdown,feedback FROM photo_challenge_scores WHERE user_id=$1 AND image_hash=$2",
+        "SELECT id,score::bigint AS score,qualified,breakdown,feedback FROM photo_challenge_scores WHERE user_id=$1 AND image_hash=$2",
     )
     .bind(owner_uuid)
     .bind(&image_hash)
@@ -301,7 +301,7 @@ async fn score_photo(
         "INSERT INTO photo_challenge_scores \
          (id,user_id,staging_id,image_hash,file_name,captured_at,score,qualified,breakdown,feedback,model,thumbnail_data_url) \
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) \
-         RETURNING id,score,qualified,breakdown,feedback",
+         RETURNING id,score::bigint AS score,qualified,breakdown,feedback",
     )
     .bind(id)
     .bind(owner_uuid)
@@ -532,11 +532,10 @@ async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, 
 }
 
 fn read_db_score(row: &sqlx::postgres::PgRow) -> Result<i64, ApiError> {
-    // PostgreSQL migration 0020 defines photo_challenge_scores.score as INTEGER (INT4).
-    // Decode with the matching Rust type first, then widen for the public API model.
-    row.try_get::<i32, _>("score")
-        .map(i64::from)
-        .map_err(database_error)
+    // Every score projection casts the INT4 storage column to BIGINT so the SQL
+    // result type exactly matches the API's i64 representation. This keeps the
+    // database schema compact while eliminating SQLx INT4/INT8 decode ambiguity.
+    row.try_get::<i64, _>("score").map_err(database_error)
 }
 
 fn response_from_row(
@@ -872,13 +871,6 @@ fn database_error(error: sqlx::Error) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn int4_score_widens_losslessly_for_api() {
-        let db_score: i32 = 93;
-        let api_score = i64::from(db_score);
-        assert_eq!(api_score, 93_i64);
-    }
 
     #[test]
     fn model_total_is_derived_from_rubric_parts() {
