@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Cloud, HardDrive, LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
 import HengXuShell from "@/src/components/HengXuShell";
 import DesktopCloudWorkspace from "@/src/components/DesktopCloudWorkspace";
+import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { AccountEntry, AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { clientLogger } from "@/src/services/clientObservability";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
@@ -84,7 +85,10 @@ export default function DesktopApp() {
   const restoring = phase === "bootstrapping" || phase === "refreshing";
 
   if (!hasIdentity) {
-    return <SignedOutShell restoring={restoring}/>;
+    return <>
+      <SignedOutShell restoring={restoring}/>
+      <AppUpdaterHost />
+    </>;
   }
 
   const cloudAvailable = Boolean(authenticated && session && phase === "authenticated");
@@ -111,5 +115,6 @@ export default function DesktopApp() {
         onClick={() => selectWorkspace("local")}
       ><HardDrive/><span>本地功能</span></button>
     </div>
+    <AppUpdaterHost />
   </>;
 }
