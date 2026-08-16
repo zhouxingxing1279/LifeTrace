@@ -12,7 +12,6 @@ import {
   type WebSession,
 } from "@/web-client/src/core";
 import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
-import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
@@ -222,29 +221,26 @@ export default function DesktopCloudWorkspace() {
     return <div className="hx-loading"><span>LT</span><p>正在恢复桌面云会话…</p></div>;
   }
 
-  return <>
-    <CloudAppShell
+  return <CloudAppShell
+    route={route}
+    session={session}
+    online={networkOnline}
+    loading={loading}
+    privacy={privacy}
+    error={error}
+    conflictCount={state.conflicts.length}
+    onRefresh={() => void refresh()}
+    onTogglePrivacy={() => setPrivacy((value) => !value)}
+    onLogout={() => void logout().finally(() => navigate("/"))}
+  >
+    <RouteView
       route={route}
+      auth={auth}
       session={session}
-      online={networkOnline}
-      loading={loading}
+      state={state}
       privacy={privacy}
-      error={error}
-      conflictCount={state.conflicts.length}
-      onRefresh={() => void refresh()}
-      onTogglePrivacy={() => setPrivacy((value) => !value)}
-      onLogout={() => void logout().finally(() => navigate("/"))}
-    >
-      <RouteView
-        route={route}
-        auth={auth}
-        session={session}
-        state={state}
-        privacy={privacy}
-        online={networkOnline}
-        run={run}
-      />
-    </CloudAppShell>
-    <AppUpdaterHost />
-  </>;
+      online={networkOnline}
+      run={run}
+    />
+  </CloudAppShell>;
 }
