@@ -531,6 +531,14 @@ async fn load_stats(state: &AppState, owner: &UserId) -> Result<ChallengeStats, 
     })
 }
 
+fn read_db_score(row: &sqlx::postgres::PgRow) -> Result<i64, ApiError> {
+    // PostgreSQL migration 0020 defines photo_challenge_scores.score as INTEGER (INT4).
+    // Decode with the matching Rust type first, then widen for the public API model.
+    row.try_get::<i32, _>("score")
+        .map(i64::from)
+        .map_err(database_error)
+}
+
 fn response_from_row(
     row: &sqlx::postgres::PgRow,
     duplicate: bool,
@@ -543,7 +551,7 @@ fn response_from_row(
             .try_get::<Uuid, _>("id")
             .map_err(database_error)?
             .to_string(),
-        score: row.try_get("score").map_err(database_error)?,
+        score: read_db_score(row)?,
         qualified: row.try_get("qualified").map_err(database_error)?,
         breakdown,
         feedback: row.try_get("feedback").map_err(database_error)?,
@@ -568,7 +576,7 @@ fn row_to_entry(row: &sqlx::postgres::PgRow) -> Result<ChallengeEntry, ApiError>
             .to_string(),
         file_name: row.try_get("file_name").map_err(database_error)?,
         captured_at: row.try_get("captured_at").map_err(database_error)?,
-        score: row.try_get("score").map_err(database_error)?,
+        score: read_db_score(row)?,
         qualified: row.try_get("qualified").map_err(database_error)?,
         breakdown: serde_json::from_value(breakdown_value)
             .map_err(|_| bad_request("云端评分明细损坏"))?,
@@ -864,6 +872,13 @@ fn database_error(error: sqlx::Error) -> ApiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn int4_score_widens_losslessly_for_api() {
+        let db_score: i32 = 93;
+        let api_score = i64::from(db_score);
+        assert_eq!(api_score, 93_i64);
+    }
 
     #[test]
     fn model_total_is_derived_from_rubric_parts() {
