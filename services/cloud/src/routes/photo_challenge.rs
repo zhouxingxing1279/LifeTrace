@@ -106,7 +106,8 @@ struct ModelScore {
         alias = "comments",
         alias = "review",
         alias = "评价",
-        alias = "反馈"
+        alias = "反馈",
+        deserialize_with = "deserialize_feedback"
     )]
     feedback: String,
 }
@@ -601,7 +602,7 @@ async fn call_glm_score(image_data_url: &str) -> Result<ModelScore, ApiError> {
         .unwrap_or_else(|| "https://open.bigmodel.cn/api/paas/v4".to_owned());
     let model = env_non_empty("PHOTO_CHALLENGE_MODEL").unwrap_or_else(|| "glm-4v-flash".to_owned());
     let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
-    let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。所有分数字段必须是JSON数字，不要带“分”、斜杠或其他单位；feedback用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
+    let rubric = r#"你是一名严格、稳定的摄影比赛评委。请只评价照片本身，不因鼓励用户而抬高分数。按以下固定量表打分，总分100：构图 composition 0-25；光线与色彩 lightColor 0-20；主体与叙事 subjectStory 0-20；对焦/曝光/噪点等技术质量 technical 0-20；原创性与瞬间感 originality 0-15。90分代表已经达到非常优秀、少见的作品水平，普通好看的照片应明显低于90。只输出一个JSON对象，不要Markdown，不要额外文字，字段必须为：score, composition, lightColor, subjectStory, technical, originality, feedback。所有分数字段必须是JSON数字，不要带“分”、斜杠或其他单位；feedback必须是JSON字符串，绝不能是对象或数组；用中文，最多80字，指出最关键优点和一个最值得改进的点。"#;
     let request = json!({
         "model": model,
         "temperature": 0.1,
@@ -735,6 +736,52 @@ where
     }
 }
 
+fn deserialize_feedback<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Value::deserialize(deserializer)?;
+    Ok(feedback_value_to_text(value))
+}
+
+fn feedback_value_to_text(value: Value) -> String {
+    match value {
+        Value::String(text) => text,
+        Value::Object(mut object) => {
+            let strength = object
+                .remove("优点")
+                .or_else(|| object.remove("优势"))
+                .or_else(|| object.remove("strength"))
+                .or_else(|| object.remove("strengths"))
+                .map(feedback_value_to_text);
+            let improvement = object
+                .remove("建议改进")
+                .or_else(|| object.remove("改进建议"))
+                .or_else(|| object.remove("建议"))
+                .or_else(|| object.remove("improvement"))
+                .or_else(|| object.remove("suggestion"))
+                .map(feedback_value_to_text);
+
+            match (strength, improvement) {
+                (Some(strength), Some(improvement)) => {
+                    format!("优点：{}；建议：{}", strength.trim(), improvement.trim())
+                }
+                (Some(strength), None) => strength,
+                (None, Some(improvement)) => improvement,
+                (None, None) => serde_json::to_string(&Value::Object(object)).unwrap_or_default(),
+            }
+        }
+        Value::Array(values) => values
+            .into_iter()
+            .map(feedback_value_to_text)
+            .filter(|text| !text.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("；"),
+        Value::Null => String::new(),
+        other => other.to_string(),
+    }
+}
+
 fn parse_score_text(text: &str) -> Option<i64> {
     let trimmed = text.trim();
     if let Ok(value) = trimmed.parse::<i64>() {
@@ -851,6 +898,19 @@ mod tests {
         assert_eq!(parsed.technical, 18);
         assert_eq!(parsed.originality, 14);
         assert_eq!(parsed.feedback, "构图稳定");
+    }
+
+    #[test]
+    fn model_score_parser_accepts_structured_feedback() {
+        let content = r#"```json
+{"score":85,"composition":22,"lightColor":18,"subjectStory":19,"technical":21,"originality":14,"feedback":{"优点":"照片展示了笔记本电脑的细节和背景环境","建议改进":"可以考虑调整角度以获得更好的视角"}}
+```"#;
+        let parsed = parse_model_score(content).expect("score");
+        assert_eq!(parsed.technical, 21);
+        assert_eq!(
+            parsed.feedback,
+            "优点：照片展示了笔记本电脑的细节和背景环境；建议：可以考虑调整角度以获得更好的视角"
+        );
     }
 
     #[test]
