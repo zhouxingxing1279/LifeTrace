@@ -1,8 +1,8 @@
-//! Authenticated browser AI assistant.
+//! Authenticated AI assistant for browser and native clients.
 //!
-//! The provider key is read only by the cloud process. Browser clients send a
-//! compact personal context through an authenticated, CSRF-protected endpoint;
-//! no provider secret is ever returned to JavaScript.
+//! The provider key is read only by the cloud process. Browser clients use a
+//! CSRF-protected HttpOnly session while native clients use their Bearer session;
+//! both entry points share the exact same assistant execution logic.
 
 use std::process::Stdio;
 use std::time::Duration;
@@ -17,6 +17,7 @@ use tokio::io::AsyncWriteExt;
 use tokio::process::Command;
 
 use crate::auth::security::cookie_value;
+use crate::auth::AuthenticatedPrincipal;
 use crate::error::ApiError;
 use crate::state::AppState;
 
@@ -55,10 +56,12 @@ struct ProviderMessage {
 }
 
 pub fn router() -> Router<AppState> {
-    Router::<AppState>::new().route("/api/v1/web/assistant", post(assistant))
+    Router::<AppState>::new()
+        .route("/api/v1/web/assistant", post(web_assistant))
+        .route("/api/v1/assistant", post(native_assistant))
 }
 
-async fn assistant(
+async fn web_assistant(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(request): Json<AssistantRequest>,
@@ -73,7 +76,19 @@ async fn assistant(
         .auth_service
         .verify_web_csrf(&raw_session, csrf, origin)
         .await?;
+    run_assistant(request).await
+}
 
+async fn native_assistant(
+    _principal: AuthenticatedPrincipal,
+    Json(request): Json<AssistantRequest>,
+) -> Result<Json<AssistantResponse>, ApiError> {
+    run_assistant(request).await
+}
+
+async fn run_assistant(
+    request: AssistantRequest,
+) -> Result<Json<AssistantResponse>, ApiError> {
     let prompt = request.prompt.trim();
     if prompt.is_empty() {
         return Ok(Json(AssistantResponse {
