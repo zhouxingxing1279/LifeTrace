@@ -86,9 +86,7 @@ async fn native_assistant(
     run_assistant(request).await
 }
 
-async fn run_assistant(
-    request: AssistantRequest,
-) -> Result<Json<AssistantResponse>, ApiError> {
+async fn run_assistant(request: AssistantRequest) -> Result<Json<AssistantResponse>, ApiError> {
     let prompt = request.prompt.trim();
     if prompt.is_empty() {
         return Ok(Json(AssistantResponse {
