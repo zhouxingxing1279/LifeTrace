@@ -5,7 +5,7 @@ import {
   createExecutionProject, createExecutionRecurrenceRule, createExecutionTask,
   createMemoConversionLinks, executionTaskDate, isOpenExecutionTask, localDate,
   materializeTaskOccurrences, recurrenceLabel, taskIsInbox, taskMatchesToday,
-  taskPriorityLabel, type JsonEntity,
+  taskPriorityLabel, type AtomicMutation, type JsonEntity,
 } from "../core";
 import { navigate } from "../navigation";
 import { Empty, Metric, MetricGrid, Notice, PageStack, Panel, Toolbar, entities, number, text, type CloudPageProps } from "../ui";
@@ -83,6 +83,9 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
   const rules = useMemo(() => entities(state, "execution.recurrence_rule"), [state]);
   const occurrences = useMemo(() => entities(state, "execution.task_occurrence"), [state]);
   const completionResults = entities(state, "execution.completion_result");
+  const dependencies = entities(state, "execution.task_dependency");
+  const reminders = entities(state, "execution.reminder");
+  const links = entities(state, "execution.entity_link");
   const weeklyReviews = sorted(entities(state, "execution.weekly_review"));
   const openTasks = tasks.filter(isOpenExecutionTask);
   const recurringTaskIds = new Set(tasks.filter((item) => text(item, "recurrenceRuleId")).map((item) => item.meta.id));
@@ -178,12 +181,88 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
     setMessage("已安排到今天");
   }
 
+  async function deleteTask(task: JsonEntity) {
+    const taskTitle = text(task, "title") || "这条任务";
+    if (!window.confirm(`确定删除“${taskTitle}”吗？删除后无法撤销。`)) return;
+    const mutations: AtomicMutation[] = [
+      { operation: "delete", entityType: "execution.task", entityId: task.meta.id },
+    ];
+    const ruleId = text(task, "recurrenceRuleId");
+    if (ruleId && rules.some((item) => item.meta.id === ruleId)) {
+      mutations.push({ operation: "delete", entityType: "execution.recurrence_rule", entityId: ruleId });
+    }
+    for (const occurrence of occurrences.filter((item) => text(item, "taskId") === task.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.task_occurrence", entityId: occurrence.meta.id });
+    }
+    for (const result of completionResults.filter((item) => text(item, "taskId") === task.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.completion_result", entityId: result.meta.id });
+    }
+    for (const dependency of dependencies.filter((item) => text(item, "taskId") === task.meta.id || text(item, "dependsOnTaskId") === task.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.task_dependency", entityId: dependency.meta.id });
+    }
+    for (const reminder of reminders.filter((item) => text(item, "subjectType") === "task" && text(item, "subjectId") === task.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.reminder", entityId: reminder.meta.id });
+    }
+    for (const link of links.filter((item) =>
+      (text(item, "sourceType") === "task" && text(item, "sourceId") === task.meta.id)
+      || (text(item, "targetType") === "task" && text(item, "targetId") === task.meta.id))) {
+      mutations.push({ operation: "delete", entityType: "execution.entity_link", entityId: link.meta.id });
+    }
+    await run((store) => atomicMutate(store, mutations));
+    if (recurrenceTaskId === task.meta.id) setRecurrenceTaskId("");
+    setMessage("任务已删除");
+  }
+
+  async function deleteProject(project: JsonEntity) {
+    const name = text(project, "name") || "这个计划";
+    const ownTasks = tasks.filter((task) => text(task, "projectId") === project.meta.id);
+    if (!window.confirm(`确定删除计划“${name}”吗？其中 ${ownTasks.length} 条任务会保留并变成独立任务。`)) return;
+    const mutations: AtomicMutation[] = [
+      { operation: "delete", entityType: "execution.project", entityId: project.meta.id },
+      ...ownTasks.map((task) => ({
+        operation: "upsert" as const,
+        entityType: "execution.task" as const,
+        entity: { ...task, projectId: null },
+      })),
+    ];
+    for (const reminder of reminders.filter((item) => text(item, "subjectType") === "project" && text(item, "subjectId") === project.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.reminder", entityId: reminder.meta.id });
+    }
+    for (const link of links.filter((item) =>
+      (text(item, "sourceType") === "project" && text(item, "sourceId") === project.meta.id)
+      || (text(item, "targetType") === "project" && text(item, "targetId") === project.meta.id))) {
+      mutations.push({ operation: "delete", entityType: "execution.entity_link", entityId: link.meta.id });
+    }
+    await run((store) => atomicMutate(store, mutations));
+    if (taskProject === project.meta.id) setTaskProject("");
+    setMessage("计划已删除，原计划中的任务已保留");
+  }
+
   async function pinMemo(memo: JsonEntity) {
     await run((store) => store.upsert("execution.memo", { ...memo, isPinned: memo.isPinned !== true }));
   }
 
   async function archiveMemo(memo: JsonEntity) {
     await run((store) => store.upsert("execution.memo", { ...memo, status: "archived", archivedAt: new Date().toISOString() }));
+  }
+
+  async function deleteMemo(memo: JsonEntity) {
+    const title = memoTitle(memo);
+    if (!window.confirm(`确定删除备忘“${title}”吗？删除后无法撤销。`)) return;
+    const mutations: AtomicMutation[] = [
+      { operation: "delete", entityType: "execution.memo", entityId: memo.meta.id },
+    ];
+    for (const reminder of reminders.filter((item) => text(item, "subjectType") === "memo" && text(item, "subjectId") === memo.meta.id)) {
+      mutations.push({ operation: "delete", entityType: "execution.reminder", entityId: reminder.meta.id });
+    }
+    for (const link of links.filter((item) =>
+      (text(item, "sourceType") === "memo" && text(item, "sourceId") === memo.meta.id)
+      || (text(item, "targetType") === "memo" && text(item, "targetId") === memo.meta.id))) {
+      mutations.push({ operation: "delete", entityType: "execution.entity_link", entityId: link.meta.id });
+    }
+    await run((store) => atomicMutate(store, mutations));
+    if (memoCalendarId === memo.meta.id) setMemoCalendarId("");
+    setMessage("备忘已删除");
   }
 
   async function memoToTask(memo: JsonEntity) {
@@ -295,6 +374,12 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
     setMessage("本周执行复盘快照已持久化并同步");
   }
 
+  async function deleteWeeklyReview(review: JsonEntity) {
+    if (!window.confirm(`确定删除 ${text(review, "weekStart")} – ${text(review, "weekEnd")} 的复盘快照吗？`)) return;
+    await run((store) => store.delete("execution.weekly_review", review.meta.id));
+    setMessage("复盘快照已删除");
+  }
+
   return <PageStack>
     <Toolbar>
       {VIEW_LABELS.map(([key, label]) => <button key={key} className={`hx-btn ${view === key ? "primary" : "secondary"}`} onClick={() => setView(key)}>{label}</button>)}
@@ -330,23 +415,23 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
     </div>}
 
     {view === "today" && todayPendingOccurrences.length > 0 && <Panel eyebrow="RECURRING TODAY" title="今天的重复任务实例">
-      <div className="hx-list">{todayPendingOccurrences.map((occurrence) => { const task = taskMap.get(text(occurrence, "taskId")); return <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{task ? text(task, "title") : "重复任务"}</strong><small>{task ? taskPriorityLabel(task) : "普通"} · {text(occurrence, "scheduledStartAt") ? displayDateTime(text(occurrence, "scheduledStartAt")) : "今天"}</small></div><button className="hx-btn primary" disabled={!online} onClick={() => void completeOccurrence(occurrence)}>完成本次</button></article>; })}</div>
+      <div className="hx-list">{todayPendingOccurrences.map((occurrence) => { const task = taskMap.get(text(occurrence, "taskId")); return <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{task ? text(task, "title") : "重复任务"}</strong><small>{task ? taskPriorityLabel(task) : "普通"} · {text(occurrence, "scheduledStartAt") ? displayDateTime(text(occurrence, "scheduledStartAt")) : "今天"}</small></div><div className="hx-row-actions"><button className="hx-btn primary" disabled={!online} onClick={() => void completeOccurrence(occurrence)}>完成本次</button>{task && <button className="hx-btn ghost" disabled={!online} onClick={() => void deleteTask(task)}>删除任务</button>}</div></article>; })}</div>
     </Panel>}
 
     {view !== "projects" && view !== "memos" && view !== "recurrence" && view !== "review" && <Panel eyebrow={view.toUpperCase()} title={view === "today" ? "今天的普通任务" : view === "inbox" ? "等待整理" : view === "completed" ? "完成历史" : "全部进行中任务"}>
       <div className="hx-list">
-        {visibleTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">{task.status === "done" ? "✓" : task.status === "in_progress" ? "→" : "□"}</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>{projectMap.get(text(task, "projectId")) ? `${text(projectMap.get(text(task, "projectId"))!, "name")} · ` : ""}优先级 {taskPriorityLabel(task)} · {text(task, "dueAt") || text(task, "scheduledStartAt") ? displayDateTime(text(task, "scheduledStartAt") || text(task, "dueAt")) : "未安排日期"}</small>{text(task, "description") && <small>{text(task, "description")}</small>}</div><div className="hx-row-actions">{view === "inbox" && <button className="hx-btn ghost" disabled={!online} onClick={() => void arrangeToday(task)}>安排今天</button>}{task.status === "todo" && <button className="hx-btn secondary" disabled={!online} onClick={() => void setTaskStatus(task, "in_progress")}>开始</button>}{isOpenExecutionTask(task) && !text(task, "recurrenceRuleId") && <button className="hx-btn primary" disabled={!online} onClick={() => void setTaskStatus(task, "done")}>完成</button>}{isOpenExecutionTask(task) && <button className="hx-btn ghost" disabled={!online} onClick={() => void setTaskStatus(task, "cancelled")}>取消</button>}</div></article>)}
+        {visibleTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">{task.status === "done" ? "✓" : task.status === "in_progress" ? "→" : "□"}</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>{projectMap.get(text(task, "projectId")) ? `${text(projectMap.get(text(task, "projectId"))!, "name")} · ` : ""}优先级 {taskPriorityLabel(task)} · {text(task, "dueAt") || text(task, "scheduledStartAt") ? displayDateTime(text(task, "scheduledStartAt") || text(task, "dueAt")) : "未安排日期"}</small>{text(task, "description") && <small>{text(task, "description")}</small>}</div><div className="hx-row-actions">{view === "inbox" && <button className="hx-btn ghost" disabled={!online} onClick={() => void arrangeToday(task)}>安排今天</button>}{task.status === "todo" && <button className="hx-btn secondary" disabled={!online} onClick={() => void setTaskStatus(task, "in_progress")}>开始</button>}{isOpenExecutionTask(task) && !text(task, "recurrenceRuleId") && <button className="hx-btn primary" disabled={!online} onClick={() => void setTaskStatus(task, "done")}>完成</button>}{isOpenExecutionTask(task) && <button className="hx-btn ghost" disabled={!online} onClick={() => void setTaskStatus(task, "cancelled")}>取消</button>}<button className="hx-btn ghost" disabled={!online} onClick={() => void deleteTask(task)}>删除</button></div></article>)}
         {!visibleTasks.length && <Empty title={view === "today" ? "今天没有普通待办" : view === "inbox" ? "收件箱已清空" : "暂无任务"} description={view === "today" ? "重复任务会显示在上方独立实例区；普通任务可从收件箱安排到今天。" : "使用快速收集，把脑中的事情先放进 LifeTrace。"} />}
       </div>
     </Panel>}
 
     {view === "projects" && <div className="hx-content-grid two">
-      <Panel eyebrow="PLANS" title="计划与项目"><div className="hx-list">{projects.map((project) => { const own = tasks.filter((task) => text(task, "projectId") === project.meta.id); const ownDone = own.filter((task) => task.status === "done").length; return <article className="hx-row" key={project.meta.id}><span className="hx-row-icon">计</span><div className="hx-row-main"><strong>{text(project, "name")}</strong><small>{text(project, "description") || "暂无说明"}</small><small>{ownDone} / {own.length} 个任务已完成</small></div></article>; })}{!projects.length && <Empty title="还没有计划" description="用计划把长期事项拆成可执行任务，而不是只留下一个模糊目标。" />}</div></Panel>
+      <Panel eyebrow="PLANS" title="计划与项目"><div className="hx-list">{projects.map((project) => { const own = tasks.filter((task) => text(task, "projectId") === project.meta.id); const ownDone = own.filter((task) => task.status === "done").length; return <article className="hx-row" key={project.meta.id}><span className="hx-row-icon">计</span><div className="hx-row-main"><strong>{text(project, "name")}</strong><small>{text(project, "description") || "暂无说明"}</small><small>{ownDone} / {own.length} 个任务已完成</small></div><button className="hx-btn ghost" disabled={!online} onClick={() => void deleteProject(project)}>删除</button></article>; })}{!projects.length && <Empty title="还没有计划" description="用计划把长期事项拆成可执行任务，而不是只留下一个模糊目标。" />}</div></Panel>
       <Panel eyebrow="NEW PLAN" title="创建计划"><form className="hx-form" onSubmit={(event) => void createProject(event)}><label>计划名称<input required value={projectName} onChange={(event) => setProjectName(event.target.value)} placeholder="例如：完成毕业论文" /></label><label>说明<textarea rows={4} value={projectDescription} onChange={(event) => setProjectDescription(event.target.value)} /></label><button className="hx-btn primary" disabled={!online}>创建计划</button></form></Panel>
     </div>}
 
     {view === "memos" && <div className="hx-content-grid two">
-      <Panel eyebrow="MEMO TIMELINE" title="备忘时间流"><div className="hx-list">{[...memos].sort((a, b) => Number(b.isPinned === true) - Number(a.isPinned === true) || b.meta.updatedAt.localeCompare(a.meta.updatedAt)).map((memo) => <article className="hx-row" key={memo.meta.id}><span className="hx-row-icon">{memo.isPinned === true ? "置" : "记"}</span><div className="hx-row-main"><strong>{memoTitle(memo)}</strong><small>{new Date(memo.meta.createdAt).toLocaleString("zh-CN")}{text(memo, "context") ? ` · ${text(memo, "context")}` : ""}</small></div><div className="hx-row-actions"><button className="hx-btn secondary" disabled={!online} onClick={() => void memoToTask(memo)}>转任务</button><button className="hx-btn secondary" disabled={!online} onClick={() => setMemoCalendarId(memo.meta.id)}>转日程</button><button className="hx-btn ghost" onClick={() => void pinMemo(memo)}>{memo.isPinned === true ? "取消置顶" : "置顶"}</button><button className="hx-btn ghost" onClick={() => void archiveMemo(memo)}>归档</button></div></article>)}{!memos.length && <Empty title="还没有备忘" description="备忘不要求标题和分类，先快速记录，需要执行时再转换。" />}</div></Panel>
+      <Panel eyebrow="MEMO TIMELINE" title="备忘时间流"><div className="hx-list">{[...memos].sort((a, b) => Number(b.isPinned === true) - Number(a.isPinned === true) || b.meta.updatedAt.localeCompare(a.meta.updatedAt)).map((memo) => <article className="hx-row" key={memo.meta.id}><span className="hx-row-icon">{memo.isPinned === true ? "置" : "记"}</span><div className="hx-row-main"><strong>{memoTitle(memo)}</strong><small>{new Date(memo.meta.createdAt).toLocaleString("zh-CN")}{text(memo, "context") ? ` · ${text(memo, "context")}` : ""}</small></div><div className="hx-row-actions"><button className="hx-btn secondary" disabled={!online} onClick={() => void memoToTask(memo)}>转任务</button><button className="hx-btn secondary" disabled={!online} onClick={() => setMemoCalendarId(memo.meta.id)}>转日程</button><button className="hx-btn ghost" onClick={() => void pinMemo(memo)}>{memo.isPinned === true ? "取消置顶" : "置顶"}</button><button className="hx-btn ghost" onClick={() => void archiveMemo(memo)}>归档</button><button className="hx-btn ghost" disabled={!online} onClick={() => void deleteMemo(memo)}>删除</button></div></article>)}{!memos.length && <Empty title="还没有备忘" description="备忘不要求标题和分类，先快速记录，需要执行时再转换。" />}</div></Panel>
       <Panel eyebrow="MEMO → CALENDAR" title="把备忘变成时间块">{memoCalendarId ? <form className="hx-form" onSubmit={(event) => void memoToCalendar(event)}><p className="hx-muted">{memoTitle(memos.find((item) => item.meta.id === memoCalendarId) ?? ({ meta: {} } as JsonEntity))}</p><div className="hx-form-grid"><label>日期<input type="date" value={memoDate} onChange={(event) => setMemoDate(event.target.value)} /></label><label>开始时间<input type="time" value={memoTime} onChange={(event) => setMemoTime(event.target.value)} /></label><label>时长（分钟）<input type="number" min="5" step="5" value={memoDuration} onChange={(event) => setMemoDuration(event.target.value)} /></label></div><div className="hx-inline-actions"><button className="hx-btn primary" disabled={!online}>转换并归档原备忘</button><button type="button" className="hx-btn ghost" onClick={() => setMemoCalendarId("")}>取消</button></div></form> : <Empty title="选择一条备忘" description="点击“转日程”后设置日期和时间。转换会写入双向来源关系，并归档原备忘。" />}</Panel>
     </div>}
 
@@ -359,12 +444,12 @@ export function ExecutionPage({ session, state, run, online }: CloudPageProps) {
           <button className="hx-btn primary" disabled={!online || !recurrenceTaskId || (frequency === "weekly" && !weekdays.length)}>保存规则并生成未来 30 天实例</button>
         </form>
       </Panel>
-      <Panel eyebrow="ACTIVE RULES" title="已启用的重复任务"><div className="hx-list">{tasks.filter((task) => text(task, "recurrenceRuleId")).map((task) => { const rule = ruleMap.get(text(task, "recurrenceRuleId")); const own = occurrences.filter((item) => text(item, "taskId") === task.meta.id); return <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>{recurrenceLabel(rule)} · 已物化 {own.length} 次 · 已完成 {own.filter((item) => item.status === "completed").length} 次</small></div><div className="hx-row-actions"><button className="hx-btn secondary" disabled={!online} onClick={() => void materialize(task)}>补齐 30 天</button><button className="hx-btn ghost" disabled={!online} onClick={() => void clearRecurrence(task)}>关闭重复</button></div></article>; })}{!tasks.some((task) => text(task, "recurrenceRuleId")) && <Empty title="还没有重复任务" description="选择一个任务设置每天、每周或每月规则。每次执行会写成独立 occurrence，完成历史不会被下一次覆盖。" />}</div></Panel>
+      <Panel eyebrow="ACTIVE RULES" title="已启用的重复任务"><div className="hx-list">{tasks.filter((task) => text(task, "recurrenceRuleId")).map((task) => { const rule = ruleMap.get(text(task, "recurrenceRuleId")); const own = occurrences.filter((item) => text(item, "taskId") === task.meta.id); return <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>{recurrenceLabel(rule)} · 已物化 {own.length} 次 · 已完成 {own.filter((item) => item.status === "completed").length} 次</small></div><div className="hx-row-actions"><button className="hx-btn secondary" disabled={!online} onClick={() => void materialize(task)}>补齐 30 天</button><button className="hx-btn ghost" disabled={!online} onClick={() => void clearRecurrence(task)}>关闭重复</button><button className="hx-btn ghost" disabled={!online} onClick={() => void deleteTask(task)}>删除任务</button></div></article>; })}{!tasks.some((task) => text(task, "recurrenceRuleId")) && <Empty title="还没有重复任务" description="选择一个任务设置每天、每周或每月规则。每次执行会写成独立 occurrence，完成历史不会被下一次覆盖。" />}</div></Panel>
     </div>}
 
     {view === "review" && <PageStack>
       <MetricGrid><Metric label="近 7 日计划" value={String(reviewPlanned)} detail={`${reviewStart} 至 ${today}`} /><Metric label="近 7 日完成" value={String(reviewCompleted)} detail={`计划完成率 ${reviewRate}%`} positive={reviewRate >= 80} /><Metric label="计划投入" value={`${plannedMinutes} 分钟`} detail="基于任务预计时间" /><Metric label="已记录实际" value={`${actualMinutes} 分钟`} detail="来自 completion_result" positive={actualMinutes > 0} /></MetricGrid>
-      <div className="hx-content-grid two"><Panel eyebrow="MISSED" title="需要重新决定的事项"><div className="hx-list">{overdueTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">!</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>原计划 {executionTaskDate(task)}</small></div><button className="hx-btn secondary" disabled={!online} onClick={() => void arrangeToday(task)}>改到今天</button></article>)}{overdueOccurrences.map((occurrence) => <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(taskMap.get(text(occurrence, "taskId")) ?? ({ meta: {} } as JsonEntity), "title") || "重复任务"}</strong><small>{text(occurrence, "occurrenceKey")} 的实例仍未完成</small></div></article>)}{!overdueTasks.length && !overdueOccurrences.length && <Empty title="没有逾期遗留" description="近期待办都已完成、取消或仍在未来。" />}</div></Panel><Panel eyebrow="WEEKLY SNAPSHOT" title="保存执行复盘快照"><p className="hx-muted">指标仍直接读取 Task、Occurrence、Completion Result 和 Timebox；保存时只冻结这一周的结果，不复制任务。</p><label>本周备注<textarea rows={3} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="本周最值得保留的经验、下周调整……" /></label><div className="hx-inline-actions"><button className="hx-btn primary" disabled={!online || Boolean(currentWeeklyReview)} onClick={() => void saveWeeklyReview()}>{currentWeeklyReview ? "本周快照已保存" : "保存本周快照"}</button><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></div>{weeklyReviews.length > 0 && <div className="hx-list">{weeklyReviews.slice(0, 4).map((review) => <article className="hx-row" key={review.meta.id}><span className="hx-row-icon">周</span><div className="hx-row-main"><strong>{text(review, "weekStart")} – {text(review, "weekEnd")}</strong><small>完成 {number(review, "completedCount")} / {number(review, "plannedCount")} · {number(review, "completionRate")}% · 实际 {number(review, "actualMinutes")} 分钟</small>{text(review, "note") && <small>{text(review, "note")}</small>}</div></article>)}</div>}</Panel></div>
+      <div className="hx-content-grid two"><Panel eyebrow="MISSED" title="需要重新决定的事项"><div className="hx-list">{overdueTasks.map((task) => <article className="hx-row" key={task.meta.id}><span className="hx-row-icon">!</span><div className="hx-row-main"><strong>{text(task, "title")}</strong><small>原计划 {executionTaskDate(task)}</small></div><div className="hx-row-actions"><button className="hx-btn secondary" disabled={!online} onClick={() => void arrangeToday(task)}>改到今天</button><button className="hx-btn ghost" disabled={!online} onClick={() => void deleteTask(task)}>删除</button></div></article>)}{overdueOccurrences.map((occurrence) => <article className="hx-row" key={occurrence.meta.id}><span className="hx-row-icon">↻</span><div className="hx-row-main"><strong>{text(taskMap.get(text(occurrence, "taskId")) ?? ({ meta: {} } as JsonEntity), "title") || "重复任务"}</strong><small>{text(occurrence, "occurrenceKey")} 的实例仍未完成</small></div></article>)}{!overdueTasks.length && !overdueOccurrences.length && <Empty title="没有逾期遗留" description="近期待办都已完成、取消或仍在未来。" />}</div></Panel><Panel eyebrow="WEEKLY SNAPSHOT" title="保存执行复盘快照"><p className="hx-muted">指标仍直接读取 Task、Occurrence、Completion Result 和 Timebox；保存时只冻结这一周的结果，不复制任务。</p><label>本周备注<textarea rows={3} value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="本周最值得保留的经验、下周调整……" /></label><div className="hx-inline-actions"><button className="hx-btn primary" disabled={!online || Boolean(currentWeeklyReview)} onClick={() => void saveWeeklyReview()}>{currentWeeklyReview ? "本周快照已保存" : "保存本周快照"}</button><button className="hx-btn secondary" onClick={() => navigate("/review")}>写主观每日复盘</button></div>{weeklyReviews.length > 0 && <div className="hx-list">{weeklyReviews.slice(0, 4).map((review) => <article className="hx-row" key={review.meta.id}><span className="hx-row-icon">周</span><div className="hx-row-main"><strong>{text(review, "weekStart")} – {text(review, "weekEnd")}</strong><small>完成 {number(review, "completedCount")} / {number(review, "plannedCount")} · {number(review, "completionRate")}% · 实际 {number(review, "actualMinutes")} 分钟</small>{text(review, "note") && <small>{text(review, "note")}</small>}</div><button className="hx-btn ghost" disabled={!online} onClick={() => void deleteWeeklyReview(review)}>删除</button></article>)}</div>}</Panel></div>
     </PageStack>}
   </PageStack>;
 }

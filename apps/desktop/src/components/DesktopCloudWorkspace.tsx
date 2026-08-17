@@ -12,7 +12,9 @@ import {
   type WebSession,
 } from "@/web-client/src/core";
 import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
+import { entities, text } from "@/web-client/src/ui";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
+import { setAppThemePreference } from "@/src/services/appPreferences";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
 type NativeCloudApiResponse = {
@@ -114,6 +116,7 @@ export default function DesktopCloudWorkspace() {
   const logout = useCloudAuthStore((value) => value.logout);
   const [route, setRoute] = useState<Route>(() => currentRoute());
   const [state, setState] = useState<CloudState>(EMPTY_CLOUD_STATE);
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(() => navigator.onLine);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -165,15 +168,21 @@ export default function DesktopCloudWorkspace() {
     if (!session) {
       storeRef.current = null;
       setState(EMPTY_CLOUD_STATE);
+      setCloudLoaded(false);
       return () => { active = false; };
     }
 
     const store = new CloudDataStore(session.user.id, session.session.deviceId, "", desktopCloudFetch);
     storeRef.current = store;
     setLoading(true);
+    setCloudLoaded(false);
     setError("");
     void store.load()
-      .then((next) => { if (active) setState(next); })
+      .then((next) => {
+        if (!active) return;
+        setState(next);
+        setCloudLoaded(true);
+      })
       .catch((cause: unknown) => {
         if (active) setError(cause instanceof Error ? cause.message : "无法加载云端数据");
       })
@@ -181,6 +190,13 @@ export default function DesktopCloudWorkspace() {
 
     return () => { active = false; };
   }, [session?.session.deviceId, session?.user.id]);
+
+  useEffect(() => {
+    if (!session || !cloudLoaded) return;
+    const preference = entities(state, "user.preference")
+      .find((item) => text(item, "preferenceKey") === "appearance.theme");
+    setAppThemePreference(preference?.value === "dark" ? "dark" : "light");
+  }, [cloudLoaded, session?.user.id, state]);
 
   const refresh = useCallback(async () => {
     const store = storeRef.current;

@@ -13,6 +13,7 @@ type StorageReader = Pick<Storage, "getItem">;
 type StorageWriter = Pick<Storage, "setItem">;
 
 export const APP_PREFERENCES_STORAGE_KEY = "lifetrace.app-preferences.v1";
+export const APP_THEME_COOKIE_NAME = "lifetrace_theme";
 
 export const DEFAULT_APP_PREFERENCES: AppPreferences = {
   theme: "system",
@@ -65,6 +66,11 @@ function resolveTheme(theme: ThemePreference): "light" | "dark" {
     : "light";
 }
 
+function cacheResolvedTheme(theme: "light" | "dark"): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${APP_THEME_COOKIE_NAME}=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
+}
+
 export function applyAppPreferences(
   preferences: AppPreferences,
   root?: HTMLElement,
@@ -80,6 +86,18 @@ export function applyAppPreferences(
   target.dataset.reduceMotion = String(normalized.reduceMotion);
   target.style.colorScheme = resolvedTheme;
   target.style.fontSize = normalized.fontScale === "small" ? "14px" : normalized.fontScale === "large" ? "17px" : "16px";
+}
+
+export function setAppThemePreference(
+  theme: ThemePreference,
+  storage?: StorageReader & StorageWriter,
+  root?: HTMLElement,
+): AppPreferences {
+  const next = { ...readAppPreferences(storage), theme };
+  writeAppPreferences(next, storage);
+  applyAppPreferences(next, root);
+  if (theme !== "system") cacheResolvedTheme(theme);
+  return next;
 }
 
 const PREFERENCE_STYLE_ID = "lifetrace-app-preference-styles";

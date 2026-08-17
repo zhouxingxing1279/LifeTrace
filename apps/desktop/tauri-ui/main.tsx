@@ -3,10 +3,11 @@ import { createRoot } from "react-dom/client";
 import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
 import DesktopApp from "@/src/components/DesktopApp";
 import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
-import { installAppPreferences } from "@/src/services/appPreferences";
+import { installAppPreferences, setAppThemePreference } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installDesktopContextMenuPolicy } from "@/src/services/contextMenuPolicy";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
+import { useLifeStore } from "@/src/stores/useLifeStore";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 import { fitWindowToWorkArea } from "./windowFit";
@@ -57,6 +58,28 @@ const root = document.getElementById("root");
 if (!root) throw new Error("LifeTrace root element is missing");
 
 installAppPreferences();
+
+// The legacy local workspace persists a boolean `dark` flag in SQLite, while
+// the desktop shell now uses appPreferences as the single DOM theme authority.
+// Bridge the two without allowing an uninitialized `dark=false` to overwrite
+// a cached/cloud dark preference during startup.
+useLifeStore.subscribe((state, previous) => {
+  if (!state.ready) return;
+  if (!previous.ready) {
+    const renderedDark = document.documentElement.dataset.theme === "dark";
+    if (state.dark && !renderedDark) {
+      setAppThemePreference("dark");
+      return;
+    }
+    if (!state.dark && renderedDark) {
+      useLifeStore.setState({ dark: true });
+      return;
+    }
+  }
+  if (state.dark !== previous.dark) {
+    setAppThemePreference(state.dark ? "dark" : "light");
+  }
+});
 
 async function start() {
   void fitWindowToWorkArea();
