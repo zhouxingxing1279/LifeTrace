@@ -74,6 +74,8 @@ function storedBoolean(key: string, fallback: boolean): boolean {
 
 type DesktopWorkbenchShellProps = {
   route: Route;
+  titleOverride?: string;
+  descriptionOverride?: string;
   userLabel: string;
   online: boolean;
   loading: boolean;
@@ -118,6 +120,8 @@ function NavButton({
 
 export default function DesktopWorkbenchShell({
   route,
+  titleOverride,
+  descriptionOverride,
   userLabel,
   online,
   loading,
@@ -134,7 +138,9 @@ export default function DesktopWorkbenchShell({
   const [inspectorOpen, setInspectorOpen] = useState(() => storedBoolean(INSPECTOR_OPEN_KEY, true));
   const [sidebarCompact, setSidebarCompact] = useState(() => storedBoolean(SIDEBAR_COMPACT_KEY, false));
   const [commandOpen, setCommandOpen] = useState(false);
-  const [title, description] = PAGE_COPY[route];
+  const [routeTitle, routeDescription] = PAGE_COPY[route];
+  const title = titleOverride ?? routeTitle;
+  const description = descriptionOverride ?? routeDescription;
 
   const setInspector = (next: boolean) => {
     setInspectorOpen(next);
