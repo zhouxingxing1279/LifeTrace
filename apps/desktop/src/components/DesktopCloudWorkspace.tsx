@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppShell as CloudAppShell } from "@/web-client/src/components/AppShell";
 import { RouteView } from "@/web-client/src/components/RouteView";
 import {
   AuthApi,
@@ -8,11 +7,11 @@ import {
   EMPTY_CLOUD_STATE,
   setCloudFetchOverride,
   type CloudState,
-  type FetchLike,
   type WebSession,
 } from "@/web-client/src/core";
 import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
 import { entities, text } from "@/web-client/src/ui";
+import DesktopWorkbenchShell from "@/src/components/DesktopWorkbenchShell";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
 import { setAppThemePreference } from "@/src/services/appPreferences";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
@@ -23,6 +22,10 @@ type NativeCloudApiResponse = {
   contentType?: string | null;
 };
 
+type DesktopCloudWorkspaceProps = {
+  onOpenLocalTools: () => void;
+};
+
 function requestHeaders(request: Request | undefined, init: RequestInit): Headers {
   const merged = new Headers(request?.headers);
   new Headers(init.headers).forEach((value, key) => merged.set(key, value));
@@ -30,9 +33,6 @@ function requestHeaders(request: Request | undefined, init: RequestInit): Header
 }
 
 function desktopApiPath(path: string): string {
-  // Browser-only management/assistant endpoints use an HttpOnly cookie and
-  // CSRF. The native API exposes equivalent contracts behind the desktop
-  // Bearer session, so reuse those routes instead of weakening Web security.
   if (path === "/api/v1/photo-challenge/admin") {
     return "/api/v1/photo-challenge/desktop-admin";
   }
@@ -98,9 +98,6 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
   return response;
 }
 
-// This module is bundled only by the Tauri entrypoint. Install the transport
-// once at module load so React StrictMode remounts cannot clear it between the
-// shared child pages' effects. The browser bundle never imports this module.
 setCloudFetchOverride(desktopCloudFetch);
 
 function syncLocalReplica(): void {
@@ -109,7 +106,7 @@ function syncLocalReplica(): void {
   void api.now(false).catch(() => undefined);
 }
 
-export default function DesktopCloudWorkspace() {
+export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloudWorkspaceProps) {
   const user = useCloudAuthStore((value) => value.user);
   const desktopSession = useCloudAuthStore((value) => value.session);
   const scopes = useCloudAuthStore((value) => value.scopes);
@@ -149,7 +146,10 @@ export default function DesktopCloudWorkspace() {
     const routeChanged = () => {
       setRoute(currentRoute());
       const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+      document.querySelector<HTMLElement>(".lt-desk-content")?.scrollTo({
+        top: 0,
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
     };
     const wentOnline = () => setNetworkOnline(true);
     const wentOffline = () => setNetworkOnline(false);
@@ -237,26 +237,30 @@ export default function DesktopCloudWorkspace() {
     return <div className="hx-loading"><span>LT</span><p>正在恢复桌面云会话…</p></div>;
   }
 
-  return <CloudAppShell
-    route={route}
-    session={session}
-    online={networkOnline}
-    loading={loading}
-    privacy={privacy}
-    error={error}
-    conflictCount={state.conflicts.length}
-    onRefresh={() => void refresh()}
-    onTogglePrivacy={() => setPrivacy((value) => !value)}
-    onLogout={() => void logout().finally(() => navigate("/"))}
-  >
-    <RouteView
+  return (
+    <DesktopWorkbenchShell
       route={route}
-      auth={auth}
-      session={session}
-      state={state}
-      privacy={privacy}
+      userLabel={session.user.displayName || session.user.email}
       online={networkOnline}
-      run={run}
-    />
-  </CloudAppShell>;
+      loading={loading}
+      privacy={privacy}
+      error={error}
+      conflictCount={state.conflicts.length}
+      onNavigate={navigate}
+      onRefresh={() => void refresh()}
+      onTogglePrivacy={() => setPrivacy((value) => !value)}
+      onLogout={() => void logout().finally(() => navigate("/"))}
+      onOpenLocalTools={onOpenLocalTools}
+    >
+      <RouteView
+        route={route}
+        auth={auth}
+        session={session}
+        state={state}
+        privacy={privacy}
+        online={networkOnline}
+        run={run}
+      />
+    </DesktopWorkbenchShell>
+  );
 }
