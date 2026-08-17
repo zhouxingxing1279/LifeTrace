@@ -11,6 +11,7 @@ import {
 } from "@/web-client/src/core";
 import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
 import { entities, text } from "@/web-client/src/ui";
+import DesktopLocalToolsCenter from "@/src/components/DesktopLocalToolsCenter";
 import DesktopWorkbenchShell from "@/src/components/DesktopWorkbenchShell";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
 import { setAppThemePreference } from "@/src/services/appPreferences";
@@ -20,10 +21,6 @@ type NativeCloudApiResponse = {
   status: number;
   body: string;
   contentType?: string | null;
-};
-
-type DesktopCloudWorkspaceProps = {
-  onOpenLocalTools: () => void;
 };
 
 function requestHeaders(request: Request | undefined, init: RequestInit): Headers {
@@ -106,7 +103,7 @@ function syncLocalReplica(): void {
   void api.now(false).catch(() => undefined);
 }
 
-export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloudWorkspaceProps) {
+export default function DesktopCloudWorkspace() {
   const user = useCloudAuthStore((value) => value.user);
   const desktopSession = useCloudAuthStore((value) => value.session);
   const scopes = useCloudAuthStore((value) => value.scopes);
@@ -118,6 +115,7 @@ export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloud
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [privacy, setPrivacy] = useState(false);
+  const [localToolsOpen, setLocalToolsOpen] = useState(false);
   const storeRef = useRef<CloudDataStore | null>(null);
   const auth = useMemo(() => new AuthApi(desktopCloudFetch), []);
 
@@ -145,6 +143,7 @@ export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloud
   useEffect(() => {
     const routeChanged = () => {
       setRoute(currentRoute());
+      setLocalToolsOpen(false);
       const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
       document.querySelector<HTMLElement>(".lt-desk-content")?.scrollTo({
         top: 0,
@@ -233,6 +232,11 @@ export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloud
     }
   }, []);
 
+  const navigateWorkspace = useCallback((next: Route) => {
+    setLocalToolsOpen(false);
+    navigate(next);
+  }, []);
+
   if (!session) {
     return <div className="hx-loading"><span>LT</span><p>正在恢复桌面云会话…</p></div>;
   }
@@ -240,27 +244,33 @@ export default function DesktopCloudWorkspace({ onOpenLocalTools }: DesktopCloud
   return (
     <DesktopWorkbenchShell
       route={route}
+      titleOverride={localToolsOpen ? "本机工具" : undefined}
+      descriptionOverride={localToolsOpen ? "SQLite、照片、文件导入与其他仅桌面端提供的本机能力。" : undefined}
       userLabel={session.user.displayName || session.user.email}
       online={networkOnline}
       loading={loading}
       privacy={privacy}
       error={error}
       conflictCount={state.conflicts.length}
-      onNavigate={navigate}
+      onNavigate={navigateWorkspace}
       onRefresh={() => void refresh()}
       onTogglePrivacy={() => setPrivacy((value) => !value)}
       onLogout={() => void logout().finally(() => navigate("/"))}
-      onOpenLocalTools={onOpenLocalTools}
+      onOpenLocalTools={() => setLocalToolsOpen(true)}
     >
-      <RouteView
-        route={route}
-        auth={auth}
-        session={session}
-        state={state}
-        privacy={privacy}
-        online={networkOnline}
-        run={run}
-      />
+      {localToolsOpen ? (
+        <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} />
+      ) : (
+        <RouteView
+          route={route}
+          auth={auth}
+          session={session}
+          state={state}
+          privacy={privacy}
+          online={networkOnline}
+          run={run}
+        />
+      )}
     </DesktopWorkbenchShell>
   );
 }
