@@ -49,6 +49,7 @@ import "@/app/module-layout-overrides.css";
 import "@/app/apple-polish.css";
 import "@/app/interaction-performance.css";
 import "@/app/desktop-cloud-workspace.css";
+import "@/app/desktop-local-tools.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
@@ -59,10 +60,6 @@ if (!root) throw new Error("LifeTrace root element is missing");
 
 installAppPreferences();
 
-// The legacy local workspace persists a boolean `dark` flag in SQLite, while
-// the desktop shell now uses appPreferences as the single DOM theme authority.
-// Bridge the two without allowing an uninitialized `dark=false` to overwrite
-// a cached/cloud dark preference during startup.
 useLifeStore.subscribe((state, previous) => {
   if (!state.ready) return;
   if (!previous.ready) {
