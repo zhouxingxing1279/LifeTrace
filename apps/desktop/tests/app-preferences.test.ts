@@ -6,6 +6,7 @@ import {
   applyAppPreferences,
   DEFAULT_APP_PREFERENCES,
   readAppPreferences,
+  setAppThemePreference,
   writeAppPreferences,
 } from "../src/services/appPreferences";
 
@@ -44,4 +45,19 @@ test("application preferences are applied as root data attributes", () => {
   assert.equal(root.dataset.reduceMotion, "true");
   assert.equal(root.style.fontSize, "14px");
   assert.equal(root.style.colorScheme, "dark");
+});
+
+test("setting a desktop theme persists and applies through one preference path", () => {
+  const storage = new MemoryStorage();
+  const root = { dataset: {}, style: {} } as unknown as HTMLElement;
+
+  setAppThemePreference("dark", storage, root);
+  assert.equal(readAppPreferences(storage).theme, "dark");
+  assert.equal(root.dataset.themePreference, "dark");
+  assert.equal(root.dataset.theme, "dark");
+  assert.equal(root.style.colorScheme, "dark");
+
+  setAppThemePreference("light", storage, root);
+  assert.equal(readAppPreferences(storage).theme, "light");
+  assert.equal(root.dataset.theme, "light");
 });
