@@ -7,6 +7,19 @@ import { RouteView } from "./components/RouteView";
 import { currentRoute, navigate, type Route } from "./navigation";
 import { entities, text } from "./ui";
 
+const THEME_CACHE_KEY = "lifetrace.appearance.theme";
+
+function applyTheme(theme: "light" | "dark") {
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.style.colorScheme = theme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#101613" : "#f4f6f4");
+  try {
+    localStorage.setItem(THEME_CACHE_KEY, theme);
+  } catch {
+    // Storage can be unavailable in hardened/private browser contexts.
+  }
+}
+
 export default function App() {
   const auth = useMemo(() => new AuthApi(), []);
   const [session, setSession] = useState<WebSession | null>(null);
@@ -14,6 +27,7 @@ export default function App() {
   const [state, setState] = useState<CloudState>(EMPTY_CLOUD_STATE);
   const [authLoading, setAuthLoading] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [cloudLoaded, setCloudLoaded] = useState(false);
   const [error, setError] = useState("");
   const [online, setOnline] = useState(navigator.onLine);
   const [privacy, setPrivacy] = useState(false);
@@ -56,22 +70,28 @@ export default function App() {
     if (!session) {
       storeRef.current = null;
       setState(EMPTY_CLOUD_STATE);
+      setCloudLoaded(false);
       return;
     }
     const store = new CloudDataStore(session.user.id, session.session.deviceId, session.csrfToken);
     storeRef.current = store;
     setLoading(true);
+    setCloudLoaded(false);
     setError("");
     store.load()
-      .then(setState)
+      .then((next) => {
+        setState(next);
+        setCloudLoaded(true);
+      })
       .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "无法加载云端数据"))
       .finally(() => setLoading(false));
   }, [session?.user.id, session?.session.deviceId, session?.csrfToken]);
 
   useEffect(() => {
+    if (!session || !cloudLoaded) return;
     const preference = entities(state, "user.preference").find((item) => text(item, "preferenceKey") === "appearance.theme");
-    document.documentElement.dataset.theme = preference?.value === "dark" ? "dark" : "light";
-  }, [state]);
+    applyTheme(preference?.value === "dark" ? "dark" : "light");
+  }, [cloudLoaded, session?.user.id, state]);
 
   const refresh = useCallback(async () => {
     if (!storeRef.current || !navigator.onLine) return;
@@ -113,6 +133,7 @@ export default function App() {
       storeRef.current = null;
       setSession(null);
       setState(EMPTY_CLOUD_STATE);
+      setCloudLoaded(false);
       navigate("/");
     }
   }
