@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Cloud, HardDrive, LogIn, LoaderCircle, ShieldCheck, WifiOff } from "lucide-react";
+import { useEffect } from "react";
+import { Cloud, LogIn, LoaderCircle, ShieldCheck, WifiOff } from "lucide-react";
 import HengXuShell from "@/src/components/HengXuShell";
 import DesktopCloudWorkspace from "@/src/components/DesktopCloudWorkspace";
 import AppUpdaterHost from "@/src/components/AppUpdaterHost";
@@ -41,7 +41,6 @@ export default function DesktopApp() {
   const phase = useCloudAuthStore((state) => state.phase);
   const initialize = useCloudAuthStore((state) => state.initialize);
   const reconnect = useCloudAuthStore((state) => state.reconnect);
-  const [localToolsOpen, setLocalToolsOpen] = useState(false);
 
   useEffect(() => {
     clientLogger.info("cloud.auth.auto_restore_started");
@@ -85,33 +84,28 @@ export default function DesktopApp() {
   }
 
   const cloudAvailable = Boolean(authenticated && session && phase === "authenticated");
-  const showLocalTools = localToolsOpen || !cloudAvailable;
 
   return <>
-    {showLocalTools ? (
+    {cloudAvailable ? (
+      <DesktopCloudWorkspace />
+    ) : (
       <div className="lt-desktop-local-tools-host">
         <HengXuShell/>
         <AccountEntryHost/>
         <div className="lt-desktop-local-tools-toolbar">
           <div>
-            {cloudAvailable ? <HardDrive/> : <WifiOff/>}
+            <WifiOff/>
             <span>
-              <strong>{cloudAvailable ? "本机工具" : "离线模式"}</strong>
-              <small>{cloudAvailable ? "SQLite、照片、导入等桌面原生能力" : "云端暂不可用，继续使用本机数据"}</small>
+              <strong>离线模式</strong>
+              <small>云端暂不可用，继续使用本机 SQLite 数据</small>
             </span>
           </div>
-          <button
-            type="button"
-            disabled={!cloudAvailable}
-            onClick={() => setLocalToolsOpen(false)}
-          >
+          <button type="button" disabled>
             <Cloud/>
-            返回桌面工作台
+            等待云端恢复
           </button>
         </div>
       </div>
-    ) : (
-      <DesktopCloudWorkspace onOpenLocalTools={() => setLocalToolsOpen(true)} />
     )}
     <AppUpdaterHost />
   </>;
