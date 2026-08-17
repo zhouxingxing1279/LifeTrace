@@ -89,7 +89,7 @@ export default function DesktopApp() {
     {cloudAvailable ? (
       <DesktopCloudWorkspace />
     ) : (
-      <div className="lt-desktop-local-tools-host">
+      <div className="lt-desktop-local-tools-host" aria-label="本机工具离线回退">
         <HengXuShell/>
         <AccountEntryHost/>
         <div className="lt-desktop-local-tools-toolbar">
