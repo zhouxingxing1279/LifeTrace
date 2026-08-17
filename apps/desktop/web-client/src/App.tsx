@@ -7,17 +7,13 @@ import { RouteView } from "./components/RouteView";
 import { currentRoute, navigate, type Route } from "./navigation";
 import { entities, text } from "./ui";
 
-const THEME_CACHE_KEY = "lifetrace.appearance.theme";
+const THEME_COOKIE_NAME = "lifetrace_theme";
 
 function applyTheme(theme: "light" | "dark") {
   document.documentElement.dataset.theme = theme;
   document.documentElement.style.colorScheme = theme;
   document.querySelector('meta[name="theme-color"]')?.setAttribute("content", theme === "dark" ? "#101613" : "#f4f6f4");
-  try {
-    localStorage.setItem(THEME_CACHE_KEY, theme);
-  } catch {
-    // Storage can be unavailable in hardened/private browser contexts.
-  }
+  document.cookie = `${THEME_COOKIE_NAME}=${theme}; Path=/; Max-Age=31536000; SameSite=Lax`;
 }
 
 export default function App() {
