@@ -22,9 +22,11 @@ test("shared browser cloud transport can be redirected by the native desktop she
   }
 });
 
-test("desktop authenticated workspace reuses the browser route renderer instead of duplicating features", () => {
+test("desktop reuses browser business routes without reusing the browser application shell", () => {
   const desktopApp = readFileSync("src/components/DesktopApp.tsx", "utf8");
   const workspace = readFileSync("src/components/DesktopCloudWorkspace.tsx", "utf8");
+  const desktopShell = readFileSync("src/components/DesktopWorkbenchShell.tsx", "utf8");
+  const desktopStyles = readFileSync("app/desktop-cloud-workspace.css", "utf8");
   const routes = readFileSync("web-client/src/navigation.ts", "utf8");
   const routeView = readFileSync("web-client/src/components/RouteView.tsx", "utf8");
   const tauriMain = readFileSync("tauri-ui/main.tsx", "utf8");
@@ -33,13 +35,30 @@ test("desktop authenticated workspace reuses the browser route renderer instead 
 
   assert.match(desktopApp, /DesktopCloudWorkspace/);
   assert.match(desktopApp, /HengXuShell/);
-  assert.match(desktopApp, /云端功能/);
-  assert.match(desktopApp, /本地功能/);
+  assert.match(desktopApp, /本机工具/);
+  assert.doesNotMatch(desktopApp, /lt-desktop-workspace-switch/);
+  assert.doesNotMatch(desktopApp, /云端功能/);
+  assert.doesNotMatch(desktopApp, /本地功能/);
+
   assert.match(workspace, /<RouteView/);
+  assert.match(workspace, /<DesktopWorkbenchShell/);
+  assert.doesNotMatch(workspace, /CloudAppShell/);
+  assert.doesNotMatch(workspace, /web-client\/src\/components\/AppShell/);
   assert.match(workspace, /setCloudFetchOverride\(desktopCloudFetch\)/);
   assert.match(workspace, /invoke<NativeCloudApiResponse>\("cloud_api_http_request"/);
   assert.match(workspace, /cloudAuthClient\.refresh\(\)/);
   assert.match(workspace, /syncLocalReplica/);
+
+  assert.match(desktopShell, /NAV_GROUPS/);
+  assert.match(desktopShell, /PAGE_COPY/);
+  assert.match(desktopShell, /lt-desktop-commandbar/);
+  assert.match(desktopShell, /lt-desk-inspector/);
+  assert.match(desktopShell, /onOpenLocalTools/);
+  assert.match(desktopShell, /window\.history\.back\(\)/);
+  assert.match(desktopStyles, /grid-template-columns/);
+  assert.match(desktopStyles, /lt-desk-sidebar/);
+  assert.match(desktopStyles, /lt-desk-inspector/);
+
   assert.match(tauriLib, /cloud_api::cloud_api_http_request/);
   assert.match(cloudApi, /path\.starts_with\("\/api\/v1\/"\)/);
   assert.match(cloudApi, /bearer_auth\(access_token\)/);
