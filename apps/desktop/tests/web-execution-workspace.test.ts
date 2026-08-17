@@ -185,7 +185,7 @@ test("execution stays one global destination while goals and control remain inte
   assert.equal(exposedRoutes.includes("/execution/control"), false);
 });
 
-test("execution workspace exposes goals dependency-aware Today and advanced controls", () => {
+test("execution workspace keeps the daily task flow simple while advanced capabilities stay available", () => {
   const execution = read("pages/ExecutionPage.tsx");
   const hub = read("pages/ExecutionHubPage.tsx");
   const goals = read("pages/ExecutionGoalsPage.tsx");
@@ -195,7 +195,17 @@ test("execution workspace exposes goals dependency-aware Today and advanced cont
   const routes = read("components/RouteView.tsx");
   const atomic = read("cloud/atomic.ts");
   const search = read("cloud/search.ts");
-  assert.match(execution, /QUICK CAPTURE/);
+
+  assert.match(execution, /type TaskView = "today" \| "todo" \| "completed"/);
+  assert.match(execution, /QUICK ADD/);
+  assert.match(execution, /计划（可选）/);
+  assert.match(execution, /window\.confirm/);
+  assert.match(execution, /store\.delete\("execution\.task"/);
+  assert.match(execution, /execution\.task_dependency/);
+  assert.doesNotMatch(execution, /createExecutionMemo/);
+  assert.doesNotMatch(execution, /createExecutionWeeklyReview/);
+  assert.doesNotMatch(execution, /createExecutionRecurrenceRule/);
+
   assert.match(hub, /execution\/goals/);
   assert.match(goals, /Goal → Project → Task/);
   assert.match(goals, /atomicMutate/);
