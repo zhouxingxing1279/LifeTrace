@@ -1,0 +1,14 @@
+html {
+  background: #f4f5f4;
+  color-scheme: light;
+}
+
+html[data-theme="dark"] {
+  background: #171a18;
+  color-scheme: dark;
+}
+
+body {
+  margin: 0;
+  background: inherit;
+}
