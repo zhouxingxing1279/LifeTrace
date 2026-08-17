@@ -10,7 +10,7 @@ import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumen
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
-import { fitWindowToWorkArea } from "./windowFit";
+import { installWindowPlacementPersistence, restoreWindowPlacement } from "./windowState";
 
 /* Shared browser workspaces are also rendered inside Tauri. Load their visual
  * contract first, then let native/local styles keep authority over local tools. */
@@ -82,7 +82,8 @@ useLifeStore.subscribe((state, previous) => {
 });
 
 async function start() {
-  void fitWindowToWorkArea();
+  await restoreWindowPlacement();
+  void installWindowPlacementPersistence();
   installTauriApiBridge();
   installVaultBridge();
   root!.innerHTML = '<div class="hx-loading"><span>LT</span><p>正在启动本地 SQLite 服务…</p></div>';
