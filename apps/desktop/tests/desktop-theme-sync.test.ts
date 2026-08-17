@@ -4,6 +4,7 @@ import test from "node:test";
 
 const cloudWorkspace = () => readFileSync(new URL("../src/components/DesktopCloudWorkspace.tsx", import.meta.url), "utf8");
 const tauriIndex = () => readFileSync(new URL("../tauri-ui/index.html", import.meta.url), "utf8");
+const tauriMain = () => readFileSync(new URL("../tauri-ui/main.tsx", import.meta.url), "utf8");
 const bootstrapScript = () => readFileSync(new URL("../public/desktop-theme-bootstrap.js", import.meta.url), "utf8");
 const bootstrapStyles = () => readFileSync(new URL("../public/desktop-theme-bootstrap.css", import.meta.url), "utf8");
 
@@ -32,4 +33,13 @@ test("tauri restores the cached theme before the react entrypoint", () => {
   assert.match(styles, /html\[data-theme="dark"\]/);
   assert.match(styles, /background: #171a18/);
   assert.match(styles, /color-scheme: dark/);
+});
+
+test("legacy sqlite dark state and desktop DOM theme stay synchronized", () => {
+  const source = tauriMain();
+  assert.match(source, /useLifeStore\.subscribe\(\(state, previous\) =>/);
+  assert.match(source, /if \(!previous\.ready\)/);
+  assert.match(source, /useLifeStore\.setState\(\{ dark: true \}\)/);
+  assert.match(source, /state\.dark !== previous\.dark/);
+  assert.match(source, /setAppThemePreference\(state\.dark \? "dark" : "light"\)/);
 });
