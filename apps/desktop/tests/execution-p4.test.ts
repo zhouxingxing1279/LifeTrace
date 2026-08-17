@@ -34,8 +34,9 @@ test("P4 multi-entity execution flows use atomicMutate", () => {
   const calendar = web("pages/ExecutionCalendarPage.tsx");
   const control = web("pages/ExecutionControlPage.tsx");
   assert.match(execution, /execution\.completion_result/);
+  assert.match(execution, /execution\.task_occurrence/);
+  assert.match(execution, /execution\.task_dependency/);
   assert.match(execution, /atomicMutate\(store/);
-  assert.match(execution, /execution\.weekly_review/);
   assert.match(calendar, /atomicMutate\(store/);
   assert.match(control, /atomicMutate\(store/);
 });
