@@ -145,13 +145,16 @@ jobs:
             -A clippy::type_complexity \
             -A clippy::uninlined_format_args \
             -A clippy::unnecessary_lazy_evaluations
-      - name: Frontend
-        run: |
-          npm ci --prefix apps/desktop
-          npm run lint
-          npm run test:unit
-          npm install --prefix apps/web --no-audit --no-fund
-          npm run web:build
+      - name: Install desktop dependencies
+        run: npm ci --prefix apps/desktop
+      - name: Desktop lint
+        run: npm run lint
+      - name: Desktop unit tests
+        run: npm run test:unit
+      - name: Install Web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+      - name: Build Web
+        run: npm run web:build
 
   cloud-postgresql:
     runs-on: ubuntu-latest
