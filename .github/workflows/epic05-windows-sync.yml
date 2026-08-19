@@ -145,16 +145,14 @@ jobs:
             -A clippy::type_complexity \
             -A clippy::uninlined_format_args \
             -A clippy::unnecessary_lazy_evaluations
+      # apps/desktop/web-client was intentionally removed when the browser app
+      # moved to apps/web. Browser/Web typechecking and production builds are
+      # enforced by Browser Web and Web v2; EPIC-05 keeps the maintained desktop
+      # unit/Rust sync boundary here instead of linting the deleted legacy tree.
       - name: Install desktop dependencies
         run: npm ci --prefix apps/desktop
-      - name: Desktop lint
-        run: npm run lint
       - name: Desktop unit tests
         run: npm run test:unit
-      - name: Install Web dependencies
-        run: npm install --prefix apps/web --no-audit --no-fund
-      - name: Build Web
-        run: npm run web:build
 
   cloud-postgresql:
     runs-on: ubuntu-latest
