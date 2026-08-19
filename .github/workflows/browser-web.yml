@@ -53,13 +53,14 @@ jobs:
           cache: npm
           cache-dependency-path: apps/web/package.json
       - run: npm install --no-audit --no-fund
-      - name: Enforce cloud-only browser boundary
+      - name: Enforce browser persistence boundary
         shell: bash
         run: |
-          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
-            echo "Business data must not be persisted in browser storage"
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts' --exclude='VditorEditor.tsx'; then
+            echo "Browser-local persistence is limited to the Vditor note draft cache"
             exit 1
           fi
+          grep -q 'cache: { id: cacheKey, enable: true }' src/features/notes/VditorEditor.tsx
           if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' src package.json; then
             echo "Photo/PWA-only code must not enter the browser application"
             exit 1
@@ -73,9 +74,10 @@ jobs:
           test -f dist/index.html
           test ! -e dist/manifest.webmanifest
           test ! -e dist/sw.js
+          test -f dist/vendor/vditor/dist/js/lute/lute.min.js
           SIZE=$(du -sk dist | cut -f1)
           echo "dist size: ${SIZE} KB"
-          test "$SIZE" -lt 12000
+          test "$SIZE" -lt 30000
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-browser-web

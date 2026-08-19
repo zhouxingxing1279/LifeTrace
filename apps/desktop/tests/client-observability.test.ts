@@ -13,7 +13,6 @@ import {
   type FetchLike,
 } from "../src/services/clientObservability";
 import { installGlobalFetchInstrumentation } from "../src/services/fetchInstrumentation";
-import { AuthApi } from "../web-client/src/cloud/api";
 
 test("serializeClientError preserves the cause chain", () => {
   const root = new TypeError("Can only call window.fetch on instance of Window");
@@ -76,28 +75,6 @@ test("bindFetch preserves the owner required by a native-style fetch", async () 
 
   assert.equal(response.status, 200);
   assert.equal(owner.calls, 1);
-});
-
-test("AuthApi keeps window-style fetch bound to globalThis", async () => {
-  const originalFetch = globalThis.fetch;
-  let calls = 0;
-  const nativeStyleFetch = function (this: typeof globalThis): Promise<Response> {
-    assert.equal(this, globalThis);
-    calls += 1;
-    return Promise.resolve(new Response("{}", {
-      status: 200,
-      headers: { "content-type": "application/json" },
-    }));
-  } as typeof globalThis.fetch;
-  globalThis.fetch = nativeStyleFetch;
-
-  try {
-    const api = new AuthApi(globalThis.fetch);
-    await api.session();
-    assert.equal(calls, 1);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
 });
 
 test("instrumentedFetch records synchronous invocation errors before a request exists", async () => {

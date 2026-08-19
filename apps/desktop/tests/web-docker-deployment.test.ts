@@ -7,17 +7,21 @@ import test from "node:test";
 const repoUrl = (path: string) => new URL(`../../../${path}`, import.meta.url);
 const repo = (path: string) => readFileSync(repoUrl(path), "utf8");
 
-test("production web image packages browser, photo challenge and HTTP Caddy", () => {
+test("production web image packages apps/web, photo challenge and HTTP Caddy", () => {
   const dockerfile = repo("deploy/cloud/Dockerfile.web");
   assert.match(dockerfile, /FROM node:22-alpine AS browser-builder/);
-  assert.match(dockerfile, /RUN npm ci/);
-  assert.match(dockerfile, /RUN npm run browser:build/);
+  assert.match(dockerfile, /WORKDIR \/workspace\/apps\/web/);
+  assert.match(dockerfile, /COPY apps\/web\/package\.json \.\//);
+  assert.match(dockerfile, /RUN npm install --no-audit --no-fund/);
+  assert.match(dockerfile, /COPY apps\/web\/ \.\//);
+  assert.match(dockerfile, /RUN npm run build/);
   assert.match(dockerfile, /FROM caddy:2\.11\.4-alpine/);
-  assert.match(dockerfile, /dist-browser \/srv/);
+  assert.match(dockerfile, /--from=browser-builder \/workspace\/apps\/web\/dist \/srv/);
   assert.match(dockerfile, /apps\/photo-challenge-pwa \/srv-photo-challenge/);
   assert.match(dockerfile, /Caddyfile\.production \/etc\/caddy\/Caddyfile/);
   assert.match(dockerfile, /EXPOSE 80 8869/);
   assert.doesNotMatch(dockerfile, /EXPOSE 80 443 8869/);
+  assert.doesNotMatch(dockerfile, /browser:build|dist-browser/);
 });
 
 test("production compose uses simple direct-IP HTTP profile", () => {

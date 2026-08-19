@@ -47,29 +47,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          apt_update() {
-            local timeout_seconds="$1"
-            sudo timeout "${timeout_seconds}s" apt-get \
-              -o Acquire::Retries=2 \
-              -o Acquire::http::Timeout=20 \
-              -o Acquire::https::Timeout=20 \
-              -o Acquire::ForceIPv4=true \
-              -o Acquire::Languages=none \
-              update
-          }
-
-          # Prefer the runner's regional mirror first. If it stalls, fail fast
-          # and retry once against Ubuntu's canonical archive instead of
-          # allowing a single apt-get update to consume the whole CI job.
-          if ! apt_update 180; then
-            echo "Regional Ubuntu mirror stalled; switching to archive.ubuntu.com"
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
-            sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
-            sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-            sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
-            sudo rm -rf /var/lib/apt/lists/partial
-            apt_update 300
+          # GitHub's Ubuntu 24.04 image resolves Ubuntu repositories through
+          # mirror+file:/etc/apt/apt-mirrors.txt. Updating only sources.list
+          # leaves a stalled Azure mirror active, so pin the actual mirrorlist.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
           fi
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+
+          sudo timeout 300s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Languages=none \
+            update
       - name: Install Tauri Linux dependencies
         env:
           DEBIAN_FRONTEND: noninteractive
@@ -150,12 +145,14 @@ jobs:
             -A clippy::type_complexity \
             -A clippy::uninlined_format_args \
             -A clippy::unnecessary_lazy_evaluations
-      - name: Frontend
-        run: |
-          npm ci --prefix apps/desktop
-          npm run lint
-          npm run test:unit
-          npm run web:build
+      # apps/desktop/web-client was intentionally removed when the browser app
+      # moved to apps/web. Browser/Web typechecking and production builds are
+      # enforced by Browser Web and Web v2; EPIC-05 keeps the maintained desktop
+      # unit/Rust sync boundary here instead of linting the deleted legacy tree.
+      - name: Install desktop dependencies
+        run: npm ci --prefix apps/desktop
+      - name: Desktop unit tests
+        run: npm run test:unit
 
   cloud-postgresql:
     runs-on: ubuntu-latest
@@ -224,4 +221,35 @@ jobs:
       - name: Windows frontend build
         run: |
           npm ci --prefix apps/desktop
+          npm install --prefix apps/web --no-audit --no-fund
           npm run web:build
+
+  contract-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Validate shared payload fixtures
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+
+  android-contract-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert Android client does not use legacy sync paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ROOT="android/app/src/main/java"
+          if [ ! -d "$SOURCE_ROOT" ]; then
+            echo "No Android source tree in this repository; skipping Android sync boundary check."
+            exit 0
+          fi
+          if grep -R -n -E '/api/v1/(sync/(snapshot|pull|push)|device/bootstrap)' "$SOURCE_ROOT"; then
+            echo "Android client must use BeeCount-compatible sync routes instead of legacy LifeTrace sync APIs." >&2
+            exit 1
+          fi

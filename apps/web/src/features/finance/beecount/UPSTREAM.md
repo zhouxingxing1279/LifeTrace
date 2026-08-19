@@ -5,68 +5,53 @@
 - Repository: `TNT-Likely/BeeCount-Cloud`
 - Upstream SHA reviewed for this port: `3e02e499431bdceae2051c1dfb980898d26ef5e1`
 - License holder: sunxiao / GitHub `TNT-Likely`
-- License: BeeCount Cloud Software License Agreement v1.0 (non-commercial use allowed; commercial use requires paid authorization; copyright/license/author notices must be preserved)
+- License: BeeCount Cloud Software License Agreement v1.0. The bundled license and attribution must remain with the port.
 
 ## Source paths used as the implementation baseline
 
-The LifeTrace finance workspace was source-reviewed and ported from these upstream areas rather than recreated from screenshots:
+The LifeTrace finance workspace is source-derived from BeeCount Cloud Web rather than recreated from screenshots. The reviewed areas include `frontend/apps/web/src/pages/sections/*`, `frontend/apps/web/src/App.tsx`, `frontend/apps/web/src/layout/*`, `frontend/apps/web/src/context/*`, `frontend/packages/ui/src/*`, `frontend/packages/web-features/src/*` and `frontend/packages/api-client/src/*`.
 
-- `frontend/apps/web/src/pages/sections/OverviewPage.tsx`
-- `frontend/apps/web/src/pages/sections/TransactionsPage.tsx`
-- `frontend/apps/web/src/pages/sections/CalendarPage.tsx`
-- `frontend/apps/web/src/pages/sections/LedgersPage.tsx`
-- `frontend/apps/web/src/pages/sections/BudgetsPage.tsx`
-- `frontend/apps/web/src/pages/sections/AccountsPage.tsx`
-- `frontend/apps/web/src/pages/sections/CategoriesPage.tsx`
-- upstream Tags section and transaction filters in `frontend/apps/web/src/pages/sections`
-- `frontend/apps/web/src/App.tsx`
-- `frontend/apps/web/src/layout/*`
-- `frontend/apps/web/src/context/*`
-- `frontend/packages/ui/src/*`
-- `frontend/packages/web-features/src/*`
-- `frontend/packages/api-client/src/*`
+## BeeCount-only finance architecture
 
-## LifeTrace port strategy
+As of the 2026-08 cutover, BeeCount is the only runtime finance implementation/data source for LifeTrace Web.
 
-`FinanceWorkspace.tsx` preserves the upstream finance IA and the important behavior boundaries: ledger-scoped overview, transaction filters, finance calendar, ledgers, budgets, accounts, categories, tags and import. It does not reuse the old LifeTrace `BeeCountFinancePage.tsx` visual implementation.
+- `FinanceWorkspace.tsx` owns Overview, Transactions, Calendar, Ledgers, Budgets, Accounts, Categories, Tags and Import using BeeCount data only.
+- `/app/finance/transactions` delegates to the same workspace instead of maintaining a LifeTrace-native transaction implementation.
+- Finance pages do not fall back to `finance.*` browser entities when BeeCount is unavailable. Failure is surfaced as a BeeCount availability error.
+- Database-backed Cloud deployments do not mount the legacy LifeTrace finance CRUD routes; the production backend finance surface is BeeCount. Those old routes are retained only in the no-database in-memory protocol test harness so historical repository contract tests remain runnable.
+- LifeTrace continues to own the global web session, AppShell, design system and privacy masking. Those are platform concerns, not an alternate finance store.
+- Existing canonical `finance.*` storage records may still exist internally because the BeeCount compatibility layer maps BeeCount entities into the common PostgreSQL sync log. They are an implementation detail of the BeeCount compatibility service, not a second Web finance data source or user-selectable finance mode.
 
-LifeTrace intentionally replaces the following global concerns:
+The current aggregate adapter remains read-only for Web mutations. This cutover deliberately removes the previous behavior where writes were redirected to a separate LifeTrace-native finance model. Write capability must be added to the BeeCount contract itself; it must never reintroduce a native fallback.
 
-- BeeCount login/authentication → LifeTrace Cloud session
-- BeeCount top-level AppShell/sidebar → LifeTrace AppShell
-- BeeCount theme/profile shell → LifeTrace semantic Design System
-- direct BeeCount API client authentication → `LifeTraceBeeCountAdapter`
+## LifeTrace replacements around the BeeCount port
 
-The current LifeTrace backend BeeCount integration exposes a read-only aggregate snapshot. Therefore BeeCount-backed pages are read-only where the server contract is read-only. Editable finance CRUD is provided by LifeTrace Native finance entities using the existing Cloud sync contract. No fake BeeCount write capability is introduced.
+- BeeCount login shell → LifeTrace authenticated AppShell/session
+- BeeCount global navigation → LifeTrace AppShell
+- BeeCount global theme/profile shell → LifeTrace semantic design system
+- BeeCount API access → `LifeTraceBeeCountAdapter`
+- Amount privacy → LifeTrace global privacy toggle
 
 ## Omitted upstream areas
 
-- BeeCount login and registration pages
+- BeeCount standalone login and registration pages
 - admin-only pages
-- PWA install/badge/intake code
-- BeeCount profile/device settings already owned by LifeTrace
+- PWA install/badge intake code
+- duplicate profile/device settings already owned by LifeTrace
 - direct token/local-storage auth state
 - upstream global shell and navigation
-
-## Local modifications
-
-1. API calls are translated through `LifeTraceBeeCountAdapter`.
-2. Page-level shell is rendered with LifeTrace shadcn-style primitives and semantic tokens.
-3. Amount privacy masking follows the LifeTrace global privacy toggle.
-4. BeeCount source selection can switch to LifeTrace Native without leaving the finance IA.
-5. Import writes only to LifeTrace Native because the BeeCount compatibility endpoint is currently read-only.
 
 ## Sync procedure
 
 When updating BeeCount-derived finance UI:
 
-1. Fetch the latest upstream SHA and read changes under the paths above.
-2. Compare upstream finance IA, filters, entity cards and analytics behavior with `FinanceWorkspace.tsx` and `beecount/adapter.ts`.
-3. Port relevant source changes through the adapter boundary; do not copy upstream auth/AppShell behavior.
-4. Update the SHA in this file and record material local deviations.
-5. Re-run typecheck, unit tests, production build, finance route smoke tests and responsive/theme checks.
-6. Re-check the current upstream license before distribution or commercial use.
+1. Review the latest upstream SHA and the finance section changes.
+2. Compare BeeCount finance IA, filters, entity cards and analytics with `FinanceWorkspace.tsx` and `beecount/adapter.ts`.
+3. Port relevant changes without introducing any `LifeTrace Native` finance fallback.
+4. Update the upstream SHA and material deviations here.
+5. Re-run Web typecheck, unit tests, production build, finance direct-route smoke tests and architecture guards.
+6. Re-check the upstream license before distribution or commercial use.
 
 ## Attribution
 
-BeeCount and BeeCount Cloud remain the work of their original author(s). This port preserves attribution and is not a claim of authorship over the upstream finance client.
+BeeCount and BeeCount Cloud remain the work of their original author(s). This port preserves attribution and does not claim authorship over the upstream finance client.
