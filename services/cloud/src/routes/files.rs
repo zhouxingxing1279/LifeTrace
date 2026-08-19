@@ -91,7 +91,8 @@ impl FileDomain {
                     | "application/vnd.ms-excel"
                     | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
-            Self::NotesAttachment => matches!(
+            Self::NotesAttachment => {
+                let supported_attachment = matches!(
                 mime.as_str(),
                 "application/pdf"
                     | "text/plain"
@@ -108,7 +109,9 @@ impl FileDomain {
                     | "audio/wav"
                     | "audio/ogg"
                     | "audio/webm"
-            ) || is_safe_image_mime(&mime),
+            );
+                supported_attachment || is_safe_image_mime(&mime)
+            }
             Self::EnglishAudio => matches!(
                 mime.as_str(),
                 "audio/mpeg"
