@@ -21,8 +21,12 @@ const VDITOR_I18N = new Proxy<Record<string, string>>({
   },
 });
 
+type DraftMeta = { dirty: boolean; updatedAt: string };
+
 export interface VditorEditorProps {
   value: string;
+  cacheKey: string;
+  cloudSaveRevision: number;
   onChange(value: string): void;
   onSave?(): void;
 }
@@ -35,7 +39,28 @@ function contentTheme(): "dark" | "ant-design" {
   return currentTheme() === "dark" ? "dark" : "ant-design";
 }
 
-export function VditorEditor({ value, onChange, onSave }: VditorEditorProps) {
+function draftMetaKey(cacheKey: string) {
+  return `${cacheKey}:meta`;
+}
+
+function readDraftMeta(cacheKey: string): DraftMeta | null {
+  try {
+    const raw = localStorage.getItem(draftMetaKey(cacheKey));
+    return raw ? JSON.parse(raw) as DraftMeta : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeDraftMeta(cacheKey: string, dirty: boolean) {
+  try {
+    localStorage.setItem(draftMetaKey(cacheKey), JSON.stringify({ dirty, updatedAt: new Date().toISOString() } satisfies DraftMeta));
+  } catch {
+    // Vditor already degrades gracefully when browser storage is unavailable.
+  }
+}
+
+export function VditorEditor({ value, cacheKey, cloudSaveRevision, onChange, onSave }: VditorEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Vditor | null>(null);
   const readyRef = useRef(false);
@@ -61,7 +86,7 @@ export function VditorEditor({ value, onChange, onSave }: VditorEditorProps) {
       lang: "zh_CN",
       i18n: VDITOR_I18N as never,
       cdn: VDITOR_CDN,
-      cache: { enable: false },
+      cache: { id: cacheKey, enable: true },
       theme: currentTheme(),
       typewriterMode: false,
       tab: "    ",
@@ -92,7 +117,9 @@ export function VditorEditor({ value, onChange, onSave }: VditorEditorProps) {
         },
       },
       input(markdown) {
-        if (!disposed) onChangeRef.current(markdown);
+        if (disposed) return;
+        writeDraftMeta(cacheKey, true);
+        onChangeRef.current(markdown);
       },
       keydown(event) {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
@@ -107,8 +134,20 @@ export function VditorEditor({ value, onChange, onSave }: VditorEditorProps) {
           return;
         }
         editorRef.current = editor;
-        const latest = valueRef.current;
-        if (editor.getValue() !== latest) editor.setValue(latest, true);
+        const cloudValue = valueRef.current;
+        const restoredValue = editor.getValue();
+        const draftMeta = readDraftMeta(cacheKey);
+
+        if (restoredValue !== cloudValue) {
+          if (draftMeta?.dirty) {
+            // An interrupted local edit survived a refresh/crash. Promote it
+            // back into React state so the normal autosave path pushes it to Cloud.
+            onChangeRef.current(restoredValue);
+          } else {
+            // A clean cache may simply be older than a newer Cloud revision.
+            editor.setValue(cloudValue, true);
+          }
+        }
       },
     });
 
@@ -126,13 +165,18 @@ export function VditorEditor({ value, onChange, onSave }: VditorEditorProps) {
       editorRef.current = null;
       readyRef.current = false;
     };
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const editor = editorRef.current;
     if (!readyRef.current || !editor) return;
     if (editor.getValue() !== value) editor.setValue(value, true);
   }, [value]);
+
+  useEffect(() => {
+    if (!cloudSaveRevision) return;
+    writeDraftMeta(cacheKey, false);
+  }, [cacheKey, cloudSaveRevision]);
 
   return <div className="lifetrace-vditor min-w-0 overflow-hidden rounded-md border bg-background" ref={hostRef} data-testid="vditor-editor" />;
 }
