@@ -21,6 +21,15 @@ LifeTrace 独立云端后端服务（Rust + Axum + PostgreSQL）。它与桌面�
 | POST | `/api/v1/sync/push` | Bearer / Web Session | 批量提交 |
 | POST | `/api/v1/sync/pull` | Bearer / Web Session | 拉取变更 |
 | POST | `/api/v1/sync/snapshot` | Bearer / Web Session | 全量快照 |
+| GET | `/api/v1/files` | Bearer / Web Session + `files:read` | 查询当前用户文件元数据 |
+| POST | `/api/v1/files` | Bearer / Web Session + `files:write` | 创建/去重元数据并获取短时上传 URL |
+| GET | `/api/v1/files/{id}` | Bearer / Web Session + `files:read` | 查看单个文件元数据 |
+| DELETE | `/api/v1/files/{id}` | Bearer / Web Session + `files:write` | 软删除当前用户文件元数据 |
+| POST | `/api/v1/files/{id}/upload-url` | Bearer / Web Session + `files:write` | 上传失败后重签 PUT URL |
+| POST | `/api/v1/files/{id}/complete` | Bearer / Web Session + `files:write` | 标记上传完成 |
+| POST | `/api/v1/files/{id}/fail` | Bearer / Web Session + `files:write` | 记录上传失败 |
+| POST | `/api/v1/files/{id}/download-url` | Bearer / Web Session + `files:read` | 按需获取短时 GET URL |
+| GET | `/api/v1/files/orphans` | Bearer / Web Session + `files:read` | 查询未关联且长期 pending/failed 的孤立候选 |
 | GET | `/api/v1/privacy/export` | Bearer / Web Session | 导出当前授权范围内的全部用户数据 |
 | GET | `/api/v1/privacy/export/{module}` | Bearer / Web Session | 分模块导出 |
 | GET | `/api/v1/privacy/policy` | Bearer / Web Session | 查看数据保留策略 |
@@ -28,6 +37,35 @@ LifeTrace 独立云端后端服务（Rust + Axum + PostgreSQL）。它与桌面�
 | GET | `/api/v1/integrations/beecount/status` | Bearer / Web Session + `finance:read` | BeeCount 只读适配器状态 |
 | GET | `/api/v1/integrations/beecount/ledgers` | Bearer / Web Session + `finance:read` | BeeCount 账本列表 |
 | GET | `/api/v1/integrations/beecount/ledgers/{ledger_id}/snapshot` | Bearer / Web Session + `finance:read` | 规范化交易、账户、分类、标签与预算快照 |
+
+## EPIC-12 对象存储
+
+长期普通文件使用 `file_objects` 元数据 + S3 兼容对象存储。Cloud 只签发短时 URL，不代理大文件字节；`file.metadata` 继续通过既有 Sync 协议跨端同步，因此 Push/Pull/Snapshot 中不会携带原文件。
+
+生产需要配置：
+
+```text
+FILE_OBJECT_STORAGE_ENDPOINT=https://s3.example.com
+FILE_OBJECT_STORAGE_BUCKET=lifetrace-files
+FILE_OBJECT_STORAGE_REGION=us-east-1
+FILE_OBJECT_STORAGE_ACCESS_KEY_ID=...
+FILE_OBJECT_STORAGE_SECRET_ACCESS_KEY=...
+FILE_OBJECT_STORAGE_PRESIGN_TTL_SECONDS=900
+FILE_MAX_UPLOAD_BYTES=268435456
+```
+
+- endpoint 必须是无额外 path/query/fragment 的 HTTP(S) origin；生产应使用 HTTPS；
+- PUT 签名绑定 `x-amz-checksum-sha256`；客户端必须按返回的 `requiredHeaders` 上传；
+- 允许的领域固定为 `finance_imports`、`notes_attachments`、`english_audio`、`photos`、`workout_imports`、`backups`；
+- MIME 白名单按领域校验；默认单文件上限为 256 MiB，可用 `FILE_MAX_UPLOAD_BYTES` 调整；
+- `photo_staging` 是临时照片中转，不替代长期对象存储；
+- BeeCount compatibility attachment 继续保持原协议边界；
+- 本地加密私密相册严格禁止进入本文件服务。
+
+完整执行与架构说明见：
+
+- `docs/epic-12/execution-plan.md`
+- `docs/epic-12/architecture.md`
 
 ## 运行
 
@@ -80,8 +118,9 @@ EPIC-17 在现有 EPIC-04 认证基础上增加统一 CSP、安全响应头、HS
 
 BeeCount 兼容附件保存在 PostgreSQL `cloud_file_blobs`，随 `cloud_users` 外键级联删除；邮件附件
 的外部 `storage_ref` 仍没有通用对象存储清理 Provider。如果邮件附件存在非空
-`storage_ref`，接口会返回错误而不是虚报账号及外部文件已经删除。引入 S3/OSS 等对象存储
-后，必须先补齐幂等对象删除再放开该门禁。
+`storage_ref`，接口会返回错误而不是虚报账号及外部文件已经删除。EPIC-12 已建立 S3 兼容
+签名传输和 `file_objects` 元数据，但账号注销/GC 的幂等对象物理删除 Provider 仍需在放开
+该门禁前补齐。
 
 完整设计见：
 
