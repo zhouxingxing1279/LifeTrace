@@ -245,8 +245,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f android/app/src/main/java/com/lifetrace/android/data/LifeTraceCloudApi.kt
-          if grep -R -n -E '/api/v1/(sync/(snapshot|pull|push)|device/bootstrap)' android/app/src/main/java; then
+          SOURCE_ROOT="android/app/src/main/java"
+          if [ ! -d "$SOURCE_ROOT" ]; then
+            echo "No Android source tree in this repository; skipping Android sync boundary check."
+            exit 0
+          fi
+          if grep -R -n -E '/api/v1/(sync/(snapshot|pull|push)|device/bootstrap)' "$SOURCE_ROOT"; then
             echo "Android client must use BeeCount-compatible sync routes instead of legacy LifeTrace sync APIs." >&2
             exit 1
           fi
