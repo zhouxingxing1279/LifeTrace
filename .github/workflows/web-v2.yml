@@ -84,7 +84,7 @@ jobs:
             echo 'New Web must not import legacy Web UI.' >&2
             exit 1
           fi
-          if grep -R --line-number -E 'localStorage|indexedDB' src --exclude='*.test.ts'; then
+          if grep -R --line-number -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
             echo 'Business Web source must not persist browser-local state.' >&2
             exit 1
           fi
