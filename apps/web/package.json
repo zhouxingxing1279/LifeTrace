@@ -5,12 +5,12 @@
   "type": "module",
   "engines": { "node": ">=22.13.0" },
   "scripts": {
-    "postinstall": "node scripts/copy-vditor-assets.mjs",
-    "dev": "vite",
+    "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
+    "dev": "npm run prepare:vditor && vite",
     "typecheck": "tsc --noEmit",
     "test": "vitest run src",
     "test:e2e": "playwright test",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run prepare:vditor && tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
