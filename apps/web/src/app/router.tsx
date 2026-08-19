@@ -17,6 +17,7 @@ const FinanceWorkspace = lazy(() => import("../features/finance/FinanceWorkspace
 const AssistantPage = lazy(() => import("../features/assistant/AssistantPage").then((module) => ({ default: module.AssistantPage })));
 const SearchPage = lazy(() => import("../features/search/SearchPage").then((module) => ({ default: module.SearchPage })));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const UiShowcasePage = lazy(() => import("../features/system/UiShowcasePage").then((module) => ({ default: module.UiShowcasePage })));
 
 function PageFallback() {
   return (
@@ -66,6 +67,7 @@ export const router = createBrowserRouter([
       { path: "assistant", element: withSuspense(<AssistantPage />) },
       { path: "search", element: withSuspense(<SearchPage />) },
       { path: "settings/*", element: withSuspense(<SettingsPage />) },
+      { path: "system/ui", element: withSuspense(<UiShowcasePage />) },
       { path: "*", element: <Navigate to="today" replace /> },
     ],
   },
