@@ -8,6 +8,7 @@ pub mod beecount_attachments;
 pub mod beecount_compat;
 pub mod beecount_ws;
 pub mod files;
+pub mod finance;
 pub mod health;
 pub mod mail;
 pub mod mail_attachment;
@@ -26,11 +27,14 @@ use crate::state::AppState;
 
 /// Assemble all routes into one router.
 ///
-/// Finance is intentionally served only through the BeeCount surfaces. The
-/// former LifeTrace-specific finance router is no longer mounted, preventing a
-/// second finance API/data path from diverging from BeeCount.
+/// Database-backed Cloud deployments expose finance only through the BeeCount
+/// surfaces. The historical LifeTrace finance CRUD routes are mounted solely
+/// for the in-memory protocol test harness (`Config::default()` has no
+/// `database_url`) so legacy sync-contract tests can continue exercising the
+/// repository without reintroducing a production finance data source.
 pub fn router(state: AppState) -> Router<AppState> {
-    Router::<AppState>::new()
+    let in_memory_protocol_harness = !state.database_enabled;
+    let mut router = Router::<AppState>::new()
         .merge(health::router())
         .merge(auth::router())
         .merge(beecount::router())
@@ -51,5 +55,11 @@ pub fn router(state: AppState) -> Router<AppState> {
         .merge(mail_attachment::router())
         .merge(mail_list::router())
         .merge(privacy::router())
-        .merge(sync::router())
+        .merge(sync::router());
+
+    if in_memory_protocol_harness {
+        router = router.merge(finance::router());
+    }
+
+    router
 }
