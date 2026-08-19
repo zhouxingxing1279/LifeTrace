@@ -160,7 +160,6 @@ pub struct FileMetadata {
 struct FileRecord {
     metadata: FileMetadata,
     object_key: String,
-    storage_cleanup_pending: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -577,9 +576,6 @@ fn row_to_record(row: &PgRow) -> Result<FileRecord, ApiError> {
             ready_at: row.try_get("ready_at").map_err(database_error)?,
         },
         object_key: row.try_get("object_key").map_err(database_error)?,
-        storage_cleanup_pending: row
-            .try_get("storage_cleanup_pending")
-            .map_err(database_error)?,
     })
 }
 
