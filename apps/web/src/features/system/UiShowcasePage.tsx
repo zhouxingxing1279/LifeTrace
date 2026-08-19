@@ -31,6 +31,7 @@ import {
 } from "../../components/ui";
 
 const chart = [{ day: "一", value: 2 }, { day: "二", value: 4 }, { day: "三", value: 3 }, { day: "四", value: 6 }, { day: "五", value: 5 }, { day: "六", value: 8 }, { day: "日", value: 7 }];
+const showcaseTabs = [{ value: "base", label: "基础组件" }, { value: "overlay", label: "Overlay / Feedback" }] as const;
 
 export function UiShowcasePage() {
   const [tab, setTab] = useState<"base" | "overlay">("base");
@@ -41,7 +42,7 @@ export function UiShowcasePage() {
 
   return <div className="page-shell">
     <PageHeader title="UI Showcase" description="Phase 1 视觉基线：Button、Form、Table、Dialog、Sheet、Navigation、Metric、Chart、Loading 与 Feedback。" />
-    <Tabs value={tab} onValueChange={setTab} items={[{ value: "base", label: "基础组件" }, { value: "overlay", label: "Overlay / Feedback" }]} />
+    <Tabs<"base" | "overlay"> value={tab} onValueChange={setTab} items={showcaseTabs} />
 
     {tab === "base" ? <div className="mt-5 space-y-5">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><MetricCard label="Metric" value="72%" hint="语义 token" /><MetricCard label="Income" value="¥8,240" hint="income color" /><MetricCard label="Expense" value="¥3,120" hint="expense color" /><MetricCard label="Trend" value="+12%" hint="Tremor-style" /></div>
