@@ -104,14 +104,8 @@ pub fn router() -> Router<AppState> {
     Router::<AppState>::new()
         .route("/api/v1/files", get(list).post(prepare))
         .route("/api/v1/files/orphans", get(orphans))
-        .route(
-            "/api/v1/files/{id}",
-            get(metadata).delete(delete_metadata),
-        )
-        .route(
-            "/api/v1/files/{id}/upload-url",
-            post(refresh_upload_url),
-        )
+        .route("/api/v1/files/{id}", get(metadata).delete(delete_metadata))
+        .route("/api/v1/files/{id}/upload-url", post(refresh_upload_url))
         .route("/api/v1/files/{id}/complete", post(mark_complete))
         .route("/api/v1/files/{id}/fail", post(mark_failed))
         .route("/api/v1/files/{id}/download-url", post(download_url))
@@ -420,10 +414,7 @@ fn validate_prepare(input: &mut PrepareRequest) -> Result<(), ApiError> {
         return Err(bad_request("entityType 与 entityId 必须同时提供"));
     }
     if !mime_allowed(&input.domain, &input.mime_type) {
-        return Err(bad_request(format!(
-            "MIME 类型不允许用于 {}",
-            input.domain
-        )));
+        return Err(bad_request(format!("MIME 类型不允许用于 {}", input.domain)));
     }
     if let Some(value) = input.entity_type.as_mut() {
         *value = clean_text(value, 120, "");
