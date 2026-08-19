@@ -26,6 +26,7 @@ permissions:
 jobs:
   quality:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     defaults:
       run:
         working-directory: apps/web
@@ -74,9 +75,24 @@ jobs:
             /app/finance/categories \
             /app/finance/tags \
             /app/finance/import \
-            /app/settings; do
+            /app/settings \
+            /app/system/ui; do
             curl --fail --silent "http://127.0.0.1:4173${route}" | grep -q 'LifeTrace'
           done
+      - name: Install Chromium for browser matrix
+        run: npx playwright install --with-deps chromium
+      - name: Responsive, theme, route and accessibility browser tests
+        run: npm run test:e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-v2-playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Architecture guard
         shell: bash
         run: |
