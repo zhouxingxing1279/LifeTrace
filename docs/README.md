@@ -52,6 +52,10 @@ epic-xx/
 - `docs/phase-2-roadmap.md`：LifeTrace 二期产品与开发路线图；重点将一期已有能力深化为可长期使用的完整业务闭环。
 - `docs/epic-33/README.md`：二期 EPIC-33“英语学习闭环 2.0”的产品范围与规划权威入口。
 
+## Web UI 重构
+
+- `docs/ui/web-redesign.md`：Web 端视觉与交互重构的权威实施方案；以 shadcn/ui 的组件体系、Catalyst 的 Application UI 布局和 Tremor 的数据表达为主要参考，定义 Design System、App Shell、Dashboard、响应式、页面迁移、测试与完成门禁。
+
 ## 部署入口
 
 - `docs/docker-deployment.md`：生产环境全 Docker 镜像发布与升级流程；Cloud、Web/Caddy、Photo Challenge PWA、Worker、数据库迁移和 BeeCount 兼容入口均以此为准。
