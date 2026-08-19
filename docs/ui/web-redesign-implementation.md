@@ -10,7 +10,7 @@ This file tracks execution of `docs/ui/web-redesign.md`. It is not a replacement
 - root `web:*` / `browser:*` scripts: switched to `apps/web`
 - production `deploy/cloud/Dockerfile.web`: switched to `apps/web/dist`
 - Browser Web and Web Container Image workflows: switched to `apps/web`
-- legacy UI: retained only until all final cutover gates are green; then `apps/desktop/web-client` is deleted in the final cutover commit
+- legacy UI: removed after all pre-deletion Web gates were green; production browser UI is now `apps/web`
 
 ## Route / reference / data matrix
 
@@ -91,4 +91,4 @@ The cutover workflows add two additional production gates:
 - `.github/workflows/browser-web.yml`: new Web typecheck/unit/build plus existing Cloud auth/assistant Rust regression and clippy checks.
 - `.github/workflows/web-image.yml`: production Caddy validation, Compose validation and Docker image build using `apps/web/dist`.
 
-The legacy directory is removed only after the latest-head versions of these gates are green. The PR is merged to `main` only after the post-deletion gates are also green.
+The legacy directory was removed only after the latest-head pre-deletion gates were green. The PR is merged to `main` only after the post-deletion gates are also green.
