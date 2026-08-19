@@ -127,8 +127,22 @@ async fn finish_before_start_is_server_authoritative_and_atomic_group_aware() {
     let seed = request(
         "execution-p4-seed",
         vec![
-            change("seed-pre", "execution.task", "pre", 0, task_payload("pre", "前置", "todo"), None),
-            change("seed-next", "execution.task", "next", 0, task_payload("next", "后继", "todo"), None),
+            change(
+                "seed-pre",
+                "execution.task",
+                "pre",
+                0,
+                task_payload("pre", "前置", "todo"),
+                None,
+            ),
+            change(
+                "seed-next",
+                "execution.task",
+                "next",
+                0,
+                task_payload("next", "后继", "todo"),
+                None,
+            ),
             change(
                 "seed-dep",
                 "execution.task_dependency",

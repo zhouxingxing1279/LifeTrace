@@ -34,9 +34,11 @@ pub async fn file_cache_download(
     let root = state.data_dir.join("file-cache");
     let path = download_verified(&root, &url, &sha256, size_bytes).await?;
     let cleanup_root = root.clone();
-    tauri::async_runtime::spawn_blocking(move || cleanup_cache(&cleanup_root, DEFAULT_CACHE_MAX_BYTES))
-        .await
-        .map_err(|error| format!("缓存清理任务失败：{error}"))??;
+    tauri::async_runtime::spawn_blocking(move || {
+        cleanup_cache(&cleanup_root, DEFAULT_CACHE_MAX_BYTES)
+    })
+    .await
+    .map_err(|error| format!("缓存清理任务失败：{error}"))??;
     Ok(path.to_string_lossy().into_owned())
 }
 
@@ -52,9 +54,10 @@ pub async fn file_cache_thumbnail(
         return Err("原文件尚未下载到本地缓存".to_owned());
     }
     let target = thumbnail_path(&root, &sha256);
-    let generated = tauri::async_runtime::spawn_blocking(move || generate_thumbnail(&source, &target))
-        .await
-        .map_err(|error| format!("缩略图任务失败：{error}"))??;
+    let generated =
+        tauri::async_runtime::spawn_blocking(move || generate_thumbnail(&source, &target))
+            .await
+            .map_err(|error| format!("缩略图任务失败：{error}"))??;
     Ok(generated.to_string_lossy().into_owned())
 }
 
@@ -156,7 +159,11 @@ async fn download_verified(
     Ok(target)
 }
 
-async fn verify_file(path: &Path, expected_sha256: &str, expected_size: u64) -> Result<bool, String> {
+async fn verify_file(
+    path: &Path,
+    expected_sha256: &str,
+    expected_size: u64,
+) -> Result<bool, String> {
     let metadata = tokio::fs::metadata(path)
         .await
         .map_err(|error| format!("读取缓存文件信息失败：{error}"))?;
@@ -254,7 +261,8 @@ fn cleanup_cache(root: &Path, max_bytes: u64) -> Result<u64, String> {
 }
 
 fn collect_blob_files(root: &Path, output: &mut Vec<(PathBuf, u64, String)>) -> Result<(), String> {
-    for entry in std::fs::read_dir(root).map_err(|error| format!("读取缓存目录失败：{error}"))? {
+    for entry in std::fs::read_dir(root).map_err(|error| format!("读取缓存目录失败：{error}"))?
+    {
         let entry = entry.map_err(|error| format!("读取缓存项失败：{error}"))?;
         let path = entry.path();
         let metadata = entry
@@ -305,7 +313,8 @@ mod tests {
     use super::*;
 
     fn test_root(name: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("lifetrace-file-cache-{name}-{}", Uuid::new_v4()));
+        let root =
+            std::env::temp_dir().join(format!("lifetrace-file-cache-{name}-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         root
     }

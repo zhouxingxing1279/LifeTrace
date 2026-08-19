@@ -87,8 +87,9 @@ impl ObjectStorageConfig {
         let bucket = bucket.ok_or_else(|| missing("OBJECT_STORAGE_BUCKET"))?;
         let access_key = access_key.ok_or_else(|| missing("OBJECT_STORAGE_ACCESS_KEY"))?;
         let secret_key = secret_key.ok_or_else(|| missing("OBJECT_STORAGE_SECRET_KEY"))?;
-        let endpoint = Url::parse(&endpoint)
-            .map_err(|_| ObjectStorageError::Config("OBJECT_STORAGE_ENDPOINT must be an absolute URL".to_owned()))?;
+        let endpoint = Url::parse(&endpoint).map_err(|_| {
+            ObjectStorageError::Config("OBJECT_STORAGE_ENDPOINT must be an absolute URL".to_owned())
+        })?;
         validate_endpoint(&endpoint)?;
         validate_bucket(&bucket)?;
         if region.len() > 128 || access_key.len() > 256 || secret_key.len() > 1024 {
@@ -182,7 +183,9 @@ impl ObjectStorage {
             .get(reqwest::header::CONTENT_LENGTH)
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.parse::<u64>().ok())
-            .ok_or_else(|| ObjectStorageError::Request("HEAD response has no valid Content-Length".to_owned()))?;
+            .ok_or_else(|| {
+                ObjectStorageError::Request("HEAD response has no valid Content-Length".to_owned())
+            })?;
         let sha256 = header_text(response.headers(), "x-amz-meta-sha256");
         let domain = header_text(response.headers(), "x-amz-meta-lifetrace-domain");
         Ok(Some(ObjectHead {
@@ -222,10 +225,7 @@ impl ObjectStorage {
         let host = endpoint_host(&self.config.endpoint)?;
         let amz_date = now.format("%Y%m%dT%H%M%SZ").to_string();
         let short_date = now.format("%Y%m%d").to_string();
-        let scope = format!(
-            "{short_date}/{}/{SERVICE}/aws4_request",
-            self.config.region
-        );
+        let scope = format!("{short_date}/{}/{SERVICE}/aws4_request", self.config.region);
 
         let mut signed_headers_map = BTreeMap::new();
         signed_headers_map.insert("host".to_owned(), host);
@@ -260,17 +260,12 @@ impl ObjectStorage {
             "{method}\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD"
         );
         let request_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
-        let string_to_sign = format!(
-            "AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{request_hash}"
-        );
+        let string_to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{request_hash}");
         let signing_key = signing_key(&self.config.secret_key, &short_date, &self.config.region)?;
         let signature = hex::encode(hmac(&signing_key, string_to_sign.as_bytes())?);
         let origin = endpoint_origin(&self.config.endpoint)?;
-        let url = format!(
-            "{origin}{canonical_uri}?{canonical_query}&X-Amz-Signature={signature}"
-        );
-        let expires_at = now
-            + chrono::Duration::seconds(self.config.presign_ttl_seconds as i64);
+        let url = format!("{origin}{canonical_uri}?{canonical_query}&X-Amz-Signature={signature}");
+        let expires_at = now + chrono::Duration::seconds(self.config.presign_ttl_seconds as i64);
 
         Ok(PresignedRequest {
             method: method.to_owned(),
@@ -335,7 +330,9 @@ fn validate_object_key(key: &str) -> Result<(), ObjectStorageError> {
         || key.len() > 1024
         || key.starts_with('/')
         || key.contains('\\')
-        || key.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        || key
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
     {
         return Err(ObjectStorageError::InvalidKey(key.to_owned()));
     }
@@ -400,11 +397,7 @@ fn hmac(key: &[u8], value: &[u8]) -> Result<Vec<u8>, ObjectStorageError> {
     Ok(mac.finalize().into_bytes().to_vec())
 }
 
-fn signing_key(
-    secret: &str,
-    date: &str,
-    region: &str,
-) -> Result<Vec<u8>, ObjectStorageError> {
+fn signing_key(secret: &str, date: &str, region: &str) -> Result<Vec<u8>, ObjectStorageError> {
     let first = format!("AWS4{secret}");
     let date_key = hmac(first.as_bytes(), date.as_bytes())?;
     let region_key = hmac(&date_key, region.as_bytes())?;
@@ -448,10 +441,17 @@ mod tests {
             "https://s3.example.test/lifetrace-files/users/u/notes/attachments/a%20b?"
         ));
         assert!(signed.url.contains("X-Amz-Algorithm=AWS4-HMAC-SHA256"));
-        assert!(signed.url.contains("X-Amz-Credential=AKIDEXAMPLE%2F20260819%2Fap-southeast-1%2Fs3%2Faws4_request"));
-        assert!(signed.url.contains("X-Amz-SignedHeaders=host%3Bx-amz-meta-sha256"));
+        assert!(signed.url.contains(
+            "X-Amz-Credential=AKIDEXAMPLE%2F20260819%2Fap-southeast-1%2Fs3%2Faws4_request"
+        ));
+        assert!(signed
+            .url
+            .contains("X-Amz-SignedHeaders=host%3Bx-amz-meta-sha256"));
         assert_eq!(signed.method, "PUT");
-        assert_eq!(signed.headers.get("x-amz-meta-sha256"), Some(&"a".repeat(64)));
+        assert_eq!(
+            signed.headers.get("x-amz-meta-sha256"),
+            Some(&"a".repeat(64))
+        );
     }
 
     #[test]

@@ -91,29 +91,32 @@ impl FileDomain {
                     | "application/vnd.ms-excel"
                     | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             ),
-            Self::NotesAttachment => {
-                matches!(
-                    mime.as_str(),
-                    "application/pdf"
-                        | "text/plain"
-                        | "text/markdown"
-                        | "application/json"
-                        | "application/msword"
-                        | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        | "application/vnd.ms-excel"
-                        | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        | "application/vnd.ms-powerpoint"
-                        | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-                        | "audio/mpeg"
-                        | "audio/mp4"
-                        | "audio/wav"
-                        | "audio/ogg"
-                        | "audio/webm"
-                ) || is_safe_image_mime(&mime)
-            }
+            Self::NotesAttachment => matches!(
+                mime.as_str(),
+                "application/pdf"
+                    | "text/plain"
+                    | "text/markdown"
+                    | "application/json"
+                    | "application/msword"
+                    | "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    | "application/vnd.ms-excel"
+                    | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    | "application/vnd.ms-powerpoint"
+                    | "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                    | "audio/mpeg"
+                    | "audio/mp4"
+                    | "audio/wav"
+                    | "audio/ogg"
+                    | "audio/webm"
+            ) || is_safe_image_mime(&mime),
             Self::EnglishAudio => matches!(
                 mime.as_str(),
-                "audio/mpeg" | "audio/mp4" | "audio/wav" | "audio/x-wav" | "audio/ogg" | "audio/webm"
+                "audio/mpeg"
+                    | "audio/mp4"
+                    | "audio/wav"
+                    | "audio/x-wav"
+                    | "audio/ogg"
+                    | "audio/webm"
             ),
             Self::Photo => is_safe_image_mime(&mime),
             Self::WorkoutImport => {
@@ -228,7 +231,10 @@ async fn list_files(
         .transpose()?
         .map(|value| value.as_str().to_owned());
     let status = query.status.as_deref().map(validate_status).transpose()?;
-    let limit = query.limit.unwrap_or(DEFAULT_LIST_LIMIT).clamp(1, MAX_LIST_LIMIT);
+    let limit = query
+        .limit
+        .unwrap_or(DEFAULT_LIST_LIMIT)
+        .clamp(1, MAX_LIST_LIMIT);
     let rows = sqlx::query(
         "SELECT id,domain,original_name,sha256,size_bytes,mime_type,status,upload_attempts,object_key,storage_cleanup_pending,created_at,updated_at,ready_at \
          FROM cloud_file_objects \
@@ -325,7 +331,11 @@ async fn initialize_upload(
     } else {
         Some(
             storage
-                .presign_upload(&record.object_key, &record.metadata.sha256, &record.metadata.domain)
+                .presign_upload(
+                    &record.object_key,
+                    &record.metadata.sha256,
+                    &record.metadata.domain,
+                )
                 .map_err(storage_error)?,
         )
     };
@@ -350,7 +360,10 @@ async fn complete_upload(
     if record.metadata.status == "deleted" {
         return Err(not_found());
     }
-    let head = storage.head_object(&record.object_key).await.map_err(storage_error)?;
+    let head = storage
+        .head_object(&record.object_key)
+        .await
+        .map_err(storage_error)?;
     let Some(head) = head else {
         mark_failed(&state, id, "object is missing after upload").await?;
         return Err(conflict("uploaded object was not found"));
@@ -359,8 +372,15 @@ async fn complete_upload(
         && head.sha256.as_deref() == Some(record.metadata.sha256.as_str())
         && head.domain.as_deref() == Some(record.metadata.domain.as_str());
     if !valid {
-        mark_failed(&state, id, "object HEAD metadata does not match file declaration").await?;
-        return Err(conflict("uploaded object integrity metadata does not match"));
+        mark_failed(
+            &state,
+            id,
+            "object HEAD metadata does not match file declaration",
+        )
+        .await?;
+        return Err(conflict(
+            "uploaded object integrity metadata does not match",
+        ));
     }
     let row = sqlx::query(
         "UPDATE cloud_file_objects SET status='ready',ready_at=COALESCE(ready_at,now()),updated_at=now(),last_error=NULL \
@@ -479,7 +499,12 @@ async fn diagnostics(
     let mut missing_ready = Vec::new();
     for row in &ready_rows {
         let record = row_to_record(row)?;
-        if storage.head_object(&record.object_key).await.map_err(storage_error)?.is_none() {
+        if storage
+            .head_object(&record.object_key)
+            .await
+            .map_err(storage_error)?
+            .is_none()
+        {
             missing_ready.push(record.metadata);
         }
     }
@@ -593,7 +618,9 @@ fn normalize_sha256(value: &str) -> Result<String, ApiError> {
     if normalized.len() == 64 && normalized.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         Ok(normalized)
     } else {
-        Err(bad_request("sha256 must be exactly 64 hexadecimal characters"))
+        Err(bad_request(
+            "sha256 must be exactly 64 hexadecimal characters",
+        ))
     }
 }
 
