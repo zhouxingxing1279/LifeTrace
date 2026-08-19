@@ -4,14 +4,10 @@ import { useApp } from "../../app/AppContext";
 import { Button, EmptyState, Input, PageHeader, cn } from "../../components/ui";
 import { entities, text } from "../../lib/entities";
 import { createNote, type JsonEntity } from "../../services/core";
-import { MarkdownEditor, type MarkdownEditorMode } from "./MarkdownEditor";
-import { markdownSummary } from "./markdown";
+import { markdownSummary, plainTextFromMarkdown } from "./markdown";
+import { VditorEditor } from "./VditorEditor";
 
 type SaveState = "saved" | "saving" | "dirty" | "error";
-
-function escapeHtml(value: string): string {
-  return value.replace(/[&<>]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[character] ?? character));
-}
 
 function noteMarkdown(note: JsonEntity): string {
   return text(note, "contentMarkdown", text(note, "contentText"));
@@ -19,15 +15,15 @@ function noteMarkdown(note: JsonEntity): string {
 
 function notePayload(note: JsonEntity, title: string, markdown: string): JsonEntity {
   const normalizedTitle = title.trim();
-  const summary = markdownSummary(markdown);
+  const plainText = plainTextFromMarkdown(markdown);
   return {
     ...note,
     title: normalizedTitle || null,
-    contentText: markdown,
+    contentText: plainText,
     contentMarkdown: markdown,
-    contentHtml: markdown.trim() ? `<p>${escapeHtml(markdown).replace(/\n/g, "<br>")}</p>` : "",
-    contentJson: { type: "markdown", source: markdown },
-    summary,
+    contentHtml: "",
+    contentJson: { type: "markdown", source: markdown, editor: "vditor" },
+    summary: plainText.slice(0, 160),
   };
 }
 
@@ -43,7 +39,6 @@ export function NotesPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
-  const [editorMode, setEditorMode] = useState<MarkdownEditorMode>("edit");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [mobileEditing, setMobileEditing] = useState(false);
   const autosaveRef = useRef<number | null>(null);
@@ -117,7 +112,6 @@ export function NotesPage() {
     const note = createNote(session.user.id, session.session.deviceId, "新笔记", "# 新笔记\n\n");
     await upsert("note.note", note);
     setSelectedId(note.meta.id);
-    setEditorMode("edit");
     setMobileEditing(true);
   }
 
@@ -142,13 +136,13 @@ export function NotesPage() {
   return <div className="page-shell">
     <PageHeader
       title="笔记"
-      description="Markdown 笔记工作区：工具栏、编辑/分屏/预览、列表续写、快捷键与云端自动保存。"
+      description="Vditor Markdown 工作区：即时渲染、所见即所得、分屏预览、大纲、表格、代码与云端自动保存。"
       action={<Button onClick={() => void newNote()}><Plus size={16}/>新建笔记</Button>}
     />
-    <div className="grid min-h-[680px] overflow-hidden rounded-lg border bg-card lg:grid-cols-[320px_minmax(0,1fr)]">
+    <div className="grid min-h-[700px] overflow-hidden rounded-lg border bg-card lg:grid-cols-[320px_minmax(0,1fr)]">
       <aside className={cn("border-b lg:block lg:border-b-0 lg:border-r", mobileEditing && "hidden lg:block")}>
         <div className="flex items-center gap-2 border-b p-3"><Search size={15} className="text-muted-foreground"/><Input className="h-9 border-0 bg-muted/55 focus:ring-0" placeholder="搜索标题或 Markdown 正文" value={query} onChange={(event) => setQuery(event.target.value)}/></div>
-        <div className="scrollbar-thin max-h-[620px] overflow-y-auto p-2">
+        <div className="scrollbar-thin max-h-[640px] overflow-y-auto p-2">
           {filtered.length ? filtered.map((note) => <button key={note.meta.id} onClick={() => void selectNote(note.meta.id)} className={cn("mb-1 w-full rounded-md px-3 py-2.5 text-left", selectedId === note.meta.id ? "bg-accent" : "hover:bg-muted")}>
             <div className="truncate text-sm font-medium">{text(note, "title", "无标题")}</div>
             <div className="mt-1 line-clamp-2 text-xs leading-5 text-muted-foreground">{text(note, "summary", markdownSummary(noteMarkdown(note)) || "空笔记")}</div>
@@ -165,11 +159,9 @@ export function NotesPage() {
             <Button variant="outline" size="icon" aria-label="保存笔记" onClick={() => void save().catch(() => undefined)}><Save size={15}/></Button>
             <Button variant="ghost" size="icon" aria-label="删除笔记" onClick={() => void deleteSelected()}><Trash2 size={15}/></Button>
           </div>
-          <MarkdownEditor
+          <VditorEditor
             value={content}
             onChange={(next) => { setContent(next); setSaveState("dirty"); }}
-            mode={editorMode}
-            onModeChange={setEditorMode}
             onSave={() => void save().catch(() => undefined)}
           />
         </> : <EmptyState title="选择一篇笔记" description="从列表选择，或创建新的 Markdown 笔记。"/>}
