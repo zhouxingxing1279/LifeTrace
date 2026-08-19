@@ -1,0 +1,68 @@
+name: EPIC-12 privacy fix once
+
+on:
+  push:
+    branches:
+      - agent/epic12-file-storage
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic12-file-storage
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Enforce EPIC-12 account deletion boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('services/cloud/src/routes/privacy.rs')
+          text = path.read_text()
+          old_policy = '        "fileObjects": "the current cloud service stores metadata only; any non-null external storage reference blocks account deletion until an object cleanup provider is configured",'
+          new_policy = '        "fileObjects": "EPIC-12 ordinary file bytes use private object storage; account deletion is blocked until active file objects and pending storage cleanup have been cleared through the file lifecycle API",'
+          if old_policy not in text:
+              raise SystemExit('privacy policy marker missing')
+          text = text.replace(old_policy, new_policy, 1)
+
+          old_comment = '''    // The current server has no object-byte store. If a mail attachment already
+    // points at external storage, fail closed instead of claiming the object was
+    // erased when no cleanup provider is available.
+    let has_external_objects: bool = sqlx::query_scalar(
+        "SELECT EXISTS(SELECT 1 FROM mail_attachments WHERE user_id=$1 AND storage_ref IS NOT NULL)",
+    )'''
+          new_comment = '''    // External-object deletion is not transactional with PostgreSQL. Fail closed
+    // until callers clear EPIC-12 objects through the retryable file lifecycle API;
+    // keep the existing EPIC-27 mail storage_ref guard for its separate provider.
+    let has_external_objects: bool = sqlx::query_scalar(
+        "SELECT \\
+         EXISTS(SELECT 1 FROM mail_attachments WHERE user_id=$1 AND storage_ref IS NOT NULL) \\
+         OR EXISTS(SELECT 1 FROM cloud_file_objects WHERE user_id=$1 AND (deleted_at IS NULL OR storage_cleanup_pending=TRUE))",
+    )'''
+          if old_comment not in text:
+              raise SystemExit('account deletion guard marker missing')
+          text = text.replace(old_comment, new_comment, 1)
+          text = text.replace(
+              '"external file objects must be deleted before account deletion can complete",',
+              '"file objects and pending object-storage cleanup must be cleared before account deletion can complete",',
+              1,
+          )
+          path.write_text(text)
+          PY
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          rm .github/workflows/epic12-privacy-fix-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(epic12): protect account deletion lifecycle'
+          git push origin HEAD:agent/epic12-file-storage
