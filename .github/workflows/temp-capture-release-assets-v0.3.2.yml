@@ -1,0 +1,46 @@
+name: Temporary Verify Desktop v0.3.2 Release Assets
+
+on:
+  push:
+    branches:
+      - ops/dispatch-desktop-v0.3.2
+
+permissions:
+  contents: write
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/dispatch-desktop-v0.3.2
+          fetch-depth: 0
+
+      - name: Read published release metadata
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view v0.3.2 \
+            --repo zhouxingxing1279/LifeTrace-Releases \
+            --json name,tagName,publishedAt,isDraft,isPrerelease,url,assets \
+            > .release-v0.3.2-assets.json
+          jq -e '.tagName == "v0.3.2" and (.isDraft | not) and (.isPrerelease | not)' .release-v0.3.2-assets.json >/dev/null
+          jq -e '[.assets[].name] | index("LifeTrace_0.3.2_x64-setup.exe") != null' .release-v0.3.2-assets.json >/dev/null
+          jq -e '[.assets[].name] | index("LifeTrace_0.3.2_x64-setup.exe.sig") != null' .release-v0.3.2-assets.json >/dev/null
+          jq -e '[.assets[].name] | index("latest.json") != null' .release-v0.3.2-assets.json >/dev/null
+          jq -e '[.assets[].name] | index("latest.cn.json") != null' .release-v0.3.2-assets.json >/dev/null
+          cat .release-v0.3.2-assets.json
+
+      - name: Commit verification snapshot and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-capture-release-assets-v0.3.2.yml
+          git add .release-v0.3.2-assets.json
+          git commit -m "chore(release): record v0.3.2 published assets"
+          git push origin HEAD:ops/dispatch-desktop-v0.3.2
