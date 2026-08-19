@@ -104,8 +104,14 @@ pub fn router() -> Router<AppState> {
     Router::<AppState>::new()
         .route("/api/v1/files", get(list).post(prepare))
         .route("/api/v1/files/orphans", get(orphans))
-        .route("/api/v1/files/{id}", get(metadata).delete(delete_metadata))
-        .route("/api/v1/files/{id}/upload-url", post(refresh_upload_url))
+        .route(
+            "/api/v1/files/{id}",
+            get(metadata).delete(delete_metadata),
+        )
+        .route(
+            "/api/v1/files/{id}/upload-url",
+            post(refresh_upload_url),
+        )
         .route("/api/v1/files/{id}/complete", post(mark_complete))
         .route("/api/v1/files/{id}/fail", post(mark_failed))
         .route("/api/v1/files/{id}/download-url", post(download_url))
@@ -138,9 +144,20 @@ async fn prepare(
             None
         } else {
             let key: String = row.try_get("storage_key").map_err(database_error)?;
-            Some(signed_transfer(storage.presign_put(&key, &file.sha256, Utc::now()).map_err(storage_error)?))
+            Some(signed_transfer(
+                storage
+                    .presign_put(&key, &file.sha256, Utc::now())
+                    .map_err(storage_error)?,
+            ))
         };
-        return Ok((StatusCode::OK, Json(PrepareResponse { file, deduplicated: true, upload })));
+        return Ok((
+            StatusCode::OK,
+            Json(PrepareResponse {
+                file,
+                deduplicated: true,
+                upload,
+            }),
+        ));
     }
 
     let id = Uuid::new_v4();
@@ -212,7 +229,9 @@ async fn list(
     .fetch_all(&state.pool)
     .await
     .map_err(database_error)?;
-    Ok(Json(FileList { items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()? }))
+    Ok(Json(FileList {
+        items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()?,
+    }))
 }
 
 async fn metadata(
@@ -243,7 +262,9 @@ async fn refresh_upload_url(
         .execute(&state.pool)
         .await
         .map_err(database_error)?;
-    let signed = storage_config()?.presign_put(&key, &sha256, Utc::now()).map_err(storage_error)?;
+    let signed = storage_config()?
+        .presign_put(&key, &sha256, Utc::now())
+        .map_err(storage_error)?;
     Ok(Json(signed_transfer(signed)))
 }
 
@@ -277,8 +298,15 @@ async fn mark_failed(
     principal.require_scope("files:write")?;
     let owner = user_uuid(&principal.user_id)?;
     ensure_database(&state)?;
-    let reason = input.reason.unwrap_or_else(|| "client upload failed".to_owned());
-    let reason: String = reason.trim().chars().filter(|c| !c.is_control()).take(300).collect();
+    let reason = input
+        .reason
+        .unwrap_or_else(|| "client upload failed".to_owned());
+    let reason: String = reason
+        .trim()
+        .chars()
+        .filter(|c| !c.is_control())
+        .take(300)
+        .collect();
     let row = sqlx::query(
         "UPDATE file_objects SET status='failed', failure_reason=$3, updated_at=now() \
          WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING *",
@@ -305,7 +333,9 @@ async fn download_url(
         return Err(bad_request("文件尚未完成上传"));
     }
     let key: String = row.try_get("storage_key").map_err(database_error)?;
-    let signed = storage_config()?.presign_get(&key, Utc::now()).map_err(storage_error)?;
+    let signed = storage_config()?
+        .presign_get(&key, Utc::now())
+        .map_err(storage_error)?;
     Ok(Json(signed_transfer(signed)))
 }
 
@@ -350,7 +380,9 @@ async fn orphans(
     .fetch_all(&state.pool)
     .await
     .map_err(database_error)?;
-    Ok(Json(FileList { items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()? }))
+    Ok(Json(FileList {
+        items: rows.iter().map(row_to_metadata).collect::<Result<_, _>>()?,
+    }))
 }
 
 async fn owned_row(
@@ -372,9 +404,13 @@ async fn owned_row(
 fn validate_prepare(input: &mut PrepareRequest) -> Result<(), ApiError> {
     validate_domain(&input.domain)?;
     input.original_name = clean_text(&input.original_name, 180, "file");
-    input.mime_type = clean_text(&input.mime_type, 120, "application/octet-stream").to_ascii_lowercase();
+    input.mime_type =
+        clean_text(&input.mime_type, 120, "application/octet-stream").to_ascii_lowercase();
     if input.size_bytes <= 0 || input.size_bytes > max_file_bytes() {
-        return Err(bad_request(format!("文件大小必须在 1..={} bytes", max_file_bytes())));
+        return Err(bad_request(format!(
+            "文件大小必须在 1..={} bytes",
+            max_file_bytes()
+        )));
     }
     input.sha256 = input.sha256.trim().to_ascii_lowercase();
     if input.sha256.len() != 64 || !input.sha256.bytes().all(|b| b.is_ascii_hexdigit()) {
@@ -384,7 +420,10 @@ fn validate_prepare(input: &mut PrepareRequest) -> Result<(), ApiError> {
         return Err(bad_request("entityType 与 entityId 必须同时提供"));
     }
     if !mime_allowed(&input.domain, &input.mime_type) {
-        return Err(bad_request(format!("MIME 类型不允许用于 {}", input.domain)));
+        return Err(bad_request(format!(
+            "MIME 类型不允许用于 {}",
+            input.domain
+        )));
     }
     if let Some(value) = input.entity_type.as_mut() {
         *value = clean_text(value, 120, "");
@@ -405,12 +444,34 @@ fn validate_domain(domain: &str) -> Result<(), ApiError> {
 
 fn mime_allowed(domain: &str, mime: &str) -> bool {
     match domain {
-        "finance_imports" => matches!(mime, "text/csv" | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" | "application/vnd.ms-excel"),
-        "notes_attachments" => mime.starts_with("image/") || mime.starts_with("audio/") || mime.starts_with("video/") || matches!(mime, "application/pdf" | "text/plain" | "text/markdown" | "application/zip"),
+        "finance_imports" => matches!(
+            mime,
+            "text/csv"
+                | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                | "application/vnd.ms-excel"
+        ),
+        "notes_attachments" => {
+            mime.starts_with("image/")
+                || mime.starts_with("audio/")
+                || mime.starts_with("video/")
+                || matches!(
+                    mime,
+                    "application/pdf" | "text/plain" | "text/markdown" | "application/zip"
+                )
+        }
         "english_audio" => mime.starts_with("audio/"),
         "photos" => mime.starts_with("image/") || mime.starts_with("video/"),
-        "workout_imports" => mime.starts_with("image/") || matches!(mime, "application/pdf" | "text/html" | "text/plain"),
-        "backups" => matches!(mime, "application/zip" | "application/gzip" | "application/json" | "application/octet-stream"),
+        "workout_imports" => {
+            mime.starts_with("image/")
+                || matches!(mime, "application/pdf" | "text/html" | "text/plain")
+        }
+        "backups" => matches!(
+            mime,
+            "application/zip"
+                | "application/gzip"
+                | "application/json"
+                | "application/octet-stream"
+        ),
         _ => false,
     }
 }
@@ -437,7 +498,10 @@ fn signed_transfer(value: PresignedRequest) -> SignedTransfer {
 
 fn row_to_metadata(row: &sqlx::postgres::PgRow) -> Result<FileMetadata, ApiError> {
     Ok(FileMetadata {
-        id: row.try_get::<Uuid, _>("id").map_err(database_error)?.to_string(),
+        id: row
+            .try_get::<Uuid, _>("id")
+            .map_err(database_error)?
+            .to_string(),
         domain: row.try_get("domain").map_err(database_error)?,
         original_name: row.try_get("original_name").map_err(database_error)?,
         mime_type: row.try_get("mime_type").map_err(database_error)?,
@@ -458,7 +522,11 @@ fn ensure_database(state: &AppState) -> Result<(), ApiError> {
     if state.database_enabled {
         Ok(())
     } else {
-        Err(ApiError::new(ErrorCode::TemporarilyUnavailable, "文件服务需要 PostgreSQL", StatusCode::SERVICE_UNAVAILABLE))
+        Err(ApiError::new(
+            ErrorCode::TemporarilyUnavailable,
+            "文件服务需要 PostgreSQL",
+            StatusCode::SERVICE_UNAVAILABLE,
+        ))
     }
 }
 
@@ -467,8 +535,17 @@ fn user_uuid(user_id: &UserId) -> Result<Uuid, ApiError> {
 }
 
 fn clean_text(value: &str, max: usize, fallback: &str) -> String {
-    let value: String = value.trim().chars().filter(|character| !character.is_control()).take(max).collect();
-    if value.is_empty() { fallback.to_owned() } else { value }
+    let value: String = value
+        .trim()
+        .chars()
+        .filter(|character| !character.is_control())
+        .take(max)
+        .collect();
+    if value.is_empty() {
+        fallback.to_owned()
+    } else {
+        value
+    }
 }
 
 fn bad_request(message: impl Into<String>) -> ApiError {
@@ -476,15 +553,27 @@ fn bad_request(message: impl Into<String>) -> ApiError {
 }
 
 fn not_found() -> ApiError {
-    ApiError::new(ErrorCode::InvalidRequest, "文件不存在", StatusCode::NOT_FOUND)
+    ApiError::new(
+        ErrorCode::InvalidRequest,
+        "文件不存在",
+        StatusCode::NOT_FOUND,
+    )
 }
 
 fn database_error(error: sqlx::Error) -> ApiError {
-    ApiError::new(ErrorCode::TemporarilyUnavailable, format!("文件数据库操作失败: {error}"), StatusCode::SERVICE_UNAVAILABLE)
+    ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        format!("文件数据库操作失败: {error}"),
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
 }
 
 fn storage_error(message: impl Into<String>) -> ApiError {
-    ApiError::new(ErrorCode::TemporarilyUnavailable, message, StatusCode::SERVICE_UNAVAILABLE)
+    ApiError::new(
+        ErrorCode::TemporarilyUnavailable,
+        message,
+        StatusCode::SERVICE_UNAVAILABLE,
+    )
 }
 
 #[cfg(test)]
