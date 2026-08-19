@@ -7,6 +7,7 @@ pub mod beecount_account;
 pub mod beecount_attachments;
 pub mod beecount_compat;
 pub mod beecount_ws;
+pub mod files;
 pub mod finance;
 pub mod health;
 pub mod mail;
@@ -39,6 +40,7 @@ pub fn router(state: AppState) -> Router<AppState> {
         .merge(web_auth::router())
         .merge(assistant::router())
         .merge(meta::router())
+        .merge(files::router())
         .merge(photo_staging::router())
         .merge(photo_challenge::router())
         .merge(photo_challenge_desktop::router())

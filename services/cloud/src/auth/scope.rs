@@ -59,6 +59,8 @@ pub fn allowed_scopes(app_id: &str) -> BTreeSet<String> {
             "sync:write",
             "finance:read",
             "finance:write",
+            "files:read",
+            "files:write",
         ],
         AppId::NOTES_ANDROID => &[
             "account:read",
@@ -77,6 +79,8 @@ pub fn allowed_scopes(app_id: &str) -> BTreeSet<String> {
             "sync:write",
             "english:read",
             "english:write",
+            "files:read",
+            "files:write",
         ],
         AppId::HABITS_ANDROID => &[
             "account:read",
@@ -205,6 +209,30 @@ mod tests {
             &granted,
         );
         assert_eq!(issued, vec!["finance:read"]);
+    }
+
+    #[test]
+    fn epic12_file_scopes_are_available_to_file_using_apps() {
+        for app_id in [
+            AppId::DESKTOP,
+            AppId::FINANCE_ANDROID,
+            AppId::NOTES_ANDROID,
+            AppId::ENGLISH_ANDROID,
+            AppId::BEECOUNT,
+            AppId::WEB,
+        ] {
+            let granted = allowed_scopes(app_id);
+            assert!(granted.contains("files:read"), "{app_id}");
+            assert!(granted.contains("files:write"), "{app_id}");
+        }
+        assert_eq!(
+            required_entity_scope("file.metadata", false),
+            Some("files:read")
+        );
+        assert_eq!(
+            required_entity_scope("file.metadata", true),
+            Some("files:write")
+        );
     }
 
     #[test]
