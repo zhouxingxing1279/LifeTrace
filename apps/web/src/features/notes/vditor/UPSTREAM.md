@@ -18,7 +18,10 @@ The Vditor integration intentionally configures:
 - Vditor's built-in edit-mode switch so users can move between instant rendering, WYSIWYG and split-view editing.
 - GFM/CommonMark-oriented features including tables, task lists, fenced code, links, footnotes and automatic links.
 - code highlighting, math rendering, outline, preview and fullscreen tools.
-- `cache.enable: false`. LifeTrace Web does not allow note content to be persisted through Vditor localStorage; note persistence is owned by LifeTrace Cloud autosave.
+- note-scoped Vditor `localStorage` cache. The cache is a crash/offline draft safety layer only; LifeTrace Cloud remains the authoritative persistence and synchronization destination.
+- a user + note scoped cache key to avoid collisions across notes or accounts on the same browser.
+- recovery reconciliation: a locally cached dirty draft is restored into React state and goes through the normal Cloud autosave path; a clean/stale cache never overrides a newer Cloud value.
+- successful Cloud saves mark the local draft clean, so future Cloud revisions can safely win over stale cached content.
 - a pinned Vditor CDN version (`3.11.3`) for Vditor's runtime Lute/icon/theme assets, matching the npm dependency version.
 - LifeTrace light/dark theme synchronization through Vditor `setTheme`.
 
