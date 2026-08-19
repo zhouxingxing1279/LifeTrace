@@ -5,11 +5,12 @@
   "type": "module",
   "engines": { "node": ">=22.13.0" },
   "scripts": {
-    "dev": "vite",
+    "prepare:vditor": "node scripts/copy-vditor-assets.mjs",
+    "dev": "npm run prepare:vditor && vite",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run src",
     "test:e2e": "playwright test",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run prepare:vditor && tsc --noEmit && vite build",
     "preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
@@ -26,6 +27,7 @@
     "react-router-dom": "^7.14.1",
     "recharts": "^3.8.1",
     "tailwind-merge": "^2.6.0",
+    "vditor": "3.11.3",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
