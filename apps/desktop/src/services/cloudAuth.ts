@@ -62,7 +62,7 @@ type NativeCloudAuthResponse = {
 };
 
 const APP_ID = "lifetrace-desktop";
-const CLIENT_VERSION = "0.3.1";
+const CLIENT_VERSION = "0.3.2";
 const DEVICE_KEY = "lifetrace-cloud-device-id";
 const CLOUD_ORIGIN_KEY = "lifetrace-cloud-origin";
 
