@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AppShell as CloudAppShell } from "@/web-client/src/components/AppShell";
 import { RouteView } from "@/web-client/src/components/RouteView";
 import {
   AuthApi,
@@ -8,11 +7,12 @@ import {
   EMPTY_CLOUD_STATE,
   setCloudFetchOverride,
   type CloudState,
-  type FetchLike,
   type WebSession,
 } from "@/web-client/src/core";
 import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
 import { entities, text } from "@/web-client/src/ui";
+import DesktopLocalToolsCenter from "@/src/components/DesktopLocalToolsCenter";
+import DesktopWorkbenchShell from "@/src/components/DesktopWorkbenchShell";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
 import { setAppThemePreference } from "@/src/services/appPreferences";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
@@ -30,9 +30,6 @@ function requestHeaders(request: Request | undefined, init: RequestInit): Header
 }
 
 function desktopApiPath(path: string): string {
-  // Browser-only management/assistant endpoints use an HttpOnly cookie and
-  // CSRF. The native API exposes equivalent contracts behind the desktop
-  // Bearer session, so reuse those routes instead of weakening Web security.
   if (path === "/api/v1/photo-challenge/admin") {
     return "/api/v1/photo-challenge/desktop-admin";
   }
@@ -98,9 +95,6 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
   return response;
 }
 
-// This module is bundled only by the Tauri entrypoint. Install the transport
-// once at module load so React StrictMode remounts cannot clear it between the
-// shared child pages' effects. The browser bundle never imports this module.
 setCloudFetchOverride(desktopCloudFetch);
 
 function syncLocalReplica(): void {
@@ -121,6 +115,7 @@ export default function DesktopCloudWorkspace() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [privacy, setPrivacy] = useState(false);
+  const [localToolsOpen, setLocalToolsOpen] = useState(false);
   const storeRef = useRef<CloudDataStore | null>(null);
   const auth = useMemo(() => new AuthApi(desktopCloudFetch), []);
 
@@ -148,8 +143,12 @@ export default function DesktopCloudWorkspace() {
   useEffect(() => {
     const routeChanged = () => {
       setRoute(currentRoute());
+      setLocalToolsOpen(false);
       const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+      document.querySelector<HTMLElement>(".lt-desk-content")?.scrollTo({
+        top: 0,
+        behavior: reduceMotion ? "auto" : "smooth",
+      });
     };
     const wentOnline = () => setNetworkOnline(true);
     const wentOffline = () => setNetworkOnline(false);
@@ -233,30 +232,45 @@ export default function DesktopCloudWorkspace() {
     }
   }, []);
 
+  const navigateWorkspace = useCallback((next: Route) => {
+    setLocalToolsOpen(false);
+    navigate(next);
+  }, []);
+
   if (!session) {
     return <div className="hx-loading"><span>LT</span><p>正在恢复桌面云会话…</p></div>;
   }
 
-  return <CloudAppShell
-    route={route}
-    session={session}
-    online={networkOnline}
-    loading={loading}
-    privacy={privacy}
-    error={error}
-    conflictCount={state.conflicts.length}
-    onRefresh={() => void refresh()}
-    onTogglePrivacy={() => setPrivacy((value) => !value)}
-    onLogout={() => void logout().finally(() => navigate("/"))}
-  >
-    <RouteView
+  return (
+    <DesktopWorkbenchShell
       route={route}
-      auth={auth}
-      session={session}
-      state={state}
-      privacy={privacy}
+      titleOverride={localToolsOpen ? "本机工具" : undefined}
+      descriptionOverride={localToolsOpen ? "SQLite、照片、文件导入与其他仅桌面端提供的本机能力。" : undefined}
+      userLabel={session.user.displayName || session.user.email}
       online={networkOnline}
-      run={run}
-    />
-  </CloudAppShell>;
+      loading={loading}
+      privacy={privacy}
+      error={error}
+      conflictCount={state.conflicts.length}
+      onNavigate={navigateWorkspace}
+      onRefresh={() => void refresh()}
+      onTogglePrivacy={() => setPrivacy((value) => !value)}
+      onLogout={() => void logout().finally(() => navigate("/"))}
+      onOpenLocalTools={() => setLocalToolsOpen(true)}
+    >
+      {localToolsOpen ? (
+        <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} />
+      ) : (
+        <RouteView
+          route={route}
+          auth={auth}
+          session={session}
+          state={state}
+          privacy={privacy}
+          online={networkOnline}
+          run={run}
+        />
+      )}
+    </DesktopWorkbenchShell>
+  );
 }

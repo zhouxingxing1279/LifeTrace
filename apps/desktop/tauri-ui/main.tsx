@@ -10,7 +10,7 @@ import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumen
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
-import { fitWindowToWorkArea } from "./windowFit";
+import { installWindowPlacementPersistence, restoreWindowPlacement } from "./windowState";
 
 /* Shared browser workspaces are also rendered inside Tauri. Load their visual
  * contract first, then let native/local styles keep authority over local tools. */
@@ -49,6 +49,7 @@ import "@/app/module-layout-overrides.css";
 import "@/app/apple-polish.css";
 import "@/app/interaction-performance.css";
 import "@/app/desktop-cloud-workspace.css";
+import "@/app/desktop-local-tools.css";
 
 installGlobalFetchInstrumentation();
 installGlobalErrorHandlers();
@@ -59,10 +60,6 @@ if (!root) throw new Error("LifeTrace root element is missing");
 
 installAppPreferences();
 
-// The legacy local workspace persists a boolean `dark` flag in SQLite, while
-// the desktop shell now uses appPreferences as the single DOM theme authority.
-// Bridge the two without allowing an uninitialized `dark=false` to overwrite
-// a cached/cloud dark preference during startup.
 useLifeStore.subscribe((state, previous) => {
   if (!state.ready) return;
   if (!previous.ready) {
@@ -82,7 +79,8 @@ useLifeStore.subscribe((state, previous) => {
 });
 
 async function start() {
-  void fitWindowToWorkArea();
+  await restoreWindowPlacement();
+  void installWindowPlacementPersistence();
   installTauriApiBridge();
   installVaultBridge();
   root!.innerHTML = '<div class="hx-loading"><span>LT</span><p>正在启动本地 SQLite 服务…</p></div>';
