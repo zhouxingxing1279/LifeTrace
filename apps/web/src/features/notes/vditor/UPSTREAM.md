@@ -22,7 +22,8 @@ The Vditor integration intentionally configures:
 - a user + note scoped cache key to avoid collisions across notes or accounts on the same browser.
 - recovery reconciliation: a locally cached dirty draft is restored into React state and goes through the normal Cloud autosave path; a clean/stale cache never overrides a newer Cloud value.
 - successful Cloud saves mark the local draft clean, so future Cloud revisions can safely win over stale cached content.
-- self-hosted Vditor runtime assets copied from the pinned npm package into the Web public bundle during `postinstall`, so the editor does not depend on a third-party CDN at runtime.
+- editor teardown preserves the cache rather than letting Vditor clear it, so route changes do not discard recovery data.
+- self-hosted Vditor runtime assets copied from the pinned npm package into the Web public bundle by `npm run prepare:vditor` before development or production builds, so the editor does not depend on a third-party CDN at runtime.
 - LifeTrace light/dark theme synchronization through Vditor `setTheme`.
 
 Upload/record controls are deliberately omitted until they can be wired to LifeTrace file storage. They must not be enabled with a browser-local or unrelated upload backend.
