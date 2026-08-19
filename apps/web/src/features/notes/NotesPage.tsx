@@ -41,6 +41,8 @@ export function NotesPage() {
   const [content, setContent] = useState("");
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [mobileEditing, setMobileEditing] = useState(false);
+  const [cloudSavedNoteId, setCloudSavedNoteId] = useState<string | null>(null);
+  const [cloudSaveRevision, setCloudSaveRevision] = useState(0);
   const autosaveRef = useRef<number | null>(null);
 
   const filtered = useMemo(() => {
@@ -74,6 +76,8 @@ export function NotesPage() {
     setSaveState("saving");
     try {
       await upsert("note.note", notePayload(selected, title, content));
+      setCloudSavedNoteId(selected.meta.id);
+      setCloudSaveRevision((revision) => revision + 1);
       setSaveState("saved");
     } catch {
       setSaveState("error");
@@ -136,7 +140,7 @@ export function NotesPage() {
   return <div className="page-shell">
     <PageHeader
       title="笔记"
-      description="Vditor Markdown 工作区：即时渲染、所见即所得、分屏预览、大纲、表格、代码与云端自动保存。"
+      description="Vditor Markdown 工作区：本地草稿防丢、即时渲染/所见即所得/分屏预览，并自动同步到 LifeTrace Cloud。"
       action={<Button onClick={() => void newNote()}><Plus size={16}/>新建笔记</Button>}
     />
     <div className="grid min-h-[700px] overflow-hidden rounded-lg border bg-card lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -160,7 +164,10 @@ export function NotesPage() {
             <Button variant="ghost" size="icon" aria-label="删除笔记" onClick={() => void deleteSelected()}><Trash2 size={15}/></Button>
           </div>
           <VditorEditor
+            key={selected.meta.id}
             value={content}
+            cacheKey={`lifetrace:vditor:${session?.user.id ?? "anonymous"}:${selected.meta.id}`}
+            cloudSaveRevision={cloudSavedNoteId === selected.meta.id ? cloudSaveRevision : 0}
             onChange={(next) => { setContent(next); setSaveState("dirty"); }}
             onSave={() => void save().catch(() => undefined)}
           />
