@@ -48,11 +48,11 @@ jobs:
       - name: Production preview smoke
         shell: bash
         run: |
-          npm run preview -- --port 4173 > /tmp/lifetrace-web-preview.log 2>&1 &
+          npm run preview -- --port 4183 > /tmp/lifetrace-web-preview.log 2>&1 &
           PREVIEW_PID=$!
           trap 'kill $PREVIEW_PID || true' EXIT
           for i in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:4173/login >/tmp/login.html; then break; fi
+            if curl --fail --silent http://127.0.0.1:4183/login >/tmp/login.html; then break; fi
             sleep 1
           done
           grep -q 'LifeTrace' /tmp/login.html
@@ -77,7 +77,7 @@ jobs:
             /app/finance/import \
             /app/settings \
             /app/system/ui; do
-            curl --fail --silent "http://127.0.0.1:4173${route}" | grep -q 'LifeTrace'
+            curl --fail --silent "http://127.0.0.1:4183${route}" | grep -q 'LifeTrace'
           done
       - name: Install Chromium for browser matrix
         run: npx playwright install --with-deps chromium
@@ -100,5 +100,12 @@ jobs:
             echo 'New Web must not import legacy Web UI.' >&2
             exit 1
           fi
+          if grep -R --line-number -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts' --exclude='VditorEditor.tsx'; then
+            echo 'Browser-local persistence is limited to the Vditor note draft safety cache.' >&2
+            exit 1
+          fi
           grep -q 'TNT-Likely/BeeCount-Cloud' src/features/finance/beecount/UPSTREAM.md
           grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' src/features/finance/beecount/UPSTREAM.md
+          grep -q 'Vanessa219/vditor' src/features/notes/vditor/UPSTREAM.md
+          grep -q 'cache: { id: cacheKey, enable: true }' src/features/notes/VditorEditor.tsx
+          grep -q 'locally cached dirty draft' src/features/notes/vditor/UPSTREAM.md
