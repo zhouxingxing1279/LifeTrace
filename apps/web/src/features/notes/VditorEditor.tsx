@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import Vditor from "vditor";
 import "vditor/dist/index.css";
 
-const VDITOR_CDN = "https://unpkg.com/vditor@3.11.3";
+const VDITOR_CDN = "/vendor/vditor";
 
 const VDITOR_I18N = new Proxy<Record<string, string>>({
   bold: "粗体", both: "分屏预览", check: "任务列表", close: "关闭", code: "代码块",
@@ -140,11 +140,8 @@ export function VditorEditor({ value, cacheKey, cloudSaveRevision, onChange, onS
 
         if (restoredValue !== cloudValue) {
           if (draftMeta?.dirty) {
-            // An interrupted local edit survived a refresh/crash. Promote it
-            // back into React state so the normal autosave path pushes it to Cloud.
             onChangeRef.current(restoredValue);
           } else {
-            // A clean cache may simply be older than a newer Cloud revision.
             editor.setValue(cloudValue, true);
           }
         }
