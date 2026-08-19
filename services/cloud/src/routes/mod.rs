@@ -8,7 +8,6 @@ pub mod beecount_attachments;
 pub mod beecount_compat;
 pub mod beecount_ws;
 pub mod files;
-pub mod finance;
 pub mod health;
 pub mod mail;
 pub mod mail_attachment;
@@ -26,6 +25,10 @@ use axum::Router;
 use crate::state::AppState;
 
 /// Assemble all routes into one router.
+///
+/// Finance is intentionally served only through the BeeCount surfaces. The
+/// former LifeTrace-specific finance router is no longer mounted, preventing a
+/// second finance API/data path from diverging from BeeCount.
 pub fn router(state: AppState) -> Router<AppState> {
     Router::<AppState>::new()
         .merge(health::router())
@@ -44,7 +47,6 @@ pub fn router(state: AppState) -> Router<AppState> {
         .merge(photo_staging::router())
         .merge(photo_challenge::router())
         .merge(photo_challenge_desktop::router())
-        .merge(finance::router())
         .merge(mail::router())
         .merge(mail_attachment::router())
         .merge(mail_list::router())
