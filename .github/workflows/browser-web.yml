@@ -3,16 +3,8 @@ name: Browser Web
 on:
   pull_request:
     paths:
-      - "apps/desktop/web-client/**"
-      - "apps/desktop/src/**"
-      - "apps/desktop/app/**"
-      - "apps/desktop/public/**"
-      - "apps/desktop/vite.browser.config.ts"
-      - "apps/desktop/tests/web-*.test.ts"
-      - "apps/desktop/tests/browser-*.test.ts"
-      - "apps/desktop/package.json"
-      - "apps/desktop/package-lock.json"
-      - "apps/desktop/tsconfig.json"
+      - "apps/web/**"
+      - "package.json"
       - "apps/photo-challenge-pwa/**"
       - "deploy/cloud/Dockerfile.web"
       - "deploy/cloud/Caddyfile.production"
@@ -23,18 +15,10 @@ on:
       - ".github/workflows/browser-web.yml"
       - ".github/workflows/web-image.yml"
   push:
-    branches: [main, agent/browser-app-parity]
+    branches: [main, agent/web-redesign]
     paths:
-      - "apps/desktop/web-client/**"
-      - "apps/desktop/src/**"
-      - "apps/desktop/app/**"
-      - "apps/desktop/public/**"
-      - "apps/desktop/vite.browser.config.ts"
-      - "apps/desktop/tests/web-*.test.ts"
-      - "apps/desktop/tests/browser-*.test.ts"
-      - "apps/desktop/package.json"
-      - "apps/desktop/package-lock.json"
-      - "apps/desktop/tsconfig.json"
+      - "apps/web/**"
+      - "package.json"
       - "apps/photo-challenge-pwa/**"
       - "deploy/cloud/Dockerfile.web"
       - "deploy/cloud/Caddyfile.production"
@@ -55,48 +39,47 @@ concurrency:
 
 jobs:
   frontend:
-    name: Typecheck, unit tests and builds
+    name: New Web typecheck, unit tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
       run:
-        working-directory: apps/desktop
+        working-directory: apps/web
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: apps/desktop/package-lock.json
-      - run: npm ci
-      - name: Enforce browser cloud-only and no-photo boundaries
+          cache-dependency-path: apps/web/package.json
+      - run: npm install --no-audit --no-fund
+      - name: Enforce cloud-only browser boundary
         shell: bash
         run: |
-          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' web-client/src; then
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
             echo "Business data must not be persisted in browser storage"
             exit 1
           fi
-          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' web-client vite.browser.config.ts package.json; then
+          if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' src package.json; then
             echo "Photo/PWA-only code must not enter the browser application"
             exit 1
           fi
-      - run: npm run lint
-      - run: npm run test:unit
-      - run: npm run web:build
-      - run: npm run browser:build
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
       - name: Verify browser artifact
         shell: bash
         run: |
-          test -f dist-browser/index.html
-          test ! -e dist-browser/manifest.webmanifest
-          test ! -e dist-browser/sw.js
-          SIZE=$(du -sk dist-browser | cut -f1)
-          echo "dist-browser size: ${SIZE} KB"
+          test -f dist/index.html
+          test ! -e dist/manifest.webmanifest
+          test ! -e dist/sw.js
+          SIZE=$(du -sk dist | cut -f1)
+          echo "dist size: ${SIZE} KB"
           test "$SIZE" -lt 12000
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-browser-web
-          path: apps/desktop/dist-browser
+          path: apps/web/dist
           if-no-files-found: error
           retention-days: 7
 
