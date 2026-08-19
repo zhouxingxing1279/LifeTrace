@@ -1,17 +1,17 @@
 FROM node:22-alpine AS browser-builder
 
-WORKDIR /workspace/apps/desktop
+WORKDIR /workspace/apps/web
 
-COPY apps/desktop/package.json apps/desktop/package-lock.json ./
-RUN npm ci
+COPY apps/web/package.json ./
+RUN npm install --no-audit --no-fund
 
-COPY apps/desktop/ ./
-RUN npm run browser:build
+COPY apps/web/ ./
+RUN npm run build
 
 FROM caddy:2.11.4-alpine
 
 COPY deploy/cloud/Caddyfile.production /etc/caddy/Caddyfile
-COPY --from=browser-builder /workspace/apps/desktop/dist-browser /srv
+COPY --from=browser-builder /workspace/apps/web/dist /srv
 COPY apps/photo-challenge-pwa /srv-photo-challenge
 
 EXPOSE 80 8869
