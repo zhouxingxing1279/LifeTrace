@@ -60,6 +60,16 @@ epic-xx/
 
 - `docs/docker-deployment.md`：生产环境全 Docker 镜像发布与升级流程；Cloud、Web/Caddy、Photo Challenge PWA、Worker、数据库迁移和 BeeCount 兼容入口均以此为准。
 
+## EPIC-12 文件、附件与对象存储
+
+统一普通文件服务的权威文档位于 `docs/epic-12/`：
+
+- `execution-plan.md`：执行顺序、实现范围、安全边界、测试与合并门禁；
+- `architecture.md`：PostgreSQL 文件元数据、S3 SigV4、六类文件领域、上传/下载状态机、桌面缓存、权限和完整性诊断；
+- `completion-report.md`：最终实现范围、CI 验证和合并结果（完成后生成）。
+
+私密相册继续以 `docs/epic-30/` 为准并保持 `local-only`，不进入 EPIC-12 对象存储链路。Photo Challenge `photo_staging` 仍是临时中转，不等同于长期文件服务。
+
 ## 当前重点规划入口
 
 以下 Epic 是当前跨设备 / 移动端数据能力规划的权威入口：
