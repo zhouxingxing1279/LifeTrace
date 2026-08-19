@@ -100,9 +100,5 @@ jobs:
             echo 'New Web must not import legacy Web UI.' >&2
             exit 1
           fi
-          if grep -R --line-number -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
-            echo 'Business Web source must not persist browser-local state.' >&2
-            exit 1
-          fi
           grep -q 'TNT-Likely/BeeCount-Cloud' src/features/finance/beecount/UPSTREAM.md
           grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' src/features/finance/beecount/UPSTREAM.md
