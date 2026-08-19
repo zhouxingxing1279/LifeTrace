@@ -338,6 +338,7 @@ async fn initialize_upload(
                     &record.object_key,
                     &record.metadata.sha256,
                     &record.metadata.domain,
+                    &record.metadata.mime_type,
                 )
                 .map_err(storage_error)?,
         )
@@ -373,7 +374,8 @@ async fn complete_upload(
     };
     let valid = head.size_bytes == record.metadata.size_bytes.max(0) as u64
         && head.sha256.as_deref() == Some(record.metadata.sha256.as_str())
-        && head.domain.as_deref() == Some(record.metadata.domain.as_str());
+        && head.domain.as_deref() == Some(record.metadata.domain.as_str())
+        && head.mime_type.as_deref() == Some(record.metadata.mime_type.as_str());
     if !valid {
         mark_failed(
             &state,

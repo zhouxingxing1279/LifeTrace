@@ -63,6 +63,7 @@ pub struct ObjectHead {
     pub size_bytes: u64,
     pub sha256: Option<String>,
     pub domain: Option<String>,
+    pub mime_type: Option<String>,
 }
 
 impl ObjectStorageConfig {
@@ -144,8 +145,10 @@ impl ObjectStorage {
         object_key: &str,
         sha256: &str,
         domain: &str,
+        mime_type: &str,
     ) -> Result<PresignedRequest, ObjectStorageError> {
         let mut headers = BTreeMap::new();
+        headers.insert("content-type".to_owned(), mime_type.to_owned());
         headers.insert("x-amz-meta-lifetrace-domain".to_owned(), domain.to_owned());
         headers.insert("x-amz-meta-sha256".to_owned(), sha256.to_owned());
         self.presign_at("PUT", object_key, headers, Utc::now())
@@ -188,10 +191,12 @@ impl ObjectStorage {
             })?;
         let sha256 = header_text(response.headers(), "x-amz-meta-sha256");
         let domain = header_text(response.headers(), "x-amz-meta-lifetrace-domain");
+        let mime_type = header_text(response.headers(), reqwest::header::CONTENT_TYPE.as_str());
         Ok(Some(ObjectHead {
             size_bytes,
             sha256,
             domain,
+            mime_type,
         }))
     }
 
@@ -433,6 +438,7 @@ mod tests {
     fn presigned_upload_is_bound_to_method_path_and_metadata_headers() {
         let now = Utc.with_ymd_and_hms(2026, 8, 19, 1, 2, 3).unwrap();
         let mut headers = BTreeMap::new();
+        headers.insert("content-type".to_owned(), "application/pdf".to_owned());
         headers.insert("x-amz-meta-sha256".to_owned(), "a".repeat(64));
         let signed = storage()
             .presign_at("PUT", "users/u/notes/attachments/a b", headers, now)
@@ -446,7 +452,7 @@ mod tests {
         ));
         assert!(signed
             .url
-            .contains("X-Amz-SignedHeaders=host%3Bx-amz-meta-sha256"));
+            .contains("X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-meta-sha256"));
         assert_eq!(signed.method, "PUT");
         assert_eq!(
             signed.headers.get("x-amz-meta-sha256"),
