@@ -1,0 +1,55 @@
+name: Temporary Capture Desktop v0.3.2 Release Run
+
+on:
+  push:
+    branches:
+      - ops/dispatch-desktop-v0.3.2
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ops/dispatch-desktop-v0.3.2
+          fetch-depth: 0
+
+      - name: Capture release workflow run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            gh run list --repo zhouxingxing1279/LifeTrace \
+              --workflow release-windows.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 20 \
+              --json databaseId,headSha,status,conclusion,createdAt,displayTitle > /tmp/runs.json
+            jq '[.[] | select(.headSha == "114a37aae22fd163e0681573ee733dcf309efc8e") ] | sort_by(.createdAt) | reverse | .[0]' /tmp/runs.json > .release-v0.3.2-run.json
+            if [ "$(cat .release-v0.3.2-run.json)" != "null" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "$(cat .release-v0.3.2-run.json)" = "null" ]; then
+            echo "Could not find v0.3.2 release workflow run" >&2
+            exit 1
+          fi
+          cat .release-v0.3.2-run.json
+
+      - name: Commit captured run and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/temp-capture-release-v0.3.2.yml
+          git add .release-v0.3.2-run.json
+          git commit -m "chore(release): record v0.3.2 release run"
+          git push origin HEAD:ops/dispatch-desktop-v0.3.2
