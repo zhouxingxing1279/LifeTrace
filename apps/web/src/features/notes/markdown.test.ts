@@ -9,7 +9,8 @@ describe("applyMarkdownFormat", () => {
   });
 
   it("prefixes every selected line for ordered lists", () => {
-    const result = applyMarkdownFormat("first\nsecond\nthird", 0, 12, "ordered");
+    const source = "first\nsecond\nthird";
+    const result = applyMarkdownFormat(source, 0, source.length, "ordered");
     expect(result.value).toBe("1. first\n2. second\n3. third");
   });
 
