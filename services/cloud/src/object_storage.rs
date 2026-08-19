@@ -75,8 +75,7 @@ impl ObjectStorageConfig {
         sha256_hex: &str,
         now: DateTime<Utc>,
     ) -> Result<PresignedRequest, String> {
-        let digest =
-            hex::decode(sha256_hex).map_err(|_| "SHA-256 必须是十六进制".to_owned())?;
+        let digest = hex::decode(sha256_hex).map_err(|_| "SHA-256 必须是十六进制".to_owned())?;
         if digest.len() != 32 {
             return Err("SHA-256 长度无效".to_owned());
         }
@@ -137,10 +136,7 @@ impl ObjectStorageConfig {
             format!("{}/{}", self.access_key_id, scope),
         );
         query.insert("X-Amz-Date".to_owned(), amz_date.clone());
-        query.insert(
-            "X-Amz-Expires".to_owned(),
-            self.expires_seconds.to_string(),
-        );
+        query.insert("X-Amz-Expires".to_owned(), self.expires_seconds.to_string());
         query.insert("X-Amz-SignedHeaders".to_owned(), signed_headers.clone());
         let canonical_query = canonical_query(&query);
 
@@ -156,8 +152,7 @@ impl ObjectStorageConfig {
             "{method}\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD"
         );
         let canonical_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
-        let string_to_sign =
-            format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{canonical_hash}");
+        let string_to_sign = format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{canonical_hash}");
         let signature = hex::encode(
             signing_key(&self.secret_access_key, &date, &self.region)
                 .and_then(|key| hmac(&key, string_to_sign.as_bytes()))?,
@@ -224,8 +219,7 @@ fn canonical_query(query: &BTreeMap<String, String>) -> String {
 fn aws_encode(value: &str, encode_slash: bool) -> String {
     let mut output = String::new();
     for byte in value.as_bytes() {
-        let unreserved =
-            byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~');
+        let unreserved = byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~');
         if unreserved || (!encode_slash && *byte == b'/') {
             output.push(*byte as char);
         } else {
