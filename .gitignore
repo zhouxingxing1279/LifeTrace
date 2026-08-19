@@ -67,6 +67,7 @@ next-env.d.ts
 /apps/desktop/dist-tauri/
 /apps/desktop/dist-browser/
 /apps/desktop/dist-web/
+/apps/web/public/vendor/vditor/
 /apps/desktop/src-tauri/target/
 /apps/desktop/src-tauri/gen/
 /crates/*/target/
