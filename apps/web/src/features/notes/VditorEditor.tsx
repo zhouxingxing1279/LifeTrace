@@ -60,6 +60,11 @@ function writeDraftMeta(cacheKey: string, dirty: boolean) {
   }
 }
 
+function destroyWithoutClearingDraft(editor: Vditor) {
+  editor.disabledCache();
+  editor.destroy();
+}
+
 export function VditorEditor({ value, cacheKey, cloudSaveRevision, onChange, onSave }: VditorEditorProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<Vditor | null>(null);
@@ -130,7 +135,7 @@ export function VditorEditor({ value, cacheKey, cloudSaveRevision, onChange, onS
       after() {
         readyRef.current = true;
         if (disposed) {
-          editor.destroy();
+          destroyWithoutClearingDraft(editor);
           return;
         }
         editorRef.current = editor;
@@ -158,7 +163,7 @@ export function VditorEditor({ value, cacheKey, cloudSaveRevision, onChange, onS
     return () => {
       disposed = true;
       observer.disconnect();
-      if (readyRef.current) editor.destroy();
+      if (readyRef.current) destroyWithoutClearingDraft(editor);
       editorRef.current = null;
       readyRef.current = false;
     };
