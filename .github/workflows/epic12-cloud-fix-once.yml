@@ -1,0 +1,93 @@
+name: EPIC-12 cloud fix once
+
+on:
+  push:
+    branches:
+      - agent/epic12-file-storage
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/epic12-file-storage
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+      - name: Add Cloud HTTP dependency and harden MIME binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          cargo = Path('services/cloud/Cargo.toml')
+          text = cargo.read_text()
+          dep = 'reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }\n'
+          if dep not in text:
+              marker = 'rand = "0.8"\n'
+              if marker not in text:
+                  raise SystemExit('Cargo dependency insertion marker missing')
+              text = text.replace(marker, marker + dep, 1)
+              cargo.write_text(text)
+
+          obj = Path('services/cloud/src/object_storage.rs')
+          text = obj.read_text()
+          text = text.replace(
+              '    pub domain: Option<String>,\n}',
+              '    pub domain: Option<String>,\n    pub mime_type: Option<String>,\n}',
+              1,
+          )
+          text = text.replace(
+              '        domain: &str,\n    ) -> Result<PresignedRequest, ObjectStorageError> {\n        let mut headers = BTreeMap::new();',
+              '        domain: &str,\n        mime_type: &str,\n    ) -> Result<PresignedRequest, ObjectStorageError> {\n        let mut headers = BTreeMap::new();\n        headers.insert("content-type".to_owned(), mime_type.to_owned());',
+              1,
+          )
+          text = text.replace(
+              '        let domain = header_text(response.headers(), "x-amz-meta-lifetrace-domain");\n        Ok(Some(ObjectHead {\n            size_bytes,\n            sha256,\n            domain,\n        }))',
+              '        let domain = header_text(response.headers(), "x-amz-meta-lifetrace-domain");\n        let mime_type = header_text(response.headers(), reqwest::header::CONTENT_TYPE.as_str());\n        Ok(Some(ObjectHead {\n            size_bytes,\n            sha256,\n            domain,\n            mime_type,\n        }))',
+              1,
+          )
+          test_marker = '        headers.insert("x-amz-meta-sha256".to_owned(), "a".repeat(64));\n'
+          if test_marker in text and 'headers.insert("content-type".to_owned(), "application/pdf".to_owned());' not in text:
+              text = text.replace(
+                  test_marker,
+                  '        headers.insert("content-type".to_owned(), "application/pdf".to_owned());\n' + test_marker,
+                  1,
+              )
+              text = text.replace(
+                  '.contains("X-Amz-SignedHeaders=host%3Bx-amz-meta-sha256"));',
+                  '.contains("X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-meta-sha256"));',
+                  1,
+              )
+          obj.write_text(text)
+
+          routes = Path('services/cloud/src/routes/files.rs')
+          text = routes.read_text()
+          text = text.replace(
+              '                    &record.metadata.domain,\n                )',
+              '                    &record.metadata.domain,\n                    &record.metadata.mime_type,\n                )',
+              1,
+          )
+          text = text.replace(
+              '        && head.sha256.as_deref() == Some(record.metadata.sha256.as_str())\n        && head.domain.as_deref() == Some(record.metadata.domain.as_str());',
+              '        && head.sha256.as_deref() == Some(record.metadata.sha256.as_str())\n        && head.domain.as_deref() == Some(record.metadata.domain.as_str())\n        && head.mime_type.as_deref() == Some(record.metadata.mime_type.as_str());',
+              1,
+          )
+          routes.write_text(text)
+          PY
+          cargo fmt --manifest-path services/cloud/Cargo.toml
+          cargo metadata --manifest-path services/cloud/Cargo.toml --format-version 1 >/dev/null
+          rm .github/workflows/epic12-cloud-fix-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(epic12): compile cloud object storage'
+          git push origin HEAD:agent/epic12-file-storage
