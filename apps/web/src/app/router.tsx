@@ -14,6 +14,7 @@ const NotesPage = lazy(() => import("../features/notes/NotesPage").then((module)
 const EnglishPage = lazy(() => import("../features/english/EnglishPage").then((module) => ({ default: module.EnglishPage })));
 const ReviewPage = lazy(() => import("../features/review/ReviewPage").then((module) => ({ default: module.ReviewPage })));
 const FinanceWorkspace = lazy(() => import("../features/finance/FinanceWorkspace").then((module) => ({ default: module.FinanceWorkspace })));
+const FinanceTransactionsPage = lazy(() => import("../features/finance/FinanceTransactionsPage").then((module) => ({ default: module.FinanceTransactionsPage })));
 const AssistantPage = lazy(() => import("../features/assistant/AssistantPage").then((module) => ({ default: module.AssistantPage })));
 const SearchPage = lazy(() => import("../features/search/SearchPage").then((module) => ({ default: module.SearchPage })));
 const SettingsPage = lazy(() => import("../features/settings/SettingsPage").then((module) => ({ default: module.SettingsPage })));
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
       { path: "notes", element: withSuspense(<NotesPage />) },
       { path: "english/*", element: withSuspense(<EnglishPage />) },
       { path: "review", element: withSuspense(<ReviewPage />) },
+      { path: "finance/transactions", element: withSuspense(<FinanceTransactionsPage />) },
       { path: "finance/*", element: withSuspense(<FinanceWorkspace />) },
       { path: "assistant", element: withSuspense(<AssistantPage />) },
       { path: "search", element: withSuspense(<SearchPage />) },
