@@ -58,9 +58,6 @@ jobs:
               update
           }
 
-          # Prefer the runner's regional mirror first. If it stalls, fail fast
-          # and retry once against Ubuntu's canonical archive instead of
-          # allowing a single apt-get update to consume the whole CI job.
           if ! apt_update 180; then
             echo "Regional Ubuntu mirror stalled; switching to archive.ubuntu.com"
             sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|http://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
@@ -155,6 +152,7 @@ jobs:
           npm ci --prefix apps/desktop
           npm run lint
           npm run test:unit
+          npm install --prefix apps/web --no-audit --no-fund
           npm run web:build
 
   cloud-postgresql:
@@ -224,4 +222,31 @@ jobs:
       - name: Windows frontend build
         run: |
           npm ci --prefix apps/desktop
+          npm install --prefix apps/web --no-audit --no-fund
           npm run web:build
+
+  contract-fixtures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+      - name: Validate shared payload fixtures
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml --test compatibility
+
+  android-contract-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assert Android client does not use legacy sync paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f android/app/src/main/java/com/lifetrace/android/data/LifeTraceCloudApi.kt
+          if grep -R -n -E '/api/v1/(sync/(snapshot|pull|push)|device/bootstrap)' android/app/src/main/java; then
+            echo "Android client must use BeeCount-compatible sync routes instead of legacy LifeTrace sync APIs." >&2
+            exit 1
+          fi
