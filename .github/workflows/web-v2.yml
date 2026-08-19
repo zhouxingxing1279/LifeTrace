@@ -1,0 +1,108 @@
+name: Web v2
+
+on:
+  push:
+    branches: [main, agent/web-redesign]
+    paths:
+      - 'apps/web/**'
+      - 'docs/ui/web-redesign*.md'
+      - '.github/workflows/web-v2.yml'
+      - 'package.json'
+      - 'deploy/cloud/Dockerfile.web'
+      - 'deploy/cloud/Caddyfile.production'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'docs/ui/web-redesign*.md'
+      - '.github/workflows/web-v2.yml'
+      - 'package.json'
+      - 'deploy/cloud/Dockerfile.web'
+      - 'deploy/cloud/Caddyfile.production'
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/web/package.json
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+      - name: Production preview smoke
+        shell: bash
+        run: |
+          npm run preview -- --port 4173 > /tmp/lifetrace-web-preview.log 2>&1 &
+          PREVIEW_PID=$!
+          trap 'kill $PREVIEW_PID || true' EXIT
+          for i in {1..20}; do
+            if curl --fail --silent http://127.0.0.1:4173/login >/tmp/login.html; then break; fi
+            sleep 1
+          done
+          grep -q 'LifeTrace' /tmp/login.html
+          for route in \
+            /app/today \
+            /app/execution \
+            /app/calendar \
+            /app/habits \
+            /app/fitness \
+            /app/health \
+            /app/notes \
+            /app/english/articles \
+            /app/review \
+            /app/finance \
+            /app/finance/transactions \
+            /app/finance/calendar \
+            /app/finance/ledgers \
+            /app/finance/budgets \
+            /app/finance/accounts \
+            /app/finance/categories \
+            /app/finance/tags \
+            /app/finance/import \
+            /app/settings \
+            /app/system/ui; do
+            curl --fail --silent "http://127.0.0.1:4173${route}" | grep -q 'LifeTrace'
+          done
+      - name: Install Chromium for browser matrix
+        run: npx playwright install --with-deps chromium
+      - name: Responsive, theme, route and accessibility browser tests
+        run: npm run test:e2e
+      - name: Upload Playwright diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-v2-playwright-report
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Architecture guard
+        shell: bash
+        run: |
+          if grep -R --line-number --fixed-strings 'apps/desktop/web-client' src; then
+            echo 'New Web must not import legacy Web UI.' >&2
+            exit 1
+          fi
+          if grep -R --line-number -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
+            echo 'Business Web source must not persist browser-local state.' >&2
+            exit 1
+          fi
+          grep -q 'TNT-Likely/BeeCount-Cloud' src/features/finance/beecount/UPSTREAM.md
+          grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' src/features/finance/beecount/UPSTREAM.md
