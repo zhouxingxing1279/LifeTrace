@@ -1,27 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { applyMarkdownFormat, markdownSummary } from "./markdown";
+import { markdownSummary, plainTextFromMarkdown } from "./markdown";
 
-describe("applyMarkdownFormat", () => {
-  it("wraps a selection with bold syntax", () => {
-    const result = applyMarkdownFormat("hello world", 6, 11, "bold");
-    expect(result.value).toBe("hello **world**");
-    expect(result.value.slice(result.selectionStart, result.selectionEnd)).toBe("world");
+describe("plainTextFromMarkdown", () => {
+  it("removes common markdown syntax while preserving note content", () => {
+    expect(plainTextFromMarkdown("## Project\n\n- [x] **Done** [docs](https://example.com)")).toBe("Project Done docs");
   });
 
-  it("prefixes all selected lines as an ordered list", () => {
-    const source = "first\nsecond\nthird";
-    const result = applyMarkdownFormat(source, 0, source.length, "ordered");
-    expect(result.value).toBe("1. first\n2. second\n3. third");
-  });
-
-  it("creates a fenced code block", () => {
-    const result = applyMarkdownFormat("const x = 1", 0, 11, "code-block");
-    expect(result.value).toContain("```\nconst x = 1\n```");
+  it("keeps fenced code text for search", () => {
+    expect(plainTextFromMarkdown("```ts\nconst answer = 42\n```"))
+      .toContain("const answer = 42");
   });
 });
 
 describe("markdownSummary", () => {
-  it("removes common markdown syntax from note summaries", () => {
-    expect(markdownSummary("## Project\n\n- **Done** [docs](https://example.com)")).toBe("Project Done docs");
+  it("limits the plain-text summary", () => {
+    expect(markdownSummary("# Title\n\nabcdef", 8)).toBe("Title ab");
   });
 });
