@@ -75,7 +75,8 @@ impl ObjectStorageConfig {
         sha256_hex: &str,
         now: DateTime<Utc>,
     ) -> Result<PresignedRequest, String> {
-        let digest = hex::decode(sha256_hex).map_err(|_| "SHA-256 必须是十六进制".to_owned())?;
+        let digest =
+            hex::decode(sha256_hex).map_err(|_| "SHA-256 必须是十六进制".to_owned())?;
         if digest.len() != 32 {
             return Err("SHA-256 长度无效".to_owned());
         }
@@ -97,7 +98,7 @@ impl ObjectStorageConfig {
         &self,
         method: &str,
         object_key: &str,
-        mut required_headers: BTreeMap<String, String>,
+        required_headers: BTreeMap<String, String>,
         now: DateTime<Utc>,
     ) -> Result<PresignedRequest, String> {
         validate_object_key(object_key)?;
@@ -155,16 +156,20 @@ impl ObjectStorageConfig {
             "{method}\n{canonical_uri}\n{canonical_query}\n{canonical_headers}\n{signed_headers}\nUNSIGNED-PAYLOAD"
         );
         let canonical_hash = hex::encode(Sha256::digest(canonical_request.as_bytes()));
-        let string_to_sign = format!(
-            "AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{canonical_hash}"
+        let string_to_sign =
+            format!("AWS4-HMAC-SHA256\n{amz_date}\n{scope}\n{canonical_hash}");
+        let signature = hex::encode(
+            signing_key(&self.secret_access_key, &date, &self.region)
+                .and_then(|key| hmac(&key, string_to_sign.as_bytes()))?,
         );
-        let signature = hex::encode(signing_key(&self.secret_access_key, &date, &self.region)
-            .and_then(|key| hmac(&key, string_to_sign.as_bytes()))?);
         let url = format!(
             "{}{}?{}&X-Amz-Signature={signature}",
             self.endpoint, canonical_uri, canonical_query
         );
-        required_headers.insert("host".to_owned(), host);
+
+        // `host` is always part of SigV4 canonical headers, but browsers and
+        // WebViews are not allowed to set it manually. Return only headers the
+        // client really must provide, such as the upload checksum.
         Ok(PresignedRequest {
             url,
             required_headers,
@@ -197,7 +202,9 @@ fn validate_object_key(key: &str) -> Result<(), String> {
     if key.is_empty()
         || key.len() > 1024
         || key.starts_with('/')
-        || key.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..")
+        || key
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
         || key.chars().any(char::is_control)
     {
         Err("对象存储 key 无效".to_owned())
@@ -217,7 +224,8 @@ fn canonical_query(query: &BTreeMap<String, String>) -> String {
 fn aws_encode(value: &str, encode_slash: bool) -> String {
     let mut output = String::new();
     for byte in value.as_bytes() {
-        let unreserved = byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~');
+        let unreserved =
+            byte.is_ascii_alphanumeric() || matches!(*byte, b'-' | b'_' | b'.' | b'~');
         if unreserved || (!encode_slash && *byte == b'/') {
             output.push(*byte as char);
         } else {
@@ -267,7 +275,10 @@ mod tests {
             .unwrap();
         assert!(request.url.contains("X-Amz-Signature="));
         assert!(request.url.contains("X-Amz-Expires=900"));
-        assert!(request.required_headers.contains_key("x-amz-checksum-sha256"));
+        assert!(request
+            .required_headers
+            .contains_key("x-amz-checksum-sha256"));
+        assert!(!request.required_headers.contains_key("host"));
         assert!(!request.url.contains("test-secret"));
     }
 
@@ -283,6 +294,7 @@ mod tests {
             .url
             .starts_with("https://storage.example.com/lifetrace-files/photos/123/ab/file.bin?"));
         assert_eq!(request.expires_seconds, 900);
+        assert!(request.required_headers.is_empty());
     }
 
     #[test]
