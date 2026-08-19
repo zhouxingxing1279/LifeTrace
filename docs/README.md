@@ -54,7 +54,7 @@ epic-xx/
 
 ## Web UI 重构
 
-- `docs/ui/web-redesign.md`：Web 端完全推倒重构的权威实施方案；将 Web 重建为独立 `apps/web` 应用，以 shadcn/Catalyst/Tremor 设计语言重做 LifeTrace 原生模块，并要求财务栏目源码级复用 BeeCount Cloud Web，通过 Finance Adapter 接入 LifeTrace 账号和兼容后端，最终切换后删除旧 Web 实现。
+- `docs/ui/web-redesign.md`：Web 端完全推倒重构的权威实施方案；将 Web 重建为独立 `apps/web` 应用，并强制以最初筛选的 shadcn/ui、Tremor、Preline UI、Tailwind Plus/Catalyst、Aceternity UI、Magic UI、Shadcnblocks、TailAdmin 作为页面与组件设计参考库；财务栏目源码级复用 BeeCount Cloud Web，通过 Finance Adapter 接入 LifeTrace 账号和兼容后端，最终切换后删除旧 Web 实现。
 
 ## 部署入口
 
