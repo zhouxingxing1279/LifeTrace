@@ -1,0 +1,29 @@
+# Vditor upstream record
+
+## Upstream
+
+- Project: Vditor
+- Repository: `Vanessa219/vditor`
+- Package: `vditor@3.11.3`
+- License: MIT
+- Copyright: 2019-present B3log 开源, b3log.org
+
+## LifeTrace integration
+
+LifeTrace uses Vditor directly as the browser note body editor. The surrounding note list, LifeTrace Cloud persistence, search, delete behavior, mobile list/editor navigation and autosave status remain LifeTrace application concerns.
+
+The Vditor integration intentionally configures:
+
+- `mode: "ir"` by default for Typora-like instant rendering.
+- Vditor's built-in edit-mode switch so users can move between instant rendering, WYSIWYG and split-view editing.
+- GFM/CommonMark-oriented features including tables, task lists, fenced code, links, footnotes and automatic links.
+- code highlighting, math rendering, outline, preview and fullscreen tools.
+- `cache.enable: false`. LifeTrace Web does not allow note content to be persisted through Vditor localStorage; note persistence is owned by LifeTrace Cloud autosave.
+- a pinned Vditor CDN version (`3.11.3`) for Vditor's runtime Lute/icon/theme assets, matching the npm dependency version.
+- LifeTrace light/dark theme synchronization through Vditor `setTheme`.
+
+Upload/record controls are deliberately omitted until they can be wired to LifeTrace file storage. They must not be enabled with a browser-local or unrelated upload backend.
+
+## Updating
+
+When upgrading Vditor, update the npm version and pinned runtime CDN version together, re-check the upstream MIT license, then run Web typecheck, unit tests, build and browser tests.
