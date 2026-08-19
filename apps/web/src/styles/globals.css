@@ -88,6 +88,35 @@
   .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground; }
   .empty-state { @apply flex min-h-36 flex-col items-center justify-center rounded-lg border border-dashed px-6 py-8 text-center text-sm text-muted-foreground; }
   .scrollbar-thin { scrollbar-width: thin; scrollbar-color: hsl(var(--border)) transparent; }
+
+  .markdown-source {
+    tab-size: 2;
+    caret-color: hsl(var(--primary));
+  }
+  .markdown-source::selection { background: hsl(var(--accent)); }
+  .markdown-preview { @apply text-[14px] leading-7 text-foreground; }
+  .markdown-preview > :first-child { margin-top: 0; }
+  .markdown-preview > :last-child { margin-bottom: 0; }
+  .markdown-preview h1 { @apply mb-4 mt-8 border-b pb-2 text-3xl font-semibold tracking-[-0.03em]; }
+  .markdown-preview h2 { @apply mb-3 mt-7 border-b pb-1.5 text-2xl font-semibold tracking-[-0.025em]; }
+  .markdown-preview h3 { @apply mb-2 mt-6 text-xl font-semibold; }
+  .markdown-preview h4 { @apply mb-2 mt-5 text-base font-semibold; }
+  .markdown-preview p { @apply my-3; }
+  .markdown-preview ul { @apply my-3 list-disc space-y-1 pl-6; }
+  .markdown-preview ol { @apply my-3 list-decimal space-y-1 pl-6; }
+  .markdown-preview li > ul, .markdown-preview li > ol { @apply my-1; }
+  .markdown-preview blockquote { @apply my-4 border-l-4 border-primary/40 bg-muted/35 py-1 pl-4 text-muted-foreground; }
+  .markdown-preview a { @apply font-medium text-primary underline underline-offset-4; }
+  .markdown-preview strong { @apply font-semibold; }
+  .markdown-preview hr { @apply my-7 border-border; }
+  .markdown-preview code { @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em]; }
+  .markdown-preview pre { @apply my-4 overflow-x-auto rounded-lg border bg-muted/55 p-4; }
+  .markdown-preview pre code { @apply bg-transparent p-0 text-xs leading-6; }
+  .markdown-preview table { @apply my-4 w-full border-collapse overflow-hidden rounded-md text-sm; }
+  .markdown-preview th { @apply border bg-muted/60 px-3 py-2 text-left font-semibold; }
+  .markdown-preview td { @apply border px-3 py-2 align-top; }
+  .markdown-preview input[type="checkbox"] { @apply mr-2 align-middle; }
+  .markdown-preview img { @apply my-4 max-w-full rounded-lg border; }
 }
 
 @media (prefers-reduced-motion: reduce) {
