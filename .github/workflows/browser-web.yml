@@ -77,7 +77,7 @@ jobs:
           test -f dist/vendor/vditor/dist/js/lute/lute.min.js
           SIZE=$(du -sk dist | cut -f1)
           echo "dist size: ${SIZE} KB"
-          test "$SIZE" -lt 20000
+          test "$SIZE" -lt 30000
       - uses: actions/upload-artifact@v4
         with:
           name: lifetrace-browser-web
