@@ -2,15 +2,103 @@ import { expect, test, type Page, type Route } from "@playwright/test";
 
 const now = "2026-08-19T02:00:00.000Z";
 
-function meta(id: string) {
-  return { id, userId: "user-1", createdAt: now, updatedAt: now, localVersion: 1, serverVersion: "1", modifiedByDevice: "web-test" };
-}
-
 async function json(route: Route, payload: unknown, status = 200) {
   await route.fulfill({ status, contentType: "application/json", body: JSON.stringify(payload) });
 }
 
-async function installMocks(page: Page, pushes: Array<Record<string, unknown>>) {
+const ledger = {
+  id: "beecount:ledger-1",
+  sourceId: "ledger-1",
+  name: "日常账本",
+  currency: "CNY",
+  monthStartDay: 1,
+  transactionCount: 2,
+  incomeTotalCents: 120000,
+  expenseTotalCents: 4300,
+  balanceCents: 115700,
+  updatedAt: now,
+  role: "owner",
+  isShared: false,
+  memberCount: 1,
+  readOnly: true,
+};
+
+const beeCountSnapshot = {
+  source: "beecount-cloud",
+  readOnly: true,
+  fetchedAt: now,
+  ledger,
+  transactions: {
+    items: [
+      {
+        id: "beecount:tx-1",
+        externalTransactionId: "tx-1",
+        transactionType: "expense",
+        amountCents: 2300,
+        currency: "CNY",
+        occurredAt: now,
+        localDate: "2026-08-19",
+        status: "confirmed",
+        sourceType: "beecount-cloud",
+        note: "Coffee Shop",
+        ledgerId: "ledger-1",
+        ledgerName: "日常账本",
+        accountId: "account-1",
+        categoryId: "category-1",
+        accountName: "现金",
+        categoryName: "餐饮",
+        tags: ["早餐"],
+        tagIds: ["tag-1"],
+        attachments: [],
+        excludeFromStats: false,
+        excludeFromBudget: false,
+        readOnly: true,
+      },
+      {
+        id: "beecount:tx-2",
+        externalTransactionId: "tx-2",
+        transactionType: "income",
+        amountCents: 120000,
+        currency: "CNY",
+        occurredAt: now,
+        localDate: "2026-08-19",
+        status: "confirmed",
+        sourceType: "beecount-cloud",
+        note: "工资",
+        ledgerId: "ledger-1",
+        ledgerName: "日常账本",
+        accountId: "account-1",
+        categoryId: "category-2",
+        accountName: "现金",
+        categoryName: "工资",
+        tags: [],
+        tagIds: [],
+        attachments: [],
+        excludeFromStats: false,
+        excludeFromBudget: false,
+        readOnly: true,
+      },
+    ],
+    total: 2,
+    limit: 500,
+    offset: 0,
+  },
+  accounts: [
+    { id: "beecount:account-1", sourceId: "account-1", name: "现金", accountType: "cash", currency: "CNY", balanceCents: 115700, transactionCount: 2, source: "beecount-cloud", readOnly: true },
+  ],
+  categories: [
+    { id: "beecount:category-1", sourceId: "category-1", name: "餐饮", categoryType: "expense", transactionCount: 1, source: "beecount-cloud", readOnly: true },
+    { id: "beecount:category-2", sourceId: "category-2", name: "工资", categoryType: "income", transactionCount: 1, source: "beecount-cloud", readOnly: true },
+  ],
+  tags: [
+    { id: "beecount:tag-1", sourceId: "tag-1", name: "早餐", transactionCount: 1, expenseTotalCents: 2300, source: "beecount-cloud", readOnly: true },
+  ],
+  budgets: [
+    { id: "beecount:budget-1", sourceId: "budget-1", budgetType: "category", categoryId: "category-1", categoryName: "餐饮", amountCents: 100000, period: "monthly", startDay: 1, enabled: true, source: "beecount-cloud", readOnly: true },
+  ],
+};
+
+async function installMocks(page: Page) {
   await page.route("**/api/v1/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === "/api/v1/web/session") {
@@ -20,29 +108,11 @@ async function installMocks(page: Page, pushes: Array<Record<string, unknown>>) 
         csrfToken: "csrf-test",
       });
     }
-    if (path === "/api/v1/sync/snapshot") {
-      return json(route, {
-        snapshotId: "snapshot-1",
-        snapshotCursor: "cursor-1",
-        items: [
-          { entityType: "finance.account", entityId: "account-1", serverVersion: "1", payload: { meta: meta("account-1"), name: "Cash", accountType: "cash", currency: "CNY", openingBalanceCents: 100000 } },
-          { entityType: "finance.category", entityId: "category-1", serverVersion: "1", payload: { meta: meta("category-1"), name: "Food", categoryType: "expense" } },
-          { entityType: "finance.transaction", entityId: "tx-1", serverVersion: "1", payload: { meta: meta("tx-1"), transactionType: "expense", amountCents: 2300, currency: "CNY", merchant: "Coffee Shop", note: "breakfast", localDate: "2026-08-19", occurredAt: now, status: "confirmed", accountId: "account-1", categoryId: "category-1" } },
-        ],
-        nextPageToken: null,
-        completed: true,
-      });
-    }
+    if (path === "/api/v1/sync/snapshot") return json(route, { snapshotId: "snapshot-1", snapshotCursor: "cursor-1", items: [], nextPageToken: null, completed: true });
     if (path === "/api/v1/sync/pull") return json(route, { changes: [], nextCursor: "cursor-2", hasMore: false });
-    if (path === "/api/v1/sync/push") {
-      const body = route.request().postDataJSON() as Record<string, unknown>;
-      pushes.push(body);
-      const changes = Array.isArray(body.changes) ? body.changes as Array<Record<string, unknown>> : [];
-      return json(route, {
-        results: changes.map((change, index) => ({ changeId: change.changeId, entityType: change.entityType, entityId: change.entityId, status: "accepted", serverVersion: `server-${index + 2}` })),
-      });
-    }
-    if (path === "/api/v1/integrations/beecount/status") return json(route, { enabled: false, readOnly: true, source: "beecount-cloud", upstreamReachable: false });
+    if (path === "/api/v1/integrations/beecount/status") return json(route, { enabled: true, readOnly: true, source: "beecount-cloud", upstreamReachable: true, upstreamVersion: { version: "test" } });
+    if (path === "/api/v1/integrations/beecount/ledgers") return json(route, { source: "beecount-cloud", readOnly: true, items: [ledger], fetchedAt: now });
+    if (path === "/api/v1/integrations/beecount/ledgers/ledger-1/snapshot") return json(route, beeCountSnapshot);
     if (path === "/api/v1/web/devices") return json(route, { devices: [] });
     if (path === "/api/v1/web/sessions") return json(route, { sessions: [] });
     if (path === "/api/v1/web/csrf") return json(route, { csrfToken: "csrf-test" });
@@ -51,45 +121,25 @@ async function installMocks(page: Page, pushes: Array<Record<string, unknown>>) 
   });
 }
 
-function flattenedChanges(pushes: Array<Record<string, unknown>>) {
-  return pushes.flatMap((body) => Array.isArray(body.changes) ? body.changes as Array<Record<string, unknown>> : []);
-}
-
-test("native finance transaction supports create edit delete and filtering", async ({ page }) => {
-  const pushes: Array<Record<string, unknown>> = [];
-  await installMocks(page, pushes);
+test("finance transactions use BeeCount as the only runtime source", async ({ page }) => {
+  await installMocks(page);
   await page.goto("/app/finance/transactions");
-  await expect(page.getByRole("heading", { name: "财务 · 交易", level: 1 })).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "财务", level: 1 })).toBeVisible();
+  await expect(page.getByText("唯一财务数据源")).toBeVisible();
   await expect(page.getByText("Coffee Shop")).toBeVisible();
+  await expect(page.getByText("LifeTrace Native")).toHaveCount(0);
+  await expect(page.getByText("适配器未启用")).toHaveCount(0);
 
-  await page.getByPlaceholder("筛选商户、备注或日期").fill("does-not-exist");
-  await expect(page.getByText("没有匹配的 LifeTrace 交易")).toBeVisible();
-  await page.getByPlaceholder("筛选商户、备注或日期").fill("");
-
-  await page.getByRole("button", { name: "编辑交易" }).click();
-  const editDialog = page.getByRole("dialog", { name: "编辑交易" });
-  await expect(editDialog).toBeVisible();
-  await editDialog.getByLabel("金额").fill("28.50");
-  await editDialog.getByLabel("商户 / 对象").fill("Coffee Lab");
-  await editDialog.getByRole("button", { name: "保存修改" }).click();
-  await expect(page.getByText("Coffee Lab")).toBeVisible();
-  expect(flattenedChanges(pushes).some((change) => change.entityType === "finance.transaction")).toBe(true);
-
-  await page.getByRole("button", { name: "记一笔" }).click();
-  const createDialog = page.getByRole("dialog", { name: "新增交易" });
-  await createDialog.getByLabel("金额").fill("66.00");
-  await createDialog.getByLabel("商户 / 对象").fill("Dinner");
-  await createDialog.getByRole("button", { name: "新增交易" }).click();
-  await expect(page.getByText("Dinner")).toBeVisible();
-
-  const deleteButtons = page.getByRole("button", { name: "删除交易" });
-  await deleteButtons.first().click();
-  expect(flattenedChanges(pushes).length).toBeGreaterThanOrEqual(3);
+  const filter = page.getByPlaceholder("筛选备注、账户、分类、标签或日期");
+  await filter.fill("does-not-exist");
+  await expect(page.getByText("没有匹配的 BeeCount 交易")).toBeVisible();
+  await filter.fill("早餐");
+  await expect(page.getByText("Coffee Shop")).toBeVisible();
 });
 
 test("Dialog autofocuses, traps Tab, closes on Escape, and restores focus", async ({ page }) => {
-  const pushes: Array<Record<string, unknown>> = [];
-  await installMocks(page, pushes);
+  await installMocks(page);
   await page.goto("/app/system/ui");
   await page.getByRole("tab", { name: "Overlay / Feedback" }).click();
   const trigger = page.getByRole("button", { name: "Dialog", exact: true });
