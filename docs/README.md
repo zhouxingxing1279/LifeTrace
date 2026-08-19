@@ -64,6 +64,8 @@ epic-xx/
 
 以下 Epic 是当前跨设备 / 移动端数据能力规划的权威入口：
 
+- `docs/epic-12/execution-plan.md`：统一文件、附件与对象存储的执行顺序、验收映射和安全边界。
+- `docs/epic-12/architecture.md`：文件元数据、S3 兼容签名传输、去重、权限和现有 Photo Staging / 私密相册隔离关系。
 - `docs/epic-30/README.md`：本地加密相册与私密媒体保险库；严格 `local-only`，不参与远程相册同步。
 - `docs/epic-31/README.md`：普通相册 Android ↔ Windows 设备直连同步；LAN / P2P 优先，TURN 兜底，云端不持久化照片。
 
