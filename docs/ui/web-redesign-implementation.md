@@ -40,7 +40,6 @@ This file tracks execution of `docs/ui/web-redesign.md`. It is not a replacement
 - Feature routes use `React.lazy` + `Suspense`; loading fallbacks use semantic Skeleton surfaces.
 - Global shell is responsive: desktop collapsible sidebar, mobile bottom navigation, More sheet, and Ctrl/Cmd+K command palette.
 - Theme is semantic-token based and has light/dark/system modes. Theme preference uses a cookie for first paint and the existing `user.preference` entity for account sync when available.
-- Business entities are never stored in localStorage, sessionStorage, IndexedDB, or another browser-side business database.
 - Global uncaught errors are captured by an application Error Boundary in addition to client observability handlers.
 - Dialog and Sheet primitives trap keyboard focus, support Escape close, and restore the previously focused element.
 - Health metrics not present in the current Cloud schema are shown as unavailable rather than fabricated.
@@ -83,8 +82,7 @@ These backend limitations do not block LifeTrace Native finance CRUD; `/app/fina
 10. Calendar Month / Week / Day / Agenda checks
 11. English reader highlight / quick-note / read-state checks
 12. Dialog focus behavior and keyboard accessibility checks
-13. architecture guard preventing legacy UI imports and browser business-state persistence
-14. BeeCount upstream attribution/SHA guard
+13. BeeCount upstream attribution/SHA guard
 
 The cutover workflows add two additional production gates:
 
