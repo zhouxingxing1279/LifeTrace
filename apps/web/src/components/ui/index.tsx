@@ -1,15 +1,17 @@
-import type {
-  ButtonHTMLAttributes,
-  DetailsHTMLAttributes,
-  HTMLAttributes,
-  InputHTMLAttributes,
-  PropsWithChildren,
-  ReactNode,
-  SelectHTMLAttributes,
-  TableHTMLAttributes,
-  TextareaHTMLAttributes,
+import {
+  forwardRef,
+  useEffect,
+  useRef,
+  type ButtonHTMLAttributes,
+  type DetailsHTMLAttributes,
+  type HTMLAttributes,
+  type InputHTMLAttributes,
+  type PropsWithChildren,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TableHTMLAttributes,
+  type TextareaHTMLAttributes,
 } from "react";
-import { forwardRef } from "react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
 
@@ -65,15 +67,16 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
 ));
 Select.displayName = "Select";
 
-export function Checkbox({ checked, onChange, className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input type="checkbox" checked={checked} onChange={onChange} className={cn("h-4 w-4 rounded border accent-[hsl(var(--primary))]", className)} {...props} />;
+export function Checkbox({ className, ...props }: Omit<InputHTMLAttributes<HTMLInputElement>, "type">) {
+  return <input type="checkbox" className={cn("h-4 w-4 rounded border accent-[hsl(var(--primary))]", className)} {...props} />;
 }
 
 export function Switch({ checked, onCheckedChange, disabled, label }: { checked: boolean; onCheckedChange(value: boolean): void; disabled?: boolean; label: string }) {
-  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onCheckedChange(!checked)} className={cn("relative h-6 w-11 rounded-full border transition-colors", checked ? "border-primary bg-primary" : "bg-muted")}><span className={cn("absolute top-0.5 h-4.5 w-4.5 rounded-full bg-background shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></button>;
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onCheckedChange(!checked)} className={cn("relative h-6 w-11 rounded-full border transition-colors", checked ? "border-primary bg-primary" : "bg-muted")}><span className={cn("absolute top-[3px] h-4 w-4 rounded-full bg-background shadow-sm transition-transform", checked ? "translate-x-[22px]" : "translate-x-[3px]")} /></button>;
 }
 
-export function Tabs<T extends string>({ value, onValueChange, items, className }: { value: T; onValueChange(value: T): void; items: Array<{ value: T; label: string }>; className?: string }) {
+export type TabItem<T extends string> = { value: T; label: string };
+export function Tabs<const T extends string>({ value, onValueChange, items, className }: { value: T; onValueChange(value: T): void; items: readonly TabItem<T>[]; className?: string }) {
   return <div role="tablist" className={cn("flex w-fit max-w-full overflow-x-auto rounded-md border p-0.5", className)}>{items.map((item) => <button key={item.value} role="tab" aria-selected={value === item.value} className={cn("shrink-0 rounded px-3 py-1.5 text-xs text-muted-foreground", value === item.value && "bg-muted font-medium text-foreground")} onClick={() => onValueChange(item.value)}>{item.label}</button>)}</div>;
 }
 
@@ -86,9 +89,51 @@ export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowEle
 export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) { return <th className={cn("px-3 py-2 text-left font-medium", className)} {...props} />; }
 export function TableCell({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) { return <td className={cn("px-3 py-2.5", className)} {...props} />; }
 
+const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+function useFocusTrap(open: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const previous = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    previous.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const timer = window.setTimeout(() => ref.current?.querySelector<HTMLElement>(FOCUSABLE)?.focus(), 0);
+    return () => {
+      window.clearTimeout(timer);
+      previous.current?.focus();
+    };
+  }, [open]);
+  return ref;
+}
+
+function trapKeyDown(event: React.KeyboardEvent<HTMLDivElement>, onClose?: () => void) {
+  if (event.key === "Escape" && onClose) {
+    event.preventDefault();
+    onClose();
+    return;
+  }
+  if (event.key !== "Tab") return;
+  const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(FOCUSABLE)).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
+  if (!focusable.length) {
+    event.preventDefault();
+    event.currentTarget.focus();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 export function Dialog({ open, onOpenChange, title, description, children }: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; description?: string }>) {
+  const ref = useFocusTrap(open);
   if (!open) return null;
-  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-popover shadow-2xl"><div className="border-b px-5 py-4"><div className="font-semibold">{title}</div>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div><div className="p-5">{children}</div></div></div>;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div ref={ref} tabIndex={-1} onKeyDown={(event) => trapKeyDown(event, () => onOpenChange(false))} className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-popover shadow-2xl" role="dialog" aria-modal="true" aria-label={title}><div className="border-b px-5 py-4"><div className="font-semibold">{title}</div>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div><div className="p-5">{children}</div></div></div>;
 }
 
 export function AlertDialog(props: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; description?: string }>) {
@@ -96,8 +141,9 @@ export function AlertDialog(props: PropsWithChildren<{ open: boolean; onOpenChan
 }
 
 export function Sheet({ open, onOpenChange, title, children, side = "right" }: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; side?: "right" | "bottom" }>) {
+  const ref = useFocusTrap(open);
   if (!open) return null;
-  return <div className={cn("fixed inset-0 z-50 flex bg-black/40", side === "bottom" ? "items-end" : "justify-end")} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div className={cn("border bg-popover shadow-2xl", side === "bottom" ? "max-h-[80vh] w-full rounded-t-xl" : "h-full w-full max-w-md border-l")}><div className="border-b px-5 py-4 font-semibold">{title}</div><div className="scrollbar-thin max-h-full overflow-y-auto p-5">{children}</div></div></div>;
+  return <div className={cn("fixed inset-0 z-50 flex bg-black/40", side === "bottom" ? "items-end" : "justify-end")} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div ref={ref} tabIndex={-1} onKeyDown={(event) => trapKeyDown(event, () => onOpenChange(false))} className={cn("border bg-popover shadow-2xl", side === "bottom" ? "max-h-[80vh] w-full rounded-t-xl" : "h-full w-full max-w-md border-l")} role="dialog" aria-modal="true" aria-label={title}><div className="border-b px-5 py-4 font-semibold">{title}</div><div className="scrollbar-thin max-h-full overflow-y-auto p-5">{children}</div></div></div>;
 }
 export const Drawer = Sheet;
 
@@ -135,54 +181,21 @@ export function Toast({ title, description, tone = "default", onDismiss }: { tit
 
 export function Progress({ value, className }: { value: number; className?: string }) {
   const safe = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
-  return <div className={cn("h-2 overflow-hidden rounded-full bg-muted", className)} aria-label={`完成度 ${Math.round(safe)}%`} role="progressbar" aria-valuenow={safe} aria-valuemin={0} aria-valuemax={100}>
-    <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${safe}%` }} />
-  </div>;
+  return <div className={cn("h-2 overflow-hidden rounded-full bg-muted", className)} aria-label={`完成度 ${Math.round(safe)}%`} role="progressbar" aria-valuenow={safe} aria-valuemin={0} aria-valuemax={100}><div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${safe}%` }} /></div>;
 }
 
 export function EmptyState({ icon, title, description, action }: { icon?: ReactNode; title: string; description?: string; action?: ReactNode }) {
-  return <div className="empty-state">
-    {icon ? <div className="mb-3 text-muted-foreground">{icon}</div> : null}
-    <div className="font-medium text-foreground">{title}</div>
-    {description ? <p className="mt-1 max-w-md leading-6">{description}</p> : null}
-    {action ? <div className="mt-4">{action}</div> : null}
-  </div>;
+  return <div className="empty-state">{icon ? <div className="mb-3 text-muted-foreground">{icon}</div> : null}<div className="font-medium text-foreground">{title}</div>{description ? <p className="mt-1 max-w-md leading-6">{description}</p> : null}{action ? <div className="mt-4">{action}</div> : null}</div>;
 }
 
 export function PageHeader({ title, description, action }: { title: string; description?: string; action?: ReactNode }) {
-  return <div className="page-header">
-    <div>
-      <h1 className="page-title">{title}</h1>
-      {description ? <p className="page-description">{description}</p> : null}
-    </div>
-    {action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}
-  </div>;
+  return <div className="page-header"><div><h1 className="page-title">{title}</h1>{description ? <p className="page-description">{description}</p> : null}</div>{action ? <div className="flex flex-wrap items-center gap-2">{action}</div> : null}</div>;
 }
 
 export function MetricCard({ label, value, hint, icon }: { label: string; value: ReactNode; hint?: ReactNode; icon?: ReactNode }) {
-  return <Card className="min-w-0">
-    <CardContent className="pt-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-xs font-medium text-muted-foreground">{label}</div>
-          <div className="metric-value mt-2 truncate">{value}</div>
-          {hint ? <div className="mt-2 text-xs text-muted-foreground">{hint}</div> : null}
-        </div>
-        {icon ? <div className="rounded-md bg-muted p-2 text-muted-foreground">{icon}</div> : null}
-      </div>
-    </CardContent>
-  </Card>;
+  return <Card className="min-w-0"><CardContent className="pt-5"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="text-xs font-medium text-muted-foreground">{label}</div><div className="metric-value mt-2 truncate">{value}</div>{hint ? <div className="mt-2 text-xs text-muted-foreground">{hint}</div> : null}</div>{icon ? <div className="rounded-md bg-muted p-2 text-muted-foreground">{icon}</div> : null}</div></CardContent></Card>;
 }
 
 export function Section({ title, description, action, children, className }: PropsWithChildren<{ title?: string; description?: string; action?: ReactNode; className?: string }>) {
-  return <section className={className}>
-    {title ? <div className="mb-3 flex items-end justify-between gap-4">
-      <div>
-        <h2 className="section-title">{title}</h2>
-        {description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}
-      </div>
-      {action}
-    </div> : null}
-    {children}
-  </section>;
+  return <section className={className}>{title ? <div className="mb-3 flex items-end justify-between gap-4"><div><h2 className="section-title">{title}</h2>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div>{action}</div> : null}{children}</section>;
 }
