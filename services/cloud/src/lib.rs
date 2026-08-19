@@ -16,6 +16,7 @@ pub mod beecount_sync;
 pub mod config;
 pub mod error;
 pub mod mail;
+pub mod object_storage;
 pub mod postgres_repository;
 pub mod repository;
 pub mod routes;

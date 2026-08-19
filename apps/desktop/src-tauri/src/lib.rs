@@ -12,6 +12,7 @@ mod execution_relation;
 mod execution_reminder;
 mod execution_structure;
 mod execution_waiting;
+mod file_cache;
 mod observability;
 mod server;
 mod storage;
@@ -41,6 +42,9 @@ pub fn run() {
             observability::client_log_read_recent,
             storage::storage_status,
             storage::storage_migrate,
+            file_cache::file_cache_download,
+            file_cache::file_cache_thumbnail,
+            file_cache::file_cache_cleanup,
             desktop::photo_status,
             desktop::mobile_upload_status,
             desktop::mobile_upload_start,
