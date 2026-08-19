@@ -22,11 +22,11 @@ The Vditor integration intentionally configures:
 - a user + note scoped cache key to avoid collisions across notes or accounts on the same browser.
 - recovery reconciliation: a locally cached dirty draft is restored into React state and goes through the normal Cloud autosave path; a clean/stale cache never overrides a newer Cloud value.
 - successful Cloud saves mark the local draft clean, so future Cloud revisions can safely win over stale cached content.
-- a pinned Vditor CDN version (`3.11.3`) for Vditor's runtime Lute/icon/theme assets, matching the npm dependency version.
+- self-hosted Vditor runtime assets copied from the pinned npm package into the Web public bundle during `postinstall`, so the editor does not depend on a third-party CDN at runtime.
 - LifeTrace light/dark theme synchronization through Vditor `setTheme`.
 
 Upload/record controls are deliberately omitted until they can be wired to LifeTrace file storage. They must not be enabled with a browser-local or unrelated upload backend.
 
 ## Updating
 
-When upgrading Vditor, update the npm version and pinned runtime CDN version together, re-check the upstream MIT license, then run Web typecheck, unit tests, build and browser tests.
+When upgrading Vditor, update the npm version, re-check the upstream MIT license, ensure `scripts/copy-vditor-assets.mjs` still matches the package layout, then run Web typecheck, unit tests, production build and browser tests.
