@@ -1,4 +1,14 @@
-import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, PropsWithChildren, ReactNode, TextareaHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+  DetailsHTMLAttributes,
+  HTMLAttributes,
+  InputHTMLAttributes,
+  PropsWithChildren,
+  ReactNode,
+  SelectHTMLAttributes,
+  TableHTMLAttributes,
+  TextareaHTMLAttributes,
+} from "react";
 import { forwardRef } from "react";
 import { clsx } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -49,6 +59,79 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   <textarea ref={ref} className={cn("min-h-28 w-full resize-y rounded-md border bg-background px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground/70 focus:border-ring focus:ring-2 focus:ring-ring/15", className)} {...props} />
 ));
 Textarea.displayName = "Textarea";
+
+export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(({ className, ...props }, ref) => (
+  <select ref={ref} className={cn("h-10 w-full rounded-md border bg-background px-3 text-sm outline-none focus:border-ring focus:ring-2 focus:ring-ring/15", className)} {...props} />
+));
+Select.displayName = "Select";
+
+export function Checkbox({ checked, onChange, className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  return <input type="checkbox" checked={checked} onChange={onChange} className={cn("h-4 w-4 rounded border accent-[hsl(var(--primary))]", className)} {...props} />;
+}
+
+export function Switch({ checked, onCheckedChange, disabled, label }: { checked: boolean; onCheckedChange(value: boolean): void; disabled?: boolean; label: string }) {
+  return <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onCheckedChange(!checked)} className={cn("relative h-6 w-11 rounded-full border transition-colors", checked ? "border-primary bg-primary" : "bg-muted")}><span className={cn("absolute top-0.5 h-4.5 w-4.5 rounded-full bg-background shadow-sm transition-transform", checked ? "translate-x-5" : "translate-x-0.5")} /></button>;
+}
+
+export function Tabs<T extends string>({ value, onValueChange, items, className }: { value: T; onValueChange(value: T): void; items: Array<{ value: T; label: string }>; className?: string }) {
+  return <div role="tablist" className={cn("flex w-fit max-w-full overflow-x-auto rounded-md border p-0.5", className)}>{items.map((item) => <button key={item.value} role="tab" aria-selected={value === item.value} className={cn("shrink-0 rounded px-3 py-1.5 text-xs text-muted-foreground", value === item.value && "bg-muted font-medium text-foreground")} onClick={() => onValueChange(item.value)}>{item.label}</button>)}</div>;
+}
+
+export function Table({ className, ...props }: TableHTMLAttributes<HTMLTableElement>) {
+  return <div className="scrollbar-thin w-full overflow-x-auto"><table className={cn("w-full border-collapse text-sm", className)} {...props} /></div>;
+}
+export function TableHeader({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) { return <thead className={cn("border-b bg-muted/30 text-xs text-muted-foreground", className)} {...props} />; }
+export function TableBody({ className, ...props }: HTMLAttributes<HTMLTableSectionElement>) { return <tbody className={cn("divide-y", className)} {...props} />; }
+export function TableRow({ className, ...props }: HTMLAttributes<HTMLTableRowElement>) { return <tr className={cn("hover:bg-muted/30", className)} {...props} />; }
+export function TableHead({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) { return <th className={cn("px-3 py-2 text-left font-medium", className)} {...props} />; }
+export function TableCell({ className, ...props }: HTMLAttributes<HTMLTableCellElement>) { return <td className={cn("px-3 py-2.5", className)} {...props} />; }
+
+export function Dialog({ open, onOpenChange, title, description, children }: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; description?: string }>) {
+  if (!open) return null;
+  return <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl border bg-popover shadow-2xl"><div className="border-b px-5 py-4"><div className="font-semibold">{title}</div>{description ? <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p> : null}</div><div className="p-5">{children}</div></div></div>;
+}
+
+export function AlertDialog(props: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; description?: string }>) {
+  return <Dialog {...props} />;
+}
+
+export function Sheet({ open, onOpenChange, title, children, side = "right" }: PropsWithChildren<{ open: boolean; onOpenChange(open: boolean): void; title: string; side?: "right" | "bottom" }>) {
+  if (!open) return null;
+  return <div className={cn("fixed inset-0 z-50 flex bg-black/40", side === "bottom" ? "items-end" : "justify-end")} role="dialog" aria-modal="true" aria-label={title} onMouseDown={(event) => { if (event.currentTarget === event.target) onOpenChange(false); }}><div className={cn("border bg-popover shadow-2xl", side === "bottom" ? "max-h-[80vh] w-full rounded-t-xl" : "h-full w-full max-w-md border-l")}><div className="border-b px-5 py-4 font-semibold">{title}</div><div className="scrollbar-thin max-h-full overflow-y-auto p-5">{children}</div></div></div>;
+}
+export const Drawer = Sheet;
+
+export function DropdownMenu({ summary, children, className, ...props }: PropsWithChildren<{ summary: ReactNode } & DetailsHTMLAttributes<HTMLDetailsElement>>) {
+  return <details className={cn("relative", className)} {...props}><summary className="cursor-pointer list-none">{summary}</summary><div className="absolute right-0 z-40 mt-2 min-w-44 rounded-md border bg-popover p-1 shadow-lg">{children}</div></details>;
+}
+
+export function Popover({ trigger, children, className }: PropsWithChildren<{ trigger: ReactNode; className?: string }>) {
+  return <details className={cn("relative", className)}><summary className="cursor-pointer list-none">{trigger}</summary><div className="absolute z-40 mt-2 min-w-64 rounded-md border bg-popover p-3 shadow-lg">{children}</div></details>;
+}
+
+export function Tooltip({ content, children }: PropsWithChildren<{ content: string }>) {
+  return <span title={content} className="inline-flex">{children}</span>;
+}
+
+export function Command({ children, className }: PropsWithChildren<{ className?: string }>) {
+  return <div role="listbox" className={cn("overflow-hidden rounded-lg border bg-popover", className)}>{children}</div>;
+}
+
+export function Skeleton({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div aria-hidden="true" className={cn("animate-pulse rounded-md bg-muted", className)} {...props} />;
+}
+
+export function Separator({ className, orientation = "horizontal" }: { className?: string; orientation?: "horizontal" | "vertical" }) {
+  return <div role="separator" aria-orientation={orientation} className={cn("shrink-0 bg-border", orientation === "horizontal" ? "h-px w-full" : "h-full w-px", className)} />;
+}
+
+export function ScrollArea({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("scrollbar-thin overflow-auto", className)} {...props} />;
+}
+
+export function Toast({ title, description, tone = "default", onDismiss }: { title: string; description?: string; tone?: "default" | "success" | "destructive"; onDismiss?(): void }) {
+  return <div role="status" className={cn("rounded-lg border bg-popover px-4 py-3 shadow-lg", tone === "success" && "border-success/30", tone === "destructive" && "border-destructive/30")}><div className="flex items-start justify-between gap-4"><div><div className="text-sm font-medium">{title}</div>{description ? <div className="mt-1 text-xs text-muted-foreground">{description}</div> : null}</div>{onDismiss ? <button className="text-xs text-muted-foreground" onClick={onDismiss}>关闭</button> : null}</div></div>;
+}
 
 export function Progress({ value, className }: { value: number; className?: string }) {
   const safe = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
