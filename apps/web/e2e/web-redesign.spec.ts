@@ -154,8 +154,9 @@ test("direct route refresh back forward and command keyboard navigation work", a
   await expect(page.getByRole("heading", { name: "今天", level: 1 })).toBeVisible();
 
   await page.keyboard.press("Control+K");
-  await expect(page.getByRole("dialog", { name: "全局命令" })).toBeVisible();
-  await page.getByRole("button", { name: "新建任务" }).click();
+  const commandDialog = page.getByRole("dialog", { name: "全局命令" });
+  await expect(commandDialog).toBeVisible();
+  await commandDialog.getByRole("button", { name: /新建任务/ }).click();
   await expect(page.getByRole("heading", { name: "计划与待办", level: 1 })).toBeVisible();
 
   await page.keyboard.press("Tab");
@@ -171,14 +172,16 @@ test("auth expiry redirects to login", async ({ page }) => {
 });
 
 test("loading empty and API error states are visible", async ({ page }) => {
-  await installMocks(page, { snapshotDelayMs: 500, empty: true });
+  const options: MockOptions = { snapshotDelayMs: 500, empty: true };
+  await installMocks(page, options);
   await page.goto("/app/today");
   await expect(page.getByText("同步中")).toBeVisible();
   await expect(page.getByRole("heading", { name: "今天", level: 1 })).toBeVisible();
   await expect(page.getByText("今天没有待办")).toBeVisible();
 
-  await page.unrouteAll({ behavior: "wait" });
-  await installMocks(page, { snapshotError: true });
+  options.snapshotDelayMs = undefined;
+  options.empty = false;
+  options.snapshotError = true;
   await page.reload();
   await expect(page.getByText("snapshot unavailable")).toBeVisible();
 });
@@ -210,7 +213,7 @@ test("English reader supports visual highlights quick notes and read completion"
   await expect(page.getByText("Practice should be scheduled daily.")).toBeVisible();
 
   await page.getByRole("button", { name: "标记已读" }).click();
-  await expect(page.getByText("已读", { exact: true })).toBeVisible();
+  await expect(page.getByText("已读", { exact: true }).first()).toBeVisible();
 });
 
 test("UI showcase keeps dialog accessible and reduced-motion compatible", async ({ page }) => {
