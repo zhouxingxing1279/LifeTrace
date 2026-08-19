@@ -18,7 +18,7 @@ As of the 2026-08 cutover, BeeCount is the only runtime finance implementation/d
 - `FinanceWorkspace.tsx` owns Overview, Transactions, Calendar, Ledgers, Budgets, Accounts, Categories, Tags and Import using BeeCount data only.
 - `/app/finance/transactions` delegates to the same workspace instead of maintaining a LifeTrace-native transaction implementation.
 - Finance pages do not fall back to `finance.*` browser entities when BeeCount is unavailable. Failure is surfaced as a BeeCount availability error.
-- The legacy LifeTrace-specific finance HTTP router is no longer mounted by `services/cloud/src/routes/mod.rs`; the backend finance surface is BeeCount.
+- Database-backed Cloud deployments do not mount the legacy LifeTrace finance CRUD routes; the production backend finance surface is BeeCount. Those old routes are retained only in the no-database in-memory protocol test harness so historical repository contract tests remain runnable.
 - LifeTrace continues to own the global web session, AppShell, design system and privacy masking. Those are platform concerns, not an alternate finance store.
 - Existing canonical `finance.*` storage records may still exist internally because the BeeCount compatibility layer maps BeeCount entities into the common PostgreSQL sync log. They are an implementation detail of the BeeCount compatibility service, not a second Web finance data source or user-selectable finance mode.
 
