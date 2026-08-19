@@ -79,8 +79,17 @@ jobs:
             /app/system/ui; do
             curl --fail --silent "http://127.0.0.1:4183${route}" | grep -q 'LifeTrace'
           done
-      - name: Install Chromium for browser matrix
-        run: npx playwright install --with-deps chromium
+      - name: Use runner Chrome for browser matrix
+        shell: bash
+        run: |
+          set -euo pipefail
+          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo 'No system Chrome/Chromium found on the GitHub runner.' >&2
+            exit 1
+          fi
+          "$CHROME_BIN" --version
+          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$CHROME_BIN" >> "$GITHUB_ENV"
       - name: Responsive, theme, route and accessibility browser tests
         run: npm run test:e2e
       - name: Upload Playwright diagnostics
