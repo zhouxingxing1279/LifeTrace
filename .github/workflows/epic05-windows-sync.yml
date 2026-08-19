@@ -234,7 +234,7 @@ jobs:
         with:
           toolchain: 1.88.0
       - name: Validate shared payload fixtures
-        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml --test compatibility
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
 
   android-contract-boundary:
     runs-on: ubuntu-latest
