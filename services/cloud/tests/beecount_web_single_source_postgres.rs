@@ -55,7 +55,7 @@ async fn send(
     (status, value)
 }
 
-async fn clone_without_beecount_clock(
+async fn clone_without_beecount_provenance(
     state: &AppState,
     user_id: &str,
     entity_type: &str,
@@ -205,18 +205,10 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     .unwrap();
     assert_eq!(stored, 6);
 
-    // Simulate rows left by the retired LifeTrace finance implementation. They
-    // share finance.* entity types but have neither BeeCount clock metadata nor
-    // a BeeCount mobile origin device.
-    clone_without_beecount_clock(
-        &state,
-        &user_id,
-        "finance.ledger",
-        "beecount:ledger-web-1",
-        "legacy-ledger-web-1",
-    )
-    .await;
-    clone_without_beecount_clock(
+    // Simulate user-global rows left by the retired LifeTrace finance system.
+    // They use the same entity types, but have neither BeeCount clocks nor a
+    // registered BeeCount-mobile external-device origin.
+    clone_without_beecount_provenance(
         &state,
         &user_id,
         "finance.account",
@@ -224,7 +216,7 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
         "legacy-account-web-1",
     )
     .await;
-    clone_without_beecount_clock(
+    clone_without_beecount_provenance(
         &state,
         &user_id,
         "finance.category",
@@ -232,7 +224,7 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
         "legacy-category-web-1",
     )
     .await;
-    clone_without_beecount_clock(
+    clone_without_beecount_provenance(
         &state,
         &user_id,
         "finance.tag",

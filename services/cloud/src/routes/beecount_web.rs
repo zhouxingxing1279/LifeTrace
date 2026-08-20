@@ -4,7 +4,7 @@
 //! BeeCount Android compatibility writes and LifeTrace Web finance reads both use
 //! the same `sync_entities` / `sync_change_log` authoritative store.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, HeaderMap, StatusCode};
@@ -14,6 +14,8 @@ use chrono::Utc;
 use lifetrace_contracts::ErrorCode;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
+use sqlx::Row;
+use uuid::Uuid;
 
 use crate::auth::security::cookie_value;
 use crate::auth::{AuthCredential, AuthenticatedPrincipal};
@@ -123,9 +125,26 @@ async fn snapshot(
         .as_object()
         .ok_or_else(|| internal("BeeCount snapshot must be an object"))?;
 
-    let accounts_raw = array(content, "accounts");
-    let categories_raw = array(content, "categories");
-    let tags_raw = array(content, "tags");
+    // BeeCount accounts/categories/tags are user-global. The retired LifeTrace
+    // finance implementation used the same finance.* entity types, so Web must
+    // apply an explicit provenance boundary before exposing those rows.
+    let allowed_user_global =
+        beecount_user_global_sources(&state, &principal.user_id, &ledger_id).await?;
+    let accounts_raw = filter_user_global(
+        array(content, "accounts"),
+        "finance.account",
+        &allowed_user_global,
+    );
+    let categories_raw = filter_user_global(
+        array(content, "categories"),
+        "finance.category",
+        &allowed_user_global,
+    );
+    let tags_raw = filter_user_global(
+        array(content, "tags"),
+        "finance.tag",
+        &allowed_user_global,
+    );
     let budgets_raw = array(content, "budgets");
     let transactions_raw = array(content, "items");
 
@@ -177,6 +196,86 @@ async fn snapshot(
         "tags": tags,
         "budgets": budgets
     })))
+}
+
+async fn beecount_user_global_sources(
+    state: &AppState,
+    user_id: &lifetrace_contracts::UserId,
+    ledger_id: &str,
+) -> Result<HashMap<String, HashSet<String>>, ApiError> {
+    let actor_uuid = Uuid::parse_str(user_id.as_str())
+        .map_err(|_| internal("BeeCount user id is invalid"))?;
+    let resource_owner_uuid = sqlx::query_scalar::<_, Uuid>(
+        "SELECT user_id FROM beecount_ledger_members \
+         WHERE ledger_id=$1 AND role='owner' LIMIT 1",
+    )
+    .bind(ledger_id)
+    .fetch_optional(&state.pool)
+    .await
+    .map_err(|_| internal("BeeCount ledger owner lookup failed"))?
+    .unwrap_or(actor_uuid);
+
+    let rows = sqlx::query(
+        "SELECT e.entity_type, \
+                COALESCE(c.entity_sync_id, \
+                  CASE WHEN e.entity_id LIKE 'beecount:%' THEN substring(e.entity_id from 10) \
+                       ELSE 'lifetrace:' || e.entity_id END) AS source_id \
+         FROM sync_entities e \
+         LEFT JOIN beecount_entity_clocks c \
+           ON c.user_id=e.user_id \
+          AND c.lifetrace_entity_type=e.entity_type \
+          AND c.lifetrace_entity_id=e.entity_id \
+          AND c.scope='user' \
+         LEFT JOIN cloud_devices d \
+           ON d.user_id=e.user_id \
+          AND d.external_device_id=e.origin_device_external_id \
+          AND d.app_id='beecount-mobile' \
+         WHERE e.user_id=$1 \
+           AND e.entity_type = ANY($2) \
+           AND e.is_deleted=FALSE \
+           AND ((c.entity_sync_id IS NOT NULL AND c.is_deleted=FALSE) \
+                OR (c.entity_sync_id IS NULL AND d.id IS NOT NULL))",
+    )
+    .bind(resource_owner_uuid)
+    .bind(vec![
+        "finance.account".to_owned(),
+        "finance.category".to_owned(),
+        "finance.tag".to_owned(),
+    ])
+    .fetch_all(&state.pool)
+    .await
+    .map_err(|_| internal("BeeCount user-global provenance lookup failed"))?;
+
+    let mut allowed: HashMap<String, HashSet<String>> = HashMap::new();
+    for row in rows {
+        let entity_type: String = row
+            .try_get("entity_type")
+            .map_err(|_| internal("BeeCount provenance entity type is invalid"))?;
+        let source_id: String = row
+            .try_get("source_id")
+            .map_err(|_| internal("BeeCount provenance source id is invalid"))?;
+        allowed.entry(entity_type).or_default().insert(source_id);
+    }
+    Ok(allowed)
+}
+
+fn filter_user_global(
+    values: Vec<Value>,
+    entity_type: &str,
+    allowed: &HashMap<String, HashSet<String>>,
+) -> Vec<Value> {
+    let Some(source_ids) = allowed.get(entity_type) else {
+        return Vec::new();
+    };
+    values
+        .into_iter()
+        .filter(|value| {
+            value
+                .get("syncId")
+                .and_then(Value::as_str)
+                .is_some_and(|source_id| source_ids.contains(source_id))
+        })
+        .collect()
 }
 
 async fn integration_principal(
