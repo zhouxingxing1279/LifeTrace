@@ -28,13 +28,17 @@
   --ring: 38 92% 52%;
   --radius: 0.75rem;
   --shadow: 38 40% 28%;
+  /* Upstream defaults to red=income and green=expense. */
+  --income: 0 86% 60%;
+  --expense: 160 84% 39%;
   --income-rgb: 239 68 68;
   --expense-rgb: 16 185 129;
   color: hsl(var(--foreground));
   font-family: 'Sora', 'Avenir Next', 'SF Pro Text', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif;
 }
 
-.dark .beecount-cloud {
+.dark .beecount-cloud,
+[data-theme="dark"] .beecount-cloud {
   --background: 220 16% 8%;
   --foreground: 210 40% 98%;
   --card: 220 15% 11%;
@@ -84,6 +88,61 @@
   border: 1px solid hsl(var(--border) / .7);
   background: hsl(var(--card));
   box-shadow: 0 10px 30px -18px hsl(var(--shadow) / .45);
+}
+
+.beecount-cloud .bc-action,
+.beecount-cloud .bc-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  border: 1px solid hsl(var(--border) / .75);
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: .75rem;
+  font-weight: 600;
+  transition: background-color .15s ease, border-color .15s ease, opacity .15s ease;
+}
+
+.beecount-cloud .bc-action {
+  min-height: 2.25rem;
+  border-radius: .7rem;
+  padding: .45rem .75rem;
+}
+
+.beecount-cloud .bc-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: .65rem;
+}
+
+.beecount-cloud .bc-action:hover:not(:disabled),
+.beecount-cloud .bc-icon:hover:not(:disabled) {
+  background: hsl(var(--muted) / .65);
+  border-color: hsl(var(--primary) / .35);
+}
+
+.beecount-cloud .bc-action:disabled,
+.beecount-cloud .bc-icon:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.beecount-cloud .bc-input {
+  width: 100%;
+  min-height: 2.35rem;
+  border: 1px solid hsl(var(--input));
+  border-radius: .7rem;
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  padding: .45rem .7rem;
+  font-size: .8rem;
+  outline: none;
+}
+
+.beecount-cloud .bc-input:focus {
+  border-color: hsl(var(--ring) / .65);
+  box-shadow: 0 0 0 3px hsl(var(--ring) / .12);
 }
 
 .beecount-cloud .bc-hero-border {
