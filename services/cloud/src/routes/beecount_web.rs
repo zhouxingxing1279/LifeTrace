@@ -139,13 +139,7 @@ async fn snapshot(
         .skip(query.offset)
         .take(query.limit)
         .map(|value| {
-            normalize_transaction(
-                value,
-                &ledger,
-                &account_names,
-                &category_names,
-                &tag_names,
-            )
+            normalize_transaction(value, &ledger, &account_names, &category_names, &tag_names)
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -248,8 +242,8 @@ fn normalize_transaction(
     let row = object(value)?;
     let source_id = required_string(row, "syncId")?;
     let occurred_at = required_string(row, "happenedAt")?;
-    let account_source_id = optional_string(row, "accountId")
-        .or_else(|| optional_string(row, "fromAccountId"));
+    let account_source_id =
+        optional_string(row, "accountId").or_else(|| optional_string(row, "fromAccountId"));
     let to_account_source_id = optional_string(row, "toAccountId");
     let category_source_id = optional_string(row, "categoryId");
     let tag_source_ids = string_array(row.get("tagIds"));
@@ -314,8 +308,11 @@ fn normalize_account(
     let mut expense = 0_i64;
     let mut count = 0_i64;
     for transaction in transactions {
-        let Ok(tx) = object(transaction) else { continue };
-        let from_id = optional_string(tx, "accountId").or_else(|| optional_string(tx, "fromAccountId"));
+        let Ok(tx) = object(transaction) else {
+            continue;
+        };
+        let from_id =
+            optional_string(tx, "accountId").or_else(|| optional_string(tx, "fromAccountId"));
         let to_id = optional_string(tx, "toAccountId");
         let amount = optional_amount_cents(tx.get("amount"))?.unwrap_or(0);
         let kind = optional_string(tx, "type").unwrap_or("expense");
@@ -332,8 +329,12 @@ fn normalize_account(
                 expense += amount;
             }
             "transfer" => {
-                if from_id == Some(source_id) { balance -= amount; }
-                if to_id == Some(source_id) { balance += amount; }
+                if from_id == Some(source_id) {
+                    balance -= amount;
+                }
+                if to_id == Some(source_id) {
+                    balance += amount;
+                }
             }
             _ => {}
         }
@@ -364,9 +365,15 @@ fn normalize_category(
 ) -> Result<Value, ApiError> {
     let row = object(value)?;
     let source_id = required_string(row, "syncId")?;
-    let count = transactions.iter().filter(|value| {
-        object(value).ok().and_then(|tx| optional_string(tx, "categoryId")) == Some(source_id)
-    }).count();
+    let count = transactions
+        .iter()
+        .filter(|value| {
+            object(value)
+                .ok()
+                .and_then(|tx| optional_string(tx, "categoryId"))
+                == Some(source_id)
+        })
+        .count();
     let parent_id = optional_string(row, "parentSyncId");
     Ok(json!({
         "id": lifetrace_entity_id(source_id),
@@ -391,8 +398,13 @@ fn normalize_tag(value: &Value, transactions: &[Value]) -> Result<Value, ApiErro
     let mut income = 0_i64;
     let mut expense = 0_i64;
     for transaction in transactions {
-        let Ok(tx) = object(transaction) else { continue };
-        if !string_array(tx.get("tagIds")).iter().any(|id| id == source_id) {
+        let Ok(tx) = object(transaction) else {
+            continue;
+        };
+        if !string_array(tx.get("tagIds"))
+            .iter()
+            .any(|id| id == source_id)
+        {
             continue;
         }
         count += 1;
@@ -417,7 +429,10 @@ fn normalize_tag(value: &Value, transactions: &[Value]) -> Result<Value, ApiErro
     }))
 }
 
-fn normalize_budget(value: &Value, category_names: &HashMap<String, String>) -> Result<Value, ApiError> {
+fn normalize_budget(
+    value: &Value,
+    category_names: &HashMap<String, String>,
+) -> Result<Value, ApiError> {
     let row = object(value)?;
     let source_id = required_string(row, "syncId")?;
     let category_id = optional_string(row, "categoryId");
@@ -458,7 +473,9 @@ fn name_map(values: &[Value]) -> HashMap<String, String> {
 }
 
 fn object(value: &Value) -> Result<&Map<String, Value>, ApiError> {
-    value.as_object().ok_or_else(|| internal("BeeCount entity must be an object"))
+    value
+        .as_object()
+        .ok_or_else(|| internal("BeeCount entity must be an object"))
 }
 
 fn required_string<'a>(row: &'a Map<String, Value>, key: &str) -> Result<&'a str, ApiError> {
@@ -466,7 +483,9 @@ fn required_string<'a>(row: &'a Map<String, Value>, key: &str) -> Result<&'a str
 }
 
 fn optional_string<'a>(row: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
-    row.get(key).and_then(Value::as_str).filter(|value| !value.is_empty())
+    row.get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
 }
 
 fn optional_bool(row: &Map<String, Value>, key: &str) -> Option<bool> {
@@ -517,5 +536,9 @@ fn not_found(message: &str) -> ApiError {
 }
 
 fn internal(message: &str) -> ApiError {
-    ApiError::new(ErrorCode::InternalError, message, StatusCode::INTERNAL_SERVER_ERROR)
+    ApiError::new(
+        ErrorCode::InternalError,
+        message,
+        StatusCode::INTERNAL_SERVER_ERROR,
+    )
 }
