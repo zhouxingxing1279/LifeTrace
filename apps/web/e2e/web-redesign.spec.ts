@@ -63,9 +63,7 @@ async function installMocks(page: Page, options: MockOptions = {}) {
       return json(route, { snapshotId: "snapshot-1", snapshotCursor: "cursor-1", items: snapshotItems(options.empty), nextPageToken: null, completed: true });
     }
 
-    if (path === "/api/v1/sync/pull") {
-      return json(route, { changes: [], nextCursor: "cursor-2", hasMore: false });
-    }
+    if (path === "/api/v1/sync/pull") return json(route, { changes: [], nextCursor: "cursor-2", hasMore: false });
 
     if (path === "/api/v1/sync/push") {
       const body = route.request().postDataJSON() as { changes?: Array<Record<string, unknown>> };
@@ -79,15 +77,12 @@ async function installMocks(page: Page, options: MockOptions = {}) {
       return json(route, { results });
     }
 
-    if (path === "/api/v1/integrations/beecount/status") {
-      return json(route, { enabled: false, readOnly: true, source: "beecount-cloud", upstreamReachable: false });
-    }
+    if (path === "/api/v1/integrations/beecount/status") return json(route, { enabled: false, readOnly: true, source: "beecount-cloud", upstreamReachable: false });
     if (path === "/api/v1/integrations/beecount/ledgers") return json(route, { items: [], total: 0 });
     if (path === "/api/v1/web/devices") return json(route, { devices: [] });
     if (path === "/api/v1/web/sessions") return json(route, { sessions: [] });
     if (path === "/api/v1/web/session/logout") return json(route, {});
     if (path === "/api/v1/web/csrf") return json(route, { csrfToken: "csrf-test" });
-
     return json(route, {});
   });
 }
@@ -188,9 +183,6 @@ test("loading empty and API error states are visible", async ({ page }) => {
 
 test("calendar exposes Month Week Day and Agenda", async ({ page }) => {
   await installMocks(page);
-  // This test's snapshot is intentionally pinned to 2026-08-19. Freeze the
-  // browser clock to the same fixture date so the calendar's initial visible
-  // range does not drift as CI's real wall clock advances.
   await page.clock.setFixedTime(new Date(now));
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/app/calendar");
@@ -208,8 +200,10 @@ test("English reader supports visual highlights quick notes and read completion"
   await page.getByRole("button", { name: /Sample Article/ }).click();
   await expect(page.getByRole("heading", { name: "Sample Article", level: 1 })).toBeVisible();
   const article = page.getByTestId("reader-article");
+  await expect(article).toBeVisible();
   await expect(article.locator("mark")).toHaveCount(0);
-  const phrase = article.getByText("Daily practice improves fluency.");
+  const phrase = page.getByText("Daily practice improves fluency.", { exact: true });
+  await expect(phrase).toBeVisible();
   await phrase.evaluate((node) => {
     const selection = window.getSelection();
     selection?.removeAllRanges();
