@@ -9,12 +9,26 @@
 import { BeeCountFinanceApi, type BeeCountLedgerSnapshot, type BeeCountTransaction } from "../../../services/core";
 
 const SNAPSHOT_PAGE_SIZE = 500;
+const LIFETRACE_NATIVE_LEDGER_PREFIX = "lifetrace:";
 
 export class LifeTraceBeeCountAdapter {
   constructor(private readonly api = new BeeCountFinanceApi()) {}
 
   status() { return this.api.status(); }
-  ledgers() { return this.api.ledgers(); }
+
+  async ledgers() {
+    const response = await this.api.ledgers();
+    // The compatibility layer gives legacy LifeTrace finance ledgers a
+    // `lifetrace:` wire id when they have no BeeCount identity. They are storage
+    // leftovers, not selectable BeeCount books. Filtering here prevents the Web
+    // port from defaulting to an old imported LifeTrace ledger while preserving
+    // real BeeCount ids (including generic /sync/push writes).
+    return {
+      ...response,
+      items: response.items.filter((item) => !item.sourceId.startsWith(LIFETRACE_NATIVE_LEDGER_PREFIX)),
+    };
+  }
+
   snapshot(ledgerId: string, limit = 200, offset = 0) { return this.api.snapshot(ledgerId, limit, offset); }
 
   /**
