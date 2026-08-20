@@ -6,6 +6,7 @@ pub mod beecount;
 pub mod beecount_account;
 pub mod beecount_attachments;
 pub mod beecount_compat;
+pub mod beecount_web;
 pub mod beecount_ws;
 pub mod files;
 pub mod finance;
@@ -28,16 +29,15 @@ use crate::state::AppState;
 /// Assemble all routes into one router.
 ///
 /// Database-backed Cloud deployments expose finance only through the BeeCount
-/// surfaces. The historical LifeTrace finance CRUD routes are mounted solely
-/// for the in-memory protocol test harness (`Config::default()` has no
-/// `database_url`) so legacy sync-contract tests can continue exercising the
-/// repository without reintroducing a production finance data source.
+/// surfaces. LifeTrace Web reads the same PostgreSQL BeeCount-compatible entity
+/// store used by the stock BeeCount client. The historical LifeTrace finance
+/// CRUD routes remain mounted solely for the in-memory protocol test harness.
 pub fn router(state: AppState) -> Router<AppState> {
     let in_memory_protocol_harness = !state.database_enabled;
     let mut router = Router::<AppState>::new()
         .merge(health::router())
         .merge(auth::router())
-        .merge(beecount::router())
+        .merge(beecount_web::router())
         .merge(beecount_account::router())
         .merge(beecount_attachments::router(
             state.config.beecount_attachment_max_upload_bytes,
