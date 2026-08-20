@@ -40,17 +40,17 @@ async function installMocks(page: Page) {
   });
 }
 
-test("finance transactions use BeeCount as the only runtime source", async ({ page }) => {
+test("finance transactions use BeeCount Cloud Web as the only runtime UI and data source", async ({ page }) => {
   await installMocks(page);
   await page.goto("/app/finance/transactions");
-  await expect(page.getByRole("heading", { name: "财务", level: 1 })).toBeVisible();
-  await expect(page.getByText("唯一财务数据源")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "BeeCount", level: 1 })).toBeVisible();
+  await expect(page.getByText("Cloud Web", { exact: true })).toBeVisible();
   await expect(page.getByText("Coffee Shop")).toBeVisible();
   await expect(page.getByText("LifeTrace Native")).toHaveCount(0);
   await expect(page.getByText("适配器未启用")).toHaveCount(0);
-  const filter = page.getByPlaceholder("筛选备注、账户、分类、标签或日期");
+  const filter = page.getByPlaceholder("搜索备注、账户、分类、标签");
   await filter.fill("does-not-exist");
-  await expect(page.getByText("没有匹配的 BeeCount 交易")).toBeVisible();
+  await expect(page.getByText("没有匹配的交易")).toBeVisible();
   await filter.fill("早餐");
   await expect(page.getByText("Coffee Shop")).toBeVisible();
 });

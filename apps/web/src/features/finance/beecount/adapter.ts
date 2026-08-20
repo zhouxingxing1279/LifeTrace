@@ -1,17 +1,86 @@
 /*
  * BeeCount Cloud adapter for LifeTrace Web.
- * Upstream information architecture and behavior are derived from
- * TNT-Likely/BeeCount-Cloud frontend/apps/web/src/pages/sections/*.
- * The LifeTrace backend exposes a read-only aggregate snapshot, so this adapter
- * translates that contract without introducing a second BeeCount login flow.
+ *
+ * The visible finance experience is source-derived from TNT-Likely/BeeCount-Cloud
+ * (upstream SHA tracked in UPSTREAM.md). LifeTrace only adapts authentication and
+ * the PostgreSQL-backed compatibility API; it must not reintroduce a second
+ * finance model.
  */
 import { BeeCountFinanceApi, type BeeCountLedgerSnapshot, type BeeCountTransaction } from "../../../services/core";
 
+const SNAPSHOT_PAGE_SIZE = 500;
+const LIFETRACE_NATIVE_LEDGER_PREFIX = "lifetrace:";
+
 export class LifeTraceBeeCountAdapter {
   constructor(private readonly api = new BeeCountFinanceApi()) {}
+
   status() { return this.api.status(); }
-  ledgers() { return this.api.ledgers(); }
+
+  async ledgers() {
+    const response = await this.api.ledgers();
+    // The compatibility layer gives legacy LifeTrace finance ledgers a
+    // `lifetrace:` wire id when they have no BeeCount identity. They are storage
+    // leftovers, not selectable BeeCount books. Filtering here prevents the Web
+    // port from defaulting to an old imported LifeTrace ledger while preserving
+    // real BeeCount ids (including generic /sync/push writes).
+    return {
+      ...response,
+      items: response.items.filter((item) => !item.sourceId.startsWith(LIFETRACE_NATIVE_LEDGER_PREFIX)),
+    };
+  }
+
   snapshot(ledgerId: string, limit = 200, offset = 0) { return this.api.snapshot(ledgerId, limit, offset); }
+
+  /**
+   * BeeCount Cloud's transaction page is server paginated. LifeTrace's aggregate
+   * snapshot endpoint has the same hard page limit (500), so the Web port must
+   * consume every page before running BeeCount's client-side analytics and
+   * dictionary joins. This prevents the old 500-row truncation bug.
+   */
+  async snapshotAll(ledgerId: string): Promise<BeeCountLedgerSnapshot> {
+    const first = await this.api.snapshot(ledgerId, SNAPSHOT_PAGE_SIZE, 0);
+    const total = Math.max(0, first.transactions.total);
+    if (first.transactions.items.length >= total) {
+      return withSortedTransactions(first, first.transactions.items);
+    }
+
+    const offsets: number[] = [];
+    for (let offset = SNAPSHOT_PAGE_SIZE; offset < total; offset += SNAPSHOT_PAGE_SIZE) {
+      offsets.push(offset);
+    }
+    const pages = await Promise.all(
+      offsets.map((offset) => this.api.snapshot(ledgerId, SNAPSHOT_PAGE_SIZE, offset)),
+    );
+
+    const byId = new Map<string, BeeCountTransaction>();
+    for (const item of first.transactions.items) byId.set(item.id, item);
+    for (const page of pages) {
+      for (const item of page.transactions.items) byId.set(item.id, item);
+    }
+    return withSortedTransactions(first, [...byId.values()]);
+  }
+}
+
+function transactionTime(item: BeeCountTransaction): number {
+  const parsed = Date.parse(item.occurredAt);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function withSortedTransactions(
+  snapshot: BeeCountLedgerSnapshot,
+  items: BeeCountTransaction[],
+): BeeCountLedgerSnapshot {
+  const sorted = [...items].sort((a, b) => transactionTime(b) - transactionTime(a));
+  return {
+    ...snapshot,
+    transactions: {
+      ...snapshot.transactions,
+      items: sorted,
+      total: Math.max(snapshot.transactions.total, sorted.length),
+      limit: sorted.length,
+      offset: 0,
+    },
+  };
 }
 
 export function filterBeeCountTransactions(items: BeeCountTransaction[], query: string, type: string): BeeCountTransaction[] {

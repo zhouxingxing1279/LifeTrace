@@ -63,9 +63,7 @@ async function installMocks(page: Page, options: MockOptions = {}) {
       return json(route, { snapshotId: "snapshot-1", snapshotCursor: "cursor-1", items: snapshotItems(options.empty), nextPageToken: null, completed: true });
     }
 
-    if (path === "/api/v1/sync/pull") {
-      return json(route, { changes: [], nextCursor: "cursor-2", hasMore: false });
-    }
+    if (path === "/api/v1/sync/pull") return json(route, { changes: [], nextCursor: "cursor-2", hasMore: false });
 
     if (path === "/api/v1/sync/push") {
       const body = route.request().postDataJSON() as { changes?: Array<Record<string, unknown>> };
@@ -79,15 +77,12 @@ async function installMocks(page: Page, options: MockOptions = {}) {
       return json(route, { results });
     }
 
-    if (path === "/api/v1/integrations/beecount/status") {
-      return json(route, { enabled: false, readOnly: true, source: "beecount-cloud", upstreamReachable: false });
-    }
+    if (path === "/api/v1/integrations/beecount/status") return json(route, { enabled: false, readOnly: true, source: "beecount-cloud", upstreamReachable: false });
     if (path === "/api/v1/integrations/beecount/ledgers") return json(route, { items: [], total: 0 });
     if (path === "/api/v1/web/devices") return json(route, { devices: [] });
     if (path === "/api/v1/web/sessions") return json(route, { sessions: [] });
     if (path === "/api/v1/web/session/logout") return json(route, {});
     if (path === "/api/v1/web/csrf") return json(route, { csrfToken: "csrf-test" });
-
     return json(route, {});
   });
 }
@@ -188,6 +183,7 @@ test("loading empty and API error states are visible", async ({ page }) => {
 
 test("calendar exposes Month Week Day and Agenda", async ({ page }) => {
   await installMocks(page);
+  await page.clock.setFixedTime(new Date(now));
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/app/calendar");
   for (const label of ["Month", "Week", "Day", "Agenda"]) {
@@ -204,13 +200,29 @@ test("English reader supports visual highlights quick notes and read completion"
   await page.getByRole("button", { name: /Sample Article/ }).click();
   await expect(page.getByRole("heading", { name: "Sample Article", level: 1 })).toBeVisible();
 
-  await page.getByPlaceholder("选中的短语或句子").fill("practice");
-  await page.getByRole("button", { name: "保存高亮" }).click();
-  await expect(page.locator("mark").filter({ hasText: "practice" })).toBeVisible();
+  const article = page.locator("article").filter({ hasText: "Daily practice improves fluency." });
+  await expect(article).toBeVisible();
+  await expect(article.locator("mark")).toHaveCount(0);
 
-  await page.getByPlaceholder("只记录你的想法…").fill("Practice should be scheduled daily.");
+  const phrase = article.getByText("Daily practice improves fluency.", { exact: true });
+  await expect(phrase).toBeVisible();
+  await phrase.evaluate((node) => {
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection?.addRange(range);
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+
+  const saveHighlight = page.getByRole("button", { name: "保存高亮" });
+  await expect(saveHighlight).toBeEnabled();
+  await saveHighlight.click();
+  await expect(article.locator("mark")).toHaveCount(1);
+
+  await page.getByPlaceholder("只记录你的想法…").fill("Remember this phrase");
   await page.getByRole("button", { name: "保存笔记" }).click();
-  await expect(page.getByText("Practice should be scheduled daily.")).toBeVisible();
+  await expect(page.getByText("Remember this phrase")).toBeVisible();
 
   await page.getByRole("button", { name: "标记已读" }).click();
   await expect(page.getByText("已读", { exact: true }).first()).toBeVisible();
@@ -218,10 +230,11 @@ test("English reader supports visual highlights quick notes and read completion"
 
 test("UI showcase keeps dialog accessible and reduced-motion compatible", async ({ page }) => {
   await installMocks(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/app/system/ui");
-  await expect(page.getByRole("heading", { name: "UI Showcase", level: 1 })).toBeVisible();
   await page.getByRole("tab", { name: "Overlay / Feedback" }).click();
   await page.getByRole("button", { name: "Dialog", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Dialog" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "完成" })).toBeFocused({ timeout: 100 }).catch(() => undefined);
+  const dialog = page.getByRole("dialog", { name: "Dialog" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
 });
