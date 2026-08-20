@@ -55,6 +55,35 @@ async fn send(
     (status, value)
 }
 
+async fn clone_without_beecount_clock(
+    state: &AppState,
+    user_id: &str,
+    entity_type: &str,
+    source_entity_id: &str,
+    legacy_entity_id: &str,
+) {
+    let result = sqlx::query(
+        "INSERT INTO sync_entities ( \
+            user_id,entity_type,entity_id,entity_schema_version,server_version,payload, \
+            payload_hash,is_deleted,deleted_at,origin_device_id,origin_device_external_id, \
+            created_at,server_modified_at,client_modified_at,last_cursor \
+         ) \
+         SELECT user_id,entity_type,$4,entity_schema_version,server_version,payload, \
+            payload_hash,is_deleted,deleted_at,origin_device_id,origin_device_external_id, \
+            created_at,server_modified_at,client_modified_at,last_cursor \
+         FROM sync_entities \
+         WHERE user_id=$1::uuid AND entity_type=$2 AND entity_id=$3",
+    )
+    .bind(user_id)
+    .bind(entity_type)
+    .bind(source_entity_id)
+    .bind(legacy_entity_id)
+    .execute(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(result.rows_affected(), 1);
+}
+
 #[tokio::test]
 async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     let Ok(database_url) = std::env::var("TEST_DATABASE_URL") else {
@@ -176,6 +205,51 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     .unwrap();
     assert_eq!(stored, 6);
 
+    // Simulate rows left by the retired LifeTrace finance implementation. They
+    // intentionally share finance.* entity types, but have no BeeCount clock.
+    clone_without_beecount_clock(
+        &state,
+        &user_id,
+        "finance.ledger",
+        "beecount:ledger-web-1",
+        "legacy-ledger-web-1",
+    )
+    .await;
+    clone_without_beecount_clock(
+        &state,
+        &user_id,
+        "finance.account",
+        "beecount:account-web-1",
+        "legacy-account-web-1",
+    )
+    .await;
+    clone_without_beecount_clock(
+        &state,
+        &user_id,
+        "finance.category",
+        "beecount:category-web-1",
+        "legacy-category-web-1",
+    )
+    .await;
+    clone_without_beecount_clock(
+        &state,
+        &user_id,
+        "finance.tag",
+        "beecount:tag-web-1",
+        "legacy-tag-web-1",
+    )
+    .await;
+
+    let legacy_clock_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*)::BIGINT FROM beecount_entity_clocks \
+         WHERE user_id=$1::uuid AND lifetrace_entity_id LIKE 'legacy-%'",
+    )
+    .bind(&user_id)
+    .fetch_one(&state.pool)
+    .await
+    .unwrap();
+    assert_eq!(legacy_clock_count, 0);
+
     let (status, integration) = send(
         router.clone(),
         Method::GET,
@@ -199,6 +273,7 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     .await;
     assert_eq!(status, StatusCode::OK, "{ledgers}");
     assert_eq!(ledgers["storage"], "lifetrace-postgresql");
+    assert_eq!(ledgers["items"].as_array().unwrap().len(), 1);
     assert_eq!(ledgers["items"][0]["sourceId"], "ledger-web-1");
     assert_eq!(ledgers["items"][0]["transactionCount"], 1);
     assert_eq!(ledgers["items"][0]["expenseTotalCents"], 1234);
@@ -218,6 +293,9 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     assert_eq!(snapshot["transactions"]["items"][0]["accountName"], "现金");
     assert_eq!(snapshot["transactions"]["items"][0]["categoryName"], "餐饮");
     assert_eq!(snapshot["transactions"]["items"][0]["tags"][0], "早餐");
+    assert_eq!(snapshot["accounts"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["categories"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["tags"].as_array().unwrap().len(), 1);
     assert_eq!(snapshot["accounts"][0]["transactionCount"], 1);
     assert_eq!(snapshot["categories"][0]["transactionCount"], 1);
     assert_eq!(snapshot["tags"][0]["expenseTotalCents"], 1234);
