@@ -6,6 +6,7 @@ pub mod beecount;
 pub mod beecount_account;
 pub mod beecount_attachments;
 pub mod beecount_compat;
+pub mod beecount_stats;
 pub mod beecount_web;
 pub mod beecount_ws;
 pub mod files;
@@ -43,6 +44,7 @@ pub fn router(state: AppState) -> Router<AppState> {
             state.config.beecount_attachment_max_upload_bytes,
         ))
         .merge(beecount_compat::router())
+        .merge(beecount_stats::router())
         .merge(beecount_ws::router())
         .merge(web_auth::router())
         .merge(assistant::router())
