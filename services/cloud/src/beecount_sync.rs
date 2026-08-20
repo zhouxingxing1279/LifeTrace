@@ -365,7 +365,7 @@ impl BeeCountSyncService {
                     c.ledger_id,c.scope,c.updated_at AS clock_updated_at, \
                     c.updated_by_device_id,c.lifetrace_cursor \
              FROM sync_change_log l \
-             LEFT JOIN beecount_entity_clocks c \
+             JOIN beecount_entity_clocks c \
                ON c.user_id=l.user_id AND c.lifetrace_entity_type=l.entity_type \
               AND c.lifetrace_entity_id=l.entity_id \
              WHERE l.cursor>$2 \
@@ -406,18 +406,29 @@ impl BeeCountSyncService {
         let actor_uuid = user_uuid(user_id)?;
         let rows = sqlx::query(
             "SELECT e.entity_id,e.payload,e.server_modified_at,e.last_cursor, \
+                    c.entity_sync_id AS beecount_ledger_id, \
                     COALESCE(m.role,'owner') AS role, \
-                    (SELECT COUNT(*)::BIGINT FROM sync_entities t \
+                    (SELECT COUNT(*)::BIGINT \
+                     FROM sync_entities t \
+                     JOIN beecount_entity_clocks tc \
+                       ON tc.user_id=t.user_id \
+                      AND tc.lifetrace_entity_type=t.entity_type \
+                      AND tc.lifetrace_entity_id=t.entity_id \
+                      AND tc.entity_type='transaction' \
+                      AND tc.scope='ledger' \
+                      AND tc.is_deleted=FALSE \
                      WHERE t.user_id=e.user_id AND t.entity_type='finance.transaction' \
-                       AND t.is_deleted=FALSE \
-                       AND COALESCE(t.payload->>'beecountLedgerId','') = \
-                           COALESCE(e.payload->>'beecountLedgerId',substring(e.entity_id from 10))) \
-                    AS tx_count \
+                       AND t.is_deleted=FALSE AND tc.ledger_id=c.entity_sync_id) AS tx_count \
              FROM sync_entities e \
+             JOIN beecount_entity_clocks c \
+               ON c.user_id=e.user_id \
+              AND c.lifetrace_entity_type=e.entity_type \
+              AND c.lifetrace_entity_id=e.entity_id \
+              AND c.entity_type='ledger' \
+              AND c.scope='ledger' \
+              AND c.is_deleted=FALSE \
              LEFT JOIN beecount_shared_ledgers s ON s.storage_user_id=e.user_id \
-               AND s.ledger_id=COALESCE(e.payload->>'beecountLedgerId', \
-                 CASE WHEN e.entity_id LIKE 'beecount:%' THEN substring(e.entity_id from 10) \
-                      ELSE 'lifetrace:' || e.entity_id END) \
+               AND s.ledger_id=c.entity_sync_id \
              LEFT JOIN beecount_ledger_members m ON m.ledger_id=s.ledger_id AND m.user_id=$1 \
              WHERE e.entity_type='finance.ledger' AND e.is_deleted=FALSE \
                AND ((s.ledger_id IS NULL AND e.user_id=$1) OR m.user_id IS NOT NULL) \
@@ -429,14 +440,8 @@ impl BeeCountSyncService {
         .map_err(db_error)?;
         rows.into_iter()
             .map(|row| {
-                let entity_id: String = row.try_get("entity_id").map_err(internal)?;
                 let payload: Value = row.try_get("payload").map_err(internal)?;
-                let ledger_id = payload
-                    .get("beecountLedgerId")
-                    .and_then(Value::as_str)
-                    .filter(|value| !value.is_empty())
-                    .map(str::to_owned)
-                    .unwrap_or_else(|| beecount_wire_id(&entity_id));
+                let ledger_id: String = row.try_get("beecount_ledger_id").map_err(internal)?;
                 let tx_count = row.try_get::<i64, _>("tx_count").unwrap_or(0).max(0);
                 Ok(BeeCountSyncLedgerOut {
                     path: ledger_id.clone(),
@@ -472,16 +477,23 @@ impl BeeCountSyncService {
             let ledger_id = ledger.ledger_id.clone();
             let stats = sqlx::query(
                 "SELECT \
-                   COALESCE(SUM(CASE WHEN payload->>'transactionType' = 'income' \
-                                     THEN (payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
+                   COALESCE(SUM(CASE WHEN t.payload->>'transactionType' = 'income' \
+                                     THEN (t.payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
                      AS income_cents, \
-                   COALESCE(SUM(CASE WHEN payload->>'transactionType' = 'expense' \
-                                     THEN (payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
+                   COALESCE(SUM(CASE WHEN t.payload->>'transactionType' = 'expense' \
+                                     THEN (t.payload->>'amountCents')::bigint ELSE 0 END), 0)::bigint \
                      AS expense_cents, \
                    COUNT(*)::bigint AS tx_count \
-                 FROM sync_entities \
-                 WHERE entity_type='finance.transaction' AND is_deleted=FALSE \
-                   AND payload->>'beecountLedgerId' = $1",
+                 FROM sync_entities t \
+                 JOIN beecount_entity_clocks c \
+                   ON c.user_id=t.user_id \
+                  AND c.lifetrace_entity_type=t.entity_type \
+                  AND c.lifetrace_entity_id=t.entity_id \
+                  AND c.entity_type='transaction' \
+                  AND c.scope='ledger' \
+                  AND c.is_deleted=FALSE \
+                 WHERE t.entity_type='finance.transaction' AND t.is_deleted=FALSE \
+                   AND c.ledger_id=$1",
             )
             .bind(&ledger_id)
             .fetch_one(&self.pool)
@@ -561,10 +573,19 @@ impl BeeCountSyncService {
                 .map_err(db_error)?;
         let ledger_entity_id = lifetrace_entity_id(ledger_id);
         let ledger = sqlx::query(
-            "SELECT payload,last_cursor,server_modified_at FROM sync_entities \
-             WHERE user_id=$1 AND entity_type='finance.ledger' \
-               AND (entity_id=$2 OR payload->>'beecountLedgerId'=$3) \
-               AND is_deleted=FALSE",
+            "SELECT e.payload,e.last_cursor,e.server_modified_at \
+             FROM sync_entities e \
+             JOIN beecount_entity_clocks c \
+               ON c.user_id=e.user_id \
+              AND c.lifetrace_entity_type=e.entity_type \
+              AND c.lifetrace_entity_id=e.entity_id \
+              AND c.entity_type='ledger' \
+              AND c.scope='ledger' \
+              AND c.entity_sync_id=$3 \
+              AND c.is_deleted=FALSE \
+             WHERE e.user_id=$1 AND e.entity_type='finance.ledger' \
+               AND (e.entity_id=$2 OR e.payload->>'beecountLedgerId'=$3) \
+               AND e.is_deleted=FALSE",
         )
         .bind(storage_uuid)
         .bind(&ledger_entity_id)
@@ -583,12 +604,18 @@ impl BeeCountSyncService {
         let ledger_raw = beecount_payload(BeeCountEntityKind::Ledger, ledger_id, &ledger_payload)
             .map_err(boundary_error)?;
         let rows = sqlx::query(
-            "SELECT entity_type,entity_id,payload,last_cursor,server_modified_at \
-             FROM sync_entities \
-             WHERE is_deleted=FALSE AND ( \
-               (user_id=$1 AND entity_type = ANY($2)) OR \
-               (user_id=$3 AND entity_type = ANY($4))) \
-             ORDER BY entity_type,entity_id",
+            "SELECT e.entity_type,e.entity_id,e.payload,e.last_cursor,e.server_modified_at \
+             FROM sync_entities e \
+             JOIN beecount_entity_clocks c \
+               ON c.user_id=e.user_id \
+              AND c.lifetrace_entity_type=e.entity_type \
+              AND c.lifetrace_entity_id=e.entity_id \
+              AND c.is_deleted=FALSE \
+             WHERE e.is_deleted=FALSE AND ( \
+               (e.user_id=$1 AND e.entity_type = ANY($2) \
+                  AND c.scope='ledger' AND c.ledger_id=$5) OR \
+               (e.user_id=$3 AND e.entity_type = ANY($4) AND c.scope='user')) \
+             ORDER BY e.entity_type,e.entity_id",
         )
         .bind(storage_uuid)
         .bind(vec![
@@ -601,6 +628,7 @@ impl BeeCountSyncService {
             "finance.category".to_owned(),
             "finance.tag".to_owned(),
         ])
+        .bind(ledger_id)
         .fetch_all(&self.pool)
         .await
         .map_err(db_error)?;
