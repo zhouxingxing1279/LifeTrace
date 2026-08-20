@@ -188,6 +188,10 @@ test("loading empty and API error states are visible", async ({ page }) => {
 
 test("calendar exposes Month Week Day and Agenda", async ({ page }) => {
   await installMocks(page);
+  // This test's snapshot is intentionally pinned to 2026-08-19. Freeze the
+  // browser clock to the same fixture date so the calendar's initial visible
+  // range does not drift as CI's real wall clock advances.
+  await page.clock.setFixedTime(new Date(now));
   await page.setViewportSize({ width: 1366, height: 768 });
   await page.goto("/app/calendar");
   for (const label of ["Month", "Week", "Day", "Agenda"]) {
@@ -203,25 +207,35 @@ test("English reader supports visual highlights quick notes and read completion"
   await page.goto("/app/english/articles");
   await page.getByRole("button", { name: /Sample Article/ }).click();
   await expect(page.getByRole("heading", { name: "Sample Article", level: 1 })).toBeVisible();
-
-  await page.getByPlaceholder("选中的短语或句子").fill("practice");
-  await page.getByRole("button", { name: "保存高亮" }).click();
-  await expect(page.locator("mark").filter({ hasText: "practice" })).toBeVisible();
-
-  await page.getByPlaceholder("只记录你的想法…").fill("Practice should be scheduled daily.");
+  const article = page.getByTestId("reader-article");
+  await expect(article.locator("mark")).toHaveCount(0);
+  const phrase = article.getByText("Daily practice improves fluency.");
+  await phrase.evaluate((node) => {
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    selection?.addRange(range);
+    node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  });
+  await expect(page.getByRole("button", { name: "高亮" })).toBeVisible();
+  await page.getByRole("button", { name: "高亮" }).click();
+  await expect(article.locator("mark")).toHaveCount(1);
+  await page.getByRole("button", { name: "快捷笔记" }).click();
+  await page.getByPlaceholder("记一句想法…").fill("Remember this phrase");
   await page.getByRole("button", { name: "保存笔记" }).click();
-  await expect(page.getByText("Practice should be scheduled daily.")).toBeVisible();
-
+  await expect(page.getByText("Remember this phrase")).toBeVisible();
   await page.getByRole("button", { name: "标记已读" }).click();
-  await expect(page.getByText("已读", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("button", { name: "已读" })).toBeVisible();
 });
 
 test("UI showcase keeps dialog accessible and reduced-motion compatible", async ({ page }) => {
   await installMocks(page);
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/app/system/ui");
-  await expect(page.getByRole("heading", { name: "UI Showcase", level: 1 })).toBeVisible();
   await page.getByRole("tab", { name: "Overlay / Feedback" }).click();
   await page.getByRole("button", { name: "Dialog", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Dialog" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "完成" })).toBeFocused({ timeout: 100 }).catch(() => undefined);
+  const dialog = page.getByRole("dialog", { name: "Dialog" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-modal", "true");
 });
