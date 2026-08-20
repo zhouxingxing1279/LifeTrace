@@ -34,8 +34,9 @@ Only platform boundaries are substituted:
 - BeeCount network client -> `LifeTraceBeeCountAdapter`.
 - Route root -> `/app/finance/*`.
 - Amount privacy -> LifeTrace global privacy switch.
+- BeeCount browser-local active-ledger preference -> React session state. LifeTrace Web deliberately forbids browser-local persistence outside the Vditor draft cache. If active-ledger selection later needs cross-session persistence it must use a server-side `user.preference`, not `localStorage`/IndexedDB.
 
-Everything inside the mounted finance workspace should follow BeeCount Cloud's information architecture and interaction conventions.
+Everything inside the mounted finance workspace should otherwise follow BeeCount Cloud's information architecture and interaction conventions.
 
 ## Data contract rules
 
@@ -60,7 +61,7 @@ When BeeCount Cloud Web changes:
 1. Compare the pinned upstream SHA with the new upstream revision.
 2. Review finance changes in the source paths listed above.
 3. Port the relevant BeeCount components/interactions into `beecount-cloud/` rather than recreating them with LifeTrace generic UI.
-4. Keep LifeTrace changes limited to session, route and API adapters.
+4. Keep LifeTrace changes limited to session, route and API adapters plus documented platform-boundary deviations.
 5. Update the pinned SHA in this file and source headers.
 6. Run Web typecheck, unit tests and production build; run Cloud/PostgreSQL regressions whenever the compatibility API changes.
 7. Re-check the upstream license before distribution or commercial use.
