@@ -69,7 +69,7 @@ async fn clone_without_beecount_clock(
             created_at,server_modified_at,client_modified_at,last_cursor \
          ) \
          SELECT user_id,entity_type,$4,entity_schema_version,server_version,payload, \
-            payload_hash,is_deleted,deleted_at,origin_device_id,origin_device_external_id, \
+            payload_hash,is_deleted,deleted_at,NULL,NULL, \
             created_at,server_modified_at,client_modified_at,last_cursor \
          FROM sync_entities \
          WHERE user_id=$1::uuid AND entity_type=$2 AND entity_id=$3",
@@ -206,7 +206,8 @@ async fn web_finance_reads_stock_beecount_writes_without_external_adapter() {
     assert_eq!(stored, 6);
 
     // Simulate rows left by the retired LifeTrace finance implementation. They
-    // intentionally share finance.* entity types, but have no BeeCount clock.
+    // share finance.* entity types but have neither BeeCount clock metadata nor
+    // a BeeCount mobile origin device.
     clone_without_beecount_clock(
         &state,
         &user_id,
