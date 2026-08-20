@@ -368,8 +368,6 @@ impl BeeCountSyncService {
              LEFT JOIN beecount_entity_clocks c \
                ON c.user_id=l.user_id AND c.lifetrace_entity_type=l.entity_type \
               AND c.lifetrace_entity_id=l.entity_id \
-             LEFT JOIN cloud_devices d \
-               ON d.id=l.origin_device_id AND d.user_id=l.user_id \
              WHERE l.cursor>$2 \
                AND (l.user_id=$1 OR EXISTS ( \
                     SELECT 1 FROM beecount_ledger_members m \
@@ -378,7 +376,6 @@ impl BeeCountSyncService {
                       AND c.scope='ledger' AND c.ledger_id=m.ledger_id)) \
                AND (l.entity_type = ANY($3) \
                     OR (l.entity_type='user.preference' AND l.entity_id LIKE 'beecount:%')) \
-               AND (c.entity_sync_id IS NOT NULL OR d.app_id='beecount-mobile') \
                AND ($4::text IS NULL OR l.origin_device_external_id IS DISTINCT FROM $4) \
              ORDER BY l.cursor ASC LIMIT $5",
         )
@@ -409,34 +406,20 @@ impl BeeCountSyncService {
         let actor_uuid = user_uuid(user_id)?;
         let rows = sqlx::query(
             "SELECT e.entity_id,e.payload,e.server_modified_at,e.last_cursor, \
-                    COALESCE(c.entity_sync_id, \
-                      CASE WHEN e.entity_id LIKE 'beecount:%' THEN substring(e.entity_id from 10) \
-                           ELSE 'lifetrace:' || e.entity_id END) AS beecount_ledger_id, \
                     COALESCE(m.role,'owner') AS role, \
                     (SELECT COUNT(*)::BIGINT FROM sync_entities t \
                      WHERE t.user_id=e.user_id AND t.entity_type='finance.transaction' \
                        AND t.is_deleted=FALSE \
                        AND COALESCE(t.payload->>'beecountLedgerId','') = \
-                           COALESCE(c.entity_sync_id, \
-                             CASE WHEN e.entity_id LIKE 'beecount:%' THEN substring(e.entity_id from 10) \
-                                  ELSE 'lifetrace:' || e.entity_id END)) AS tx_count \
+                           COALESCE(e.payload->>'beecountLedgerId',substring(e.entity_id from 10))) \
+                    AS tx_count \
              FROM sync_entities e \
-             LEFT JOIN beecount_entity_clocks c \
-               ON c.user_id=e.user_id \
-              AND c.lifetrace_entity_type=e.entity_type \
-              AND c.lifetrace_entity_id=e.entity_id \
-              AND c.entity_type='ledger' \
-              AND c.scope='ledger' \
-              AND c.is_deleted=FALSE \
-             LEFT JOIN cloud_devices d \
-               ON d.id=e.origin_device_id AND d.user_id=e.user_id \
              LEFT JOIN beecount_shared_ledgers s ON s.storage_user_id=e.user_id \
-               AND s.ledger_id=COALESCE(c.entity_sync_id, \
+               AND s.ledger_id=COALESCE(e.payload->>'beecountLedgerId', \
                  CASE WHEN e.entity_id LIKE 'beecount:%' THEN substring(e.entity_id from 10) \
                       ELSE 'lifetrace:' || e.entity_id END) \
              LEFT JOIN beecount_ledger_members m ON m.ledger_id=s.ledger_id AND m.user_id=$1 \
              WHERE e.entity_type='finance.ledger' AND e.is_deleted=FALSE \
-               AND (c.entity_sync_id IS NOT NULL OR d.app_id='beecount-mobile') \
                AND ((s.ledger_id IS NULL AND e.user_id=$1) OR m.user_id IS NOT NULL) \
              ORDER BY e.created_at,e.entity_id",
         )
@@ -446,8 +429,14 @@ impl BeeCountSyncService {
         .map_err(db_error)?;
         rows.into_iter()
             .map(|row| {
+                let entity_id: String = row.try_get("entity_id").map_err(internal)?;
                 let payload: Value = row.try_get("payload").map_err(internal)?;
-                let ledger_id: String = row.try_get("beecount_ledger_id").map_err(internal)?;
+                let ledger_id = payload
+                    .get("beecountLedgerId")
+                    .and_then(Value::as_str)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| beecount_wire_id(&entity_id));
                 let tx_count = row.try_get::<i64, _>("tx_count").unwrap_or(0).max(0);
                 Ok(BeeCountSyncLedgerOut {
                     path: ledger_id.clone(),
@@ -572,21 +561,10 @@ impl BeeCountSyncService {
                 .map_err(db_error)?;
         let ledger_entity_id = lifetrace_entity_id(ledger_id);
         let ledger = sqlx::query(
-            "SELECT e.payload,e.last_cursor,e.server_modified_at \
-             FROM sync_entities e \
-             LEFT JOIN beecount_entity_clocks c \
-               ON c.user_id=e.user_id \
-              AND c.lifetrace_entity_type=e.entity_type \
-              AND c.lifetrace_entity_id=e.entity_id \
-              AND c.entity_type='ledger' \
-              AND c.scope='ledger' \
-             LEFT JOIN cloud_devices d \
-               ON d.id=e.origin_device_id AND d.user_id=e.user_id \
-             WHERE e.user_id=$1 AND e.entity_type='finance.ledger' \
-               AND (e.entity_id=$2 OR e.payload->>'beecountLedgerId'=$3) \
-               AND e.is_deleted=FALSE \
-               AND ((c.entity_sync_id=$3 AND c.is_deleted=FALSE) \
-                    OR (c.entity_sync_id IS NULL AND d.app_id='beecount-mobile'))",
+            "SELECT payload,last_cursor,server_modified_at FROM sync_entities \
+             WHERE user_id=$1 AND entity_type='finance.ledger' \
+               AND (entity_id=$2 OR payload->>'beecountLedgerId'=$3) \
+               AND is_deleted=FALSE",
         )
         .bind(storage_uuid)
         .bind(&ledger_entity_id)
@@ -605,20 +583,12 @@ impl BeeCountSyncService {
         let ledger_raw = beecount_payload(BeeCountEntityKind::Ledger, ledger_id, &ledger_payload)
             .map_err(boundary_error)?;
         let rows = sqlx::query(
-            "SELECT e.entity_type,e.entity_id,e.payload,e.last_cursor,e.server_modified_at \
-             FROM sync_entities e \
-             LEFT JOIN beecount_entity_clocks c \
-               ON c.user_id=e.user_id \
-              AND c.lifetrace_entity_type=e.entity_type \
-              AND c.lifetrace_entity_id=e.entity_id \
-             LEFT JOIN cloud_devices d \
-               ON d.id=e.origin_device_id AND d.user_id=e.user_id \
-             WHERE e.is_deleted=FALSE AND ( \
-               (e.user_id=$1 AND e.entity_type = ANY($2)) OR \
-               (e.user_id=$3 AND e.entity_type = ANY($4) AND \
-                  ((c.scope='user' AND c.is_deleted=FALSE) \
-                   OR (c.entity_sync_id IS NULL AND d.app_id='beecount-mobile')))) \
-             ORDER BY e.entity_type,e.entity_id",
+            "SELECT entity_type,entity_id,payload,last_cursor,server_modified_at \
+             FROM sync_entities \
+             WHERE is_deleted=FALSE AND ( \
+               (user_id=$1 AND entity_type = ANY($2)) OR \
+               (user_id=$3 AND entity_type = ANY($4))) \
+             ORDER BY entity_type,entity_id",
         )
         .bind(storage_uuid)
         .bind(vec![
