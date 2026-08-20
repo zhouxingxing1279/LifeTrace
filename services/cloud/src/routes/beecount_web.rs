@@ -452,7 +452,7 @@ fn normalize_budget(
     }))
 }
 
-fn array<'a>(row: &'a Map<String, Value>, key: &str) -> Vec<Value> {
+fn array(row: &Map<String, Value>, key: &str) -> Vec<Value> {
     row.get(key)
         .and_then(Value::as_array)
         .cloned()
