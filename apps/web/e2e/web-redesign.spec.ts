@@ -199,10 +199,12 @@ test("English reader supports visual highlights quick notes and read completion"
   await page.goto("/app/english/articles");
   await page.getByRole("button", { name: /Sample Article/ }).click();
   await expect(page.getByRole("heading", { name: "Sample Article", level: 1 })).toBeVisible();
-  const article = page.getByTestId("reader-article");
+
+  const article = page.locator("article").filter({ hasText: "Daily practice improves fluency." });
   await expect(article).toBeVisible();
   await expect(article.locator("mark")).toHaveCount(0);
-  const phrase = page.getByText("Daily practice improves fluency.", { exact: true });
+
+  const phrase = article.getByText("Daily practice improves fluency.", { exact: true });
   await expect(phrase).toBeVisible();
   await phrase.evaluate((node) => {
     const selection = window.getSelection();
@@ -212,15 +214,18 @@ test("English reader supports visual highlights quick notes and read completion"
     selection?.addRange(range);
     node.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
   });
-  await expect(page.getByRole("button", { name: "高亮" })).toBeVisible();
-  await page.getByRole("button", { name: "高亮" }).click();
+
+  const saveHighlight = page.getByRole("button", { name: "保存高亮" });
+  await expect(saveHighlight).toBeEnabled();
+  await saveHighlight.click();
   await expect(article.locator("mark")).toHaveCount(1);
-  await page.getByRole("button", { name: "快捷笔记" }).click();
-  await page.getByPlaceholder("记一句想法…").fill("Remember this phrase");
+
+  await page.getByPlaceholder("只记录你的想法…").fill("Remember this phrase");
   await page.getByRole("button", { name: "保存笔记" }).click();
   await expect(page.getByText("Remember this phrase")).toBeVisible();
+
   await page.getByRole("button", { name: "标记已读" }).click();
-  await expect(page.getByRole("button", { name: "已读" })).toBeVisible();
+  await expect(page.getByText("已读", { exact: true }).first()).toBeVisible();
 });
 
 test("UI showcase keeps dialog accessible and reduced-motion compatible", async ({ page }) => {
