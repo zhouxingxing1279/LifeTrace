@@ -13,9 +13,8 @@
  * LifeTrace owns only the outer AppShell/session and the API adapter. One
  * deliberate platform deviation from upstream is active-ledger persistence:
  * LifeTrace Web forbids browser-local persistence outside the Vditor draft
- * cache, so the selected ledger remains React session state instead of being
- * stored in localStorage. Cross-session persistence belongs in server-side
- * user.preference if it is added later.
+ * cache, so the selected ledger remains React session state. Cross-session
+ * persistence belongs in server-side user.preference if it is added later.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
