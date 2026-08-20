@@ -140,11 +140,7 @@ async fn snapshot(
         "finance.category",
         &allowed_user_global,
     );
-    let tags_raw = filter_user_global(
-        array(content, "tags"),
-        "finance.tag",
-        &allowed_user_global,
-    );
+    let tags_raw = filter_user_global(array(content, "tags"), "finance.tag", &allowed_user_global);
     let budgets_raw = array(content, "budgets");
     let transactions_raw = array(content, "items");
 
@@ -203,8 +199,8 @@ async fn beecount_user_global_sources(
     user_id: &lifetrace_contracts::UserId,
     ledger_id: &str,
 ) -> Result<HashMap<String, HashSet<String>>, ApiError> {
-    let actor_uuid = Uuid::parse_str(user_id.as_str())
-        .map_err(|_| internal("BeeCount user id is invalid"))?;
+    let actor_uuid =
+        Uuid::parse_str(user_id.as_str()).map_err(|_| internal("BeeCount user id is invalid"))?;
     let resource_owner_uuid = sqlx::query_scalar::<_, Uuid>(
         "SELECT user_id FROM beecount_ledger_members \
          WHERE ledger_id=$1 AND role='owner' LIMIT 1",
