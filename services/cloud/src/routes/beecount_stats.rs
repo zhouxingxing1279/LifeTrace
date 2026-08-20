@@ -196,11 +196,7 @@ fn authorize(principal: &AuthenticatedPrincipal) -> Result<(), ApiError> {
 }
 
 fn invalid(message: &str) -> ApiError {
-    ApiError::new(
-        ErrorCode::InvalidRequest,
-        message,
-        StatusCode::BAD_REQUEST,
-    )
+    ApiError::new(ErrorCode::InvalidRequest, message, StatusCode::BAD_REQUEST)
 }
 
 fn db_error(_error: sqlx::Error) -> ApiError {
