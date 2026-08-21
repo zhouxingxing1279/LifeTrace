@@ -1,9 +1,0 @@
-BeeCount Cloud software license notice
-
-Copyright (c) 2024-2026 sunxiao (GitHub: TNT-Likely)
-Upstream repository: TNT-Likely/BeeCount-Cloud
-License version 1.0, effective 2026-07-26.
-
-The upstream license permits personal, educational/research, non-profit, and open-source contribution use subject to its terms. Commercial use requires a paid commercial license. The license requires preservation of the original copyright notice, license statement, and author information, and requires modified versions based on the software to publish source code.
-
-This notice is a concise attribution pointer only. The authoritative license is the current LICENSE file in the upstream BeeCount Cloud repository and must be reviewed before distribution or commercial use.
