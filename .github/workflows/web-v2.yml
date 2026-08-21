@@ -1,120 +1,139 @@
-name: Web v2
+name: Frontend V2 - Web + Desktop
 
 on:
   push:
-    branches: [main, agent/web-redesign]
+    branches:
+      - feature/frontend-v2-clean-rewrite
+      - main
     paths:
-      - 'apps/web/**'
-      - 'docs/ui/web-redesign*.md'
-      - '.github/workflows/web-v2.yml'
-      - 'package.json'
-      - 'deploy/cloud/Dockerfile.web'
-      - 'deploy/cloud/Caddyfile.production'
+      - "AGENTS.md"
+      - "apps/web/**"
+      - "apps/desktop/**"
+      - "contracts/**"
+      - "docs/ui/**"
+      - ".github/workflows/web-v2.yml"
   pull_request:
     branches: [main]
     paths:
-      - 'apps/web/**'
-      - 'docs/ui/web-redesign*.md'
-      - '.github/workflows/web-v2.yml'
-      - 'package.json'
-      - 'deploy/cloud/Dockerfile.web'
-      - 'deploy/cloud/Caddyfile.production'
+      - "AGENTS.md"
+      - "apps/web/**"
+      - "apps/desktop/**"
+      - "contracts/**"
+      - "docs/ui/**"
+      - ".github/workflows/web-v2.yml"
 
-permissions:
-  contents: read
+concurrency:
+  group: frontend-v2-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  quality:
+  architecture:
+    name: Clean-room architecture guards
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    defaults:
-      run:
-        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate clean-room boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f AGENTS.md
+          test -f docs/ui/frontend-v2-capability-inventory.md
+          test -f apps/web/src/v2/design-system/ui.tsx
+          test -f apps/web/src/v2/v2.css
+          test -f apps/desktop/tauri-ui/main.tsx
+          test -f apps/desktop/src/platform-v2/desktop.ts
+          test ! -d apps/desktop/app
+          test ! -d apps/desktop/src/components
+          test ! -d apps/desktop/src/ui
+          grep -q 'web/src/v2/App' apps/desktop/tauri-ui/main.tsx
+          grep -q 'desktopPlatform' apps/desktop/tauri-ui/main.tsx
+          grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' apps/web/src/v2/features/finance/UPSTREAM.md
+          grep -q 'AGPL-3.0' apps/web/THIRD_PARTY_NOTICES.md
+      - name: Validate mandatory primitives and semantic tokens
+        shell: bash
+        run: |
+          set -euo pipefail
+          ui=apps/web/src/v2/design-system/ui.tsx
+          css=apps/web/src/v2/v2.css
+          for primitive in Button IconButton Input Textarea SearchField Select SegmentedControl Switch Checkbox Card StatCard List ListItem Table Badge Progress Tabs Popover Dropdown ContextMenu CommandPalette Modal AlertDialog Sheet Toast EmptyState Skeleton Tooltip ChartContainer; do
+            grep -q "$primitive" "$ui" || { echo "Missing primitive: $primitive"; exit 1; }
+          done
+          for token in --bg-primary --surface-primary --text-primary --text-secondary --accent --success --warning --danger --radius-sm --radius-md --radius-lg --space-1 --space-4 --space-8 --blur-md --duration-normal --ease-apple; do
+            grep -q -- "$token" "$css" || { echo "Missing token: $token"; exit 1; }
+          done
+      - name: Validate Finance route parity
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=apps/web/src/v2/App.tsx
+          for route in /app/finance /app/finance/transactions /app/finance/calendar /app/finance/ledgers /app/finance/budgets /app/finance/accounts /app/finance/categories /app/finance/tags /app/finance/import; do
+            grep -q "$route" "$app" || { echo "Missing finance route: $route"; exit 1; }
+          done
+
+  web:
+    name: Web typecheck, unit, build, E2E
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22.13.0"
           cache: npm
           cache-dependency-path: apps/web/package.json
-      - name: Install dependencies
-        run: npm install --no-audit --no-fund
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Install Web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+      - name: TypeScript
+        run: npm --prefix apps/web run typecheck
       - name: Unit tests
-        run: npm test
+        run: npm --prefix apps/web test
       - name: Production build
-        run: npm run build
-      - name: Production preview smoke
-        shell: bash
-        run: |
-          npm run preview -- --port 4183 > /tmp/lifetrace-web-preview.log 2>&1 &
-          PREVIEW_PID=$!
-          trap 'kill $PREVIEW_PID || true' EXIT
-          for i in {1..20}; do
-            if curl --fail --silent http://127.0.0.1:4183/login >/tmp/login.html; then break; fi
-            sleep 1
-          done
-          grep -q 'LifeTrace' /tmp/login.html
-          for route in \
-            /app/today \
-            /app/execution \
-            /app/calendar \
-            /app/habits \
-            /app/fitness \
-            /app/health \
-            /app/notes \
-            /app/english/articles \
-            /app/review \
-            /app/finance \
-            /app/finance/transactions \
-            /app/finance/calendar \
-            /app/finance/ledgers \
-            /app/finance/budgets \
-            /app/finance/accounts \
-            /app/finance/categories \
-            /app/finance/tags \
-            /app/finance/import \
-            /app/settings \
-            /app/system/ui; do
-            curl --fail --silent "http://127.0.0.1:4183${route}" | grep -q 'LifeTrace'
-          done
-      - name: Use runner Chrome for browser matrix
-        shell: bash
-        run: |
-          set -euo pipefail
-          CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || true)"
-          if [ -z "$CHROME_BIN" ]; then
-            echo 'No system Chrome/Chromium found on the GitHub runner.' >&2
-            exit 1
-          fi
-          "$CHROME_BIN" --version
-          echo "PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=$CHROME_BIN" >> "$GITHUB_ENV"
-      - name: Responsive, theme, route and accessibility browser tests
-        run: npm run test:e2e
-      - name: Upload Playwright diagnostics
-        if: failure()
-        uses: actions/upload-artifact@v4
+        run: npm --prefix apps/web run build
+      - name: Install Playwright Chromium
+        run: npx --prefix apps/web playwright install --with-deps chromium
+      - name: Desktop + mobile E2E
+        run: npm --prefix apps/web run test:e2e
+
+  desktop:
+    name: Desktop shared renderer + preserved capability regression
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          name: web-v2-playwright-report
-          path: |
-            apps/web/playwright-report
-            apps/web/test-results
-          if-no-files-found: ignore
-          retention-days: 7
-      - name: Architecture guard
-        shell: bash
+          node-version: "22.13.0"
+      - name: Install shared Web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+      - name: Install Desktop dependencies
+        run: npm install --prefix apps/desktop --ignore-scripts --no-audit --no-fund
+      - name: Desktop TypeScript
+        run: npm --prefix apps/desktop run lint
+      - name: V2 architecture smoke
+        run: npx --prefix apps/desktop tsx --test apps/desktop/tests/v2-architecture.test.ts
+      - name: Preserved non-visual unit regression
+        run: npm --prefix apps/desktop run test:unit
+      - name: Shared browser build
+        run: npm --prefix apps/desktop run browser:build
+      - name: Tauri renderer build
+        run: npm --prefix apps/desktop run web:build
+
+  rust-tauri:
+    name: Rust tests + Tauri production compile
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13.0"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri Linux system dependencies
         run: |
-          if grep -R --line-number --fixed-strings 'apps/desktop/web-client' src; then
-            echo 'New Web must not import legacy Web UI.' >&2
-            exit 1
-          fi
-          if grep -R --line-number -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts' --exclude='VditorEditor.tsx'; then
-            echo 'Browser-local persistence is limited to the Vditor note draft safety cache.' >&2
-            exit 1
-          fi
-          grep -q 'TNT-Likely/BeeCount-Cloud' src/features/finance/beecount/UPSTREAM.md
-          grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' src/features/finance/beecount/UPSTREAM.md
-          grep -q 'Vanessa219/vditor' src/features/notes/vditor/UPSTREAM.md
-          grep -q 'cache: { id: cacheKey, enable: true }' src/features/notes/VditorEditor.tsx
-          grep -q 'locally cached dirty draft' src/features/notes/vditor/UPSTREAM.md
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+      - name: Install shared Web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+      - name: Install Desktop dependencies
+        run: npm install --prefix apps/desktop --ignore-scripts --no-audit --no-fund
+      - name: Rust unit tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib
+      - name: Tauri production compile
+        run: npm --prefix apps/desktop run tauri -- build --no-bundle
