@@ -1,0 +1,11 @@
+{
+  "status": "failure",
+  "version": "0.3.3",
+  "tag": "v0.3.3",
+  "source_sha": "c10c978ac74b158fa1315806e0f0872f2a7fe5c0",
+  "reason": "Windows release completed with failure",
+  "dispatcher_url": "",
+  "release_run_url": "https://github.com/zhouxingxing1279/LifeTrace/actions/runs/32455338529",
+  "published_url": "",
+  "assets": []
+}
