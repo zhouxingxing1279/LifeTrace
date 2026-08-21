@@ -40,6 +40,11 @@ jobs:
           test -f docs/ui/frontend-v2-capability-inventory.md
           test -f apps/web/src/v2/design-system/ui.tsx
           test -f apps/web/src/v2/v2.css
+          test -f apps/web/src/v2/shell/AppShell.tsx
+          test -f apps/web/src/v2/features/core-pages.tsx
+          test -f apps/web/src/v2/features/content-pages.tsx
+          test -f apps/web/src/v2/api/client.ts
+          test -f apps/web/src/v2/api/cloud.ts
           test -f apps/desktop/tauri-ui/main.tsx
           test -f apps/desktop/src/platform-v2/desktop.ts
           test ! -d apps/desktop/app
@@ -49,6 +54,16 @@ jobs:
           grep -q 'desktopPlatform' apps/desktop/tauri-ui/main.tsx
           grep -q '3e02e499431bdceae2051c1dfb980898d26ef5e1' apps/web/src/v2/features/finance/UPSTREAM.md
           grep -q 'AGPL-3.0' apps/web/THIRD_PARTY_NOTICES.md
+          grep -q '/api/v1/web/session' apps/web/src/v2/api/cloud.ts
+          grep -q '/api/v1/sync/snapshot' apps/web/src/v2/api/cloud.ts
+          grep -q '/api/v1/sync/push' apps/web/src/v2/api/cloud.ts
+      - name: Reject monolithic V2 app regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          LINES=$(wc -l < apps/web/src/v2/App.tsx)
+          echo "App.tsx lines: $LINES"
+          test "$LINES" -lt 260
       - name: Validate mandatory primitives and semantic tokens
         shell: bash
         run: |
@@ -65,9 +80,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          app=apps/web/src/v2/App.tsx
+          finance=apps/web/src/v2/features/finance/FinancePage.tsx
           for route in /app/finance /app/finance/transactions /app/finance/calendar /app/finance/ledgers /app/finance/budgets /app/finance/accounts /app/finance/categories /app/finance/tags /app/finance/import; do
-            grep -q "$route" "$app" || { echo "Missing finance route: $route"; exit 1; }
+            grep -q "$route" "$finance" || { echo "Missing finance route: $route"; exit 1; }
           done
 
   web:
