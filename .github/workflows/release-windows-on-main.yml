@@ -5,10 +5,12 @@ on:
     branches:
       - main
     paths:
+      - ".github/workflows/release-windows-on-main.yml"
       - "apps/desktop/package.json"
       - "apps/desktop/package-lock.json"
       - "apps/desktop/src-tauri/tauri.conf.json"
       - "apps/desktop/src-tauri/Cargo.toml"
+      - "apps/desktop/src-tauri/Cargo.lock"
       - "apps/desktop/src/services/cloudAuth.ts"
   workflow_dispatch:
 
@@ -26,7 +28,9 @@ jobs:
       - name: Resolve desktop version
         id: version
         shell: bash
-        run: echo "value=$(node -p \"require('./apps/desktop/package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: |
+          version="$(node -p 'require("./apps/desktop/package.json").version')"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch signed Windows release
         env:
