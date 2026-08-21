@@ -1,16 +1,21 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RouteView } from "@/web-client/src/components/RouteView";
 import {
-  AuthApi,
+  AppRuntimeProvider,
+  type AppContextValue,
+  type ThemeMode,
+} from "../../../web/src/app/AppContext";
+import { DesktopFeatureRouter } from "../../../web/src/app/DesktopFeatureRouter";
+import {
   CloudDataStore,
   EMPTY_CLOUD_STATE,
+  createPreference,
   setCloudFetchOverride,
   type CloudState,
+  type EntityType,
+  type JsonEntity,
   type WebSession,
-} from "@/web-client/src/core";
-import { currentRoute, navigate, type Route } from "@/web-client/src/navigation";
-import { entities, text } from "@/web-client/src/ui";
+} from "../../../web/src/services/core";
 import DesktopLocalToolsCenter from "@/src/components/DesktopLocalToolsCenter";
 import DesktopWorkbenchShell from "@/src/components/DesktopWorkbenchShell";
 import { cloudAuthClient } from "@/src/services/cloudAuth";
@@ -30,12 +35,8 @@ function requestHeaders(request: Request | undefined, init: RequestInit): Header
 }
 
 function desktopApiPath(path: string): string {
-  if (path === "/api/v1/photo-challenge/admin") {
-    return "/api/v1/photo-challenge/desktop-admin";
-  }
-  if (path === "/api/v1/web/assistant") {
-    return "/api/v1/assistant";
-  }
+  if (path === "/api/v1/photo-challenge/admin") return "/api/v1/photo-challenge/desktop-admin";
+  if (path === "/api/v1/web/assistant") return "/api/v1/assistant";
   if (path === "/api/v1/web/devices" || path.startsWith("/api/v1/web/devices/")) {
     return path.replace("/api/v1/web/devices", "/api/v1/auth/devices");
   }
@@ -55,9 +56,7 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
 
   const method = (init.method ?? request?.method ?? "GET").toUpperCase();
   let body = init.body;
-  if (body === undefined && request && method !== "GET" && method !== "HEAD") {
-    body = await request.clone().text();
-  }
+  if (body === undefined && request && method !== "GET" && method !== "HEAD") body = await request.clone().text();
   if (body != null && typeof body !== "string") {
     if (body instanceof URLSearchParams) body = body.toString();
     else throw new Error("桌面云工作台当前只支持 JSON/文本请求体");
@@ -66,9 +65,7 @@ async function desktopCloudFetch(input: RequestInfo | URL, init: RequestInit = {
   const headers = requestHeaders(request, init);
   if (body != null) {
     const contentType = headers.get("content-type")?.toLowerCase() ?? "application/json";
-    if (!contentType.includes("application/json")) {
-      throw new Error("桌面云工作台当前只允许 JSON API 请求体");
-    }
+    if (!contentType.includes("application/json")) throw new Error("桌面云工作台当前只允许 JSON API 请求体");
   }
 
   const invokeApi = async (): Promise<Response> => {
@@ -103,30 +100,30 @@ function syncLocalReplica(): void {
   void api.now(false).catch(() => undefined);
 }
 
+function resolveTheme(mode: ThemeMode): "light" | "dark" {
+  if (mode === "system") return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return mode;
+}
+
 export default function DesktopCloudWorkspace() {
   const user = useCloudAuthStore((value) => value.user);
   const desktopSession = useCloudAuthStore((value) => value.session);
   const scopes = useCloudAuthStore((value) => value.scopes);
-  const logout = useCloudAuthStore((value) => value.logout);
-  const [route, setRoute] = useState<Route>(() => currentRoute());
+  const logoutNative = useCloudAuthStore((value) => value.logout);
   const [state, setState] = useState<CloudState>(EMPTY_CLOUD_STATE);
   const [cloudLoaded, setCloudLoaded] = useState(false);
   const [networkOnline, setNetworkOnline] = useState(() => navigator.onLine);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [privacy, setPrivacy] = useState(false);
+  const [theme, setThemeState] = useState<ThemeMode>("system");
   const [localToolsOpen, setLocalToolsOpen] = useState(false);
   const storeRef = useRef<CloudDataStore | null>(null);
-  const auth = useMemo(() => new AuthApi(desktopCloudFetch), []);
 
   const session = useMemo<WebSession | null>(() => {
     if (!user || !desktopSession) return null;
     return {
-      user: {
-        id: user.id,
-        email: user.email,
-        displayName: user.displayName,
-      },
+      user: { id: user.id, email: user.email, displayName: user.displayName },
       session: {
         id: desktopSession.id,
         appId: desktopSession.appId,
@@ -141,22 +138,11 @@ export default function DesktopCloudWorkspace() {
   }, [desktopSession, scopes, user]);
 
   useEffect(() => {
-    const routeChanged = () => {
-      setRoute(currentRoute());
-      setLocalToolsOpen(false);
-      const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-      document.querySelector<HTMLElement>(".lt-desk-content")?.scrollTo({
-        top: 0,
-        behavior: reduceMotion ? "auto" : "smooth",
-      });
-    };
     const wentOnline = () => setNetworkOnline(true);
     const wentOffline = () => setNetworkOnline(false);
-    window.addEventListener("popstate", routeChanged);
     window.addEventListener("online", wentOnline);
     window.addEventListener("offline", wentOffline);
     return () => {
-      window.removeEventListener("popstate", routeChanged);
       window.removeEventListener("online", wentOnline);
       window.removeEventListener("offline", wentOffline);
     };
@@ -192,9 +178,12 @@ export default function DesktopCloudWorkspace() {
 
   useEffect(() => {
     if (!session || !cloudLoaded) return;
-    const preference = entities(state, "user.preference")
-      .find((item) => text(item, "preferenceKey") === "appearance.theme");
-    setAppThemePreference(preference?.value === "dark" ? "dark" : "light");
+    const preference = Object.values(state.entities["user.preference"] ?? {})
+      .find((item) => item.preferenceKey === "appearance.theme");
+    const mode = preference?.value;
+    const next: ThemeMode = mode === "dark" || mode === "light" || mode === "system" ? mode : "system";
+    setThemeState(next);
+    setAppThemePreference(resolveTheme(next));
   }, [cloudLoaded, session?.user.id, state]);
 
   const refresh = useCallback(async () => {
@@ -232,45 +221,78 @@ export default function DesktopCloudWorkspace() {
     }
   }, []);
 
-  const navigateWorkspace = useCallback((next: Route) => {
-    setLocalToolsOpen(false);
-    navigate(next);
+  const upsert = useCallback((entityType: EntityType, entity: JsonEntity) => run((store) => store.upsert(entityType, entity)), [run]);
+  const remove = useCallback((entityType: EntityType, entityId: string) => run((store) => store.delete(entityType, entityId)), [run]);
+
+  const setTheme = useCallback(async (mode: ThemeMode) => {
+    setThemeState(mode);
+    setAppThemePreference(resolveTheme(mode));
+    if (!session || !networkOnline) return;
+    const existing = Object.values(state.entities["user.preference"] ?? {})
+      .find((item) => item.preferenceKey === "appearance.theme");
+    const preference = existing
+      ? { ...existing, value: mode }
+      : createPreference(session.user.id, session.session.deviceId, "appearance.theme", mode);
+    try { await upsert("user.preference", preference); }
+    catch { /* Native appearance still applies if cloud persistence is unavailable. */ }
+  }, [networkOnline, session, state.entities, upsert]);
+
+  const logout = useCallback(async () => {
+    await logoutNative();
+  }, [logoutNative]);
+
+  const login = useCallback(async () => {
+    throw new Error("桌面端登录由原生账户入口管理");
   }, []);
+
+  const appContext = useMemo<AppContextValue>(() => ({
+    session,
+    state,
+    authLoading: false,
+    loading,
+    online: networkOnline,
+    error,
+    privacy,
+    theme,
+    login,
+    logout,
+    refresh,
+    run,
+    upsert,
+    remove,
+    setPrivacy,
+    setTheme,
+    clearError: () => setError(""),
+  }), [error, loading, login, logout, networkOnline, privacy, refresh, remove, run, session, setTheme, state, theme, upsert]);
 
   if (!session) {
     return <div className="hx-loading"><span>LT</span><p>正在恢复桌面云会话…</p></div>;
   }
 
   return (
-    <DesktopWorkbenchShell
-      route={route}
-      titleOverride={localToolsOpen ? "本机工具" : undefined}
-      descriptionOverride={localToolsOpen ? "SQLite、照片、文件导入与其他仅桌面端提供的本机能力。" : undefined}
-      userLabel={session.user.displayName || session.user.email}
-      online={networkOnline}
-      loading={loading}
-      privacy={privacy}
-      error={error}
-      conflictCount={state.conflicts.length}
-      onNavigate={navigateWorkspace}
-      onRefresh={() => void refresh()}
-      onTogglePrivacy={() => setPrivacy((value) => !value)}
-      onLogout={() => void logout().finally(() => navigate("/"))}
-      onOpenLocalTools={() => setLocalToolsOpen(true)}
-    >
-      {localToolsOpen ? (
-        <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} />
-      ) : (
-        <RouteView
-          route={route}
-          auth={auth}
-          session={session}
-          state={state}
-          privacy={privacy}
-          online={networkOnline}
-          run={run}
-        />
-      )}
-    </DesktopWorkbenchShell>
+    <AppRuntimeProvider value={appContext}>
+      <DesktopFeatureRouter
+        render={({ path, navigate, content }) => (
+          <DesktopWorkbenchShell
+            route={path}
+            titleOverride={localToolsOpen ? "本机工具" : undefined}
+            descriptionOverride={localToolsOpen ? "SQLite、照片、文件导入与其他仅桌面端提供的本机能力。" : undefined}
+            userLabel={session.user.displayName || session.user.email}
+            online={networkOnline}
+            loading={loading}
+            privacy={privacy}
+            error={error}
+            conflictCount={state.conflicts.length}
+            onNavigate={(next) => { setLocalToolsOpen(false); navigate(next); }}
+            onRefresh={() => void refresh()}
+            onTogglePrivacy={() => setPrivacy((value) => !value)}
+            onLogout={() => void logout()}
+            onOpenLocalTools={() => setLocalToolsOpen(true)}
+          >
+            {localToolsOpen ? <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} /> : content}
+          </DesktopWorkbenchShell>
+        )}
+      />
+    </AppRuntimeProvider>
   );
 }
