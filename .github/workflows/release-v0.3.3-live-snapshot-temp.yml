@@ -1,0 +1,41 @@
+name: Snapshot LifeTrace v0.3.3 Live Status
+
+on:
+  push:
+    branches:
+      - agent/release-v0.3.3-verify
+    paths:
+      - ".github/workflows/release-v0.3.3-live-snapshot-temp.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-v0.3.3-verify
+      - name: Capture source workflow state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPO: zhouxingxing1279/LifeTrace
+          SOURCE_SHA: 99ae190afb89e8aece77ebccd0a9bd7aa763a8f8
+        shell: bash
+        run: |
+          dispatcher="$(gh api "repos/$SOURCE_REPO/actions/workflows/release-windows-on-main.yml/runs?branch=main&per_page=20" --jq ".workflow_runs[] | select(.head_sha == \"$SOURCE_SHA\") | {id,status,conclusion,html_url,created_at,updated_at}" 2>/dev/null | head -n1 || true)"
+          release="$(gh api "repos/$SOURCE_REPO/actions/workflows/release-windows.yml/runs?event=workflow_dispatch&branch=main&per_page=20" --jq ".workflow_runs[] | select(.head_sha == \"$SOURCE_SHA\") | {id,status,conclusion,html_url,created_at,updated_at}" 2>/dev/null | head -n1 || true)"
+          [ -n "$dispatcher" ] || dispatcher='null'
+          [ -n "$release" ] || release='null'
+          jq -n --argjson dispatcher "$dispatcher" --argjson release "$release" '{dispatcher:$dispatcher,release:$release}' > release-v0.3.3-live.json
+      - name: Persist snapshot and self-clean
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/release-v0.3.3-live-snapshot-temp.yml
+          git add release-v0.3.3-live.json
+          git commit -m "chore(release): record v0.3.3 live status"
+          git push origin HEAD:agent/release-v0.3.3-verify
