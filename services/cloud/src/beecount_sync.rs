@@ -10,7 +10,7 @@ use sqlx::{PgPool, Postgres, Row, Transaction};
 use uuid::Uuid;
 
 use crate::beecount_collaboration::{
-    ensure_owner_registry_tx, resolve_ledger_access_tx, ROLE_OWNER,
+    ensure_owner_registry_tx, resolve_ledger_access, resolve_ledger_access_tx, ROLE_OWNER,
 };
 use crate::beecount_compat::{
     beecount_payload, beecount_wire_id, canonical_payload, clamp_client_updated_at,
@@ -466,10 +466,13 @@ impl BeeCountSyncService {
         &self,
         user_id: &UserId,
     ) -> Result<Vec<BeeCountReadLedgerOut>, ApiError> {
+        let actor_uuid = user_uuid(user_id)?;
         let base = self.ledgers(user_id).await?;
         let mut out = Vec::with_capacity(base.len());
         for ledger in base {
             let ledger_id = ledger.ledger_id.clone();
+            let access = resolve_ledger_access(&self.pool, actor_uuid, &ledger_id, false).await?;
+            let storage_uuid = access.storage_user_id;
             let stats = sqlx::query(
                 "SELECT \
                    COALESCE(SUM(CASE WHEN payload->>'transactionType' = 'income' \
@@ -480,10 +483,11 @@ impl BeeCountSyncService {
                      AS expense_cents, \
                    COUNT(*)::bigint AS tx_count \
                  FROM sync_entities \
-                 WHERE entity_type='finance.transaction' AND is_deleted=FALSE \
+                 WHERE user_id=$2 AND entity_type='finance.transaction' AND is_deleted=FALSE \
                    AND payload->>'beecountLedgerId' = $1",
             )
             .bind(&ledger_id)
+            .bind(storage_uuid)
             .fetch_one(&self.pool)
             .await
             .map_err(db_error)?;

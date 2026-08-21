@@ -125,24 +125,40 @@ async fn snapshot(
         .as_object()
         .ok_or_else(|| internal("BeeCount snapshot must be an object"))?;
 
+    let budgets_raw = array(content, "budgets");
+    let transactions_raw = array(content, "items");
+
     // BeeCount accounts/categories/tags are user-global. The retired LifeTrace
     // finance implementation used the same finance.* entity types, so Web must
     // apply an explicit provenance boundary before exposing those rows.
     let allowed_user_global =
         beecount_user_global_sources(&state, &principal.user_id, &ledger_id).await?;
-    let accounts_raw = filter_user_global(
+    let mut accounts_raw = filter_user_global(
         array(content, "accounts"),
         "finance.account",
         &allowed_user_global,
     );
-    let categories_raw = filter_user_global(
+    let mut categories_raw = filter_user_global(
         array(content, "categories"),
         "finance.category",
         &allowed_user_global,
     );
-    let tags_raw = filter_user_global(array(content, "tags"), "finance.tag", &allowed_user_global);
-    let budgets_raw = array(content, "budgets");
-    let transactions_raw = array(content, "items");
+    let mut tags_raw =
+        filter_user_global(array(content, "tags"), "finance.tag", &allowed_user_global);
+
+    // User-global entities belong to the ledger owner, not to every member.
+    // A shared-ledger member only needs the owner resources that are actually
+    // referenced by this ledger's transactions/budgets. Do not disclose the
+    // owner's unrelated accounts/categories/tags through LifeTrace Web.
+    if ledger.role != "owner" {
+        restrict_shared_user_globals(
+            &mut accounts_raw,
+            &mut categories_raw,
+            &mut tags_raw,
+            &transactions_raw,
+            &budgets_raw,
+        );
+    }
 
     let account_names = name_map(&accounts_raw);
     let category_names = name_map(&categories_raw);
@@ -272,6 +288,78 @@ fn filter_user_global(
                 .is_some_and(|source_id| source_ids.contains(source_id))
         })
         .collect()
+}
+
+fn restrict_shared_user_globals(
+    accounts: &mut Vec<Value>,
+    categories: &mut Vec<Value>,
+    tags: &mut Vec<Value>,
+    transactions: &[Value],
+    budgets: &[Value],
+) {
+    let mut account_ids = HashSet::new();
+    let mut category_ids = HashSet::new();
+    let mut tag_ids = HashSet::new();
+
+    for transaction in transactions {
+        let Some(row) = transaction.as_object() else {
+            continue;
+        };
+        for key in ["accountId", "fromAccountId", "toAccountId"] {
+            if let Some(id) = optional_string(row, key) {
+                account_ids.insert(id.to_owned());
+            }
+        }
+        if let Some(id) = optional_string(row, "categoryId") {
+            category_ids.insert(id.to_owned());
+        }
+        tag_ids.extend(string_array(row.get("tagIds")));
+    }
+
+    for budget in budgets {
+        let Some(row) = budget.as_object() else {
+            continue;
+        };
+        if let Some(id) = optional_string(row, "categoryId") {
+            category_ids.insert(id.to_owned());
+        }
+    }
+
+    // Preserve the parent chain for any referenced child category so the shared
+    // ledger can still render its hierarchy without exposing unrelated trees.
+    loop {
+        let mut added_parent = false;
+        for category in categories.iter() {
+            let Some(row) = category.as_object() else {
+                continue;
+            };
+            let Some(id) = optional_string(row, "syncId") else {
+                continue;
+            };
+            if !category_ids.contains(id) {
+                continue;
+            }
+            if let Some(parent_id) = optional_string(row, "parentSyncId") {
+                added_parent |= category_ids.insert(parent_id.to_owned());
+            }
+        }
+        if !added_parent {
+            break;
+        }
+    }
+
+    retain_referenced(accounts, &account_ids);
+    retain_referenced(categories, &category_ids);
+    retain_referenced(tags, &tag_ids);
+}
+
+fn retain_referenced(values: &mut Vec<Value>, referenced: &HashSet<String>) {
+    values.retain(|value| {
+        value
+            .get("syncId")
+            .and_then(Value::as_str)
+            .is_some_and(|id| referenced.contains(id))
+    });
 }
 
 async fn integration_principal(

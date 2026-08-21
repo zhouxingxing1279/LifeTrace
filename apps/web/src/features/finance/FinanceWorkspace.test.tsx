@@ -1,0 +1,71 @@
+// @vitest-environment jsdom
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+const testState = vi.hoisted(() => ({
+  mountCount: 0,
+  session: {
+    user: { id: "user-a" },
+    session: { id: "session-a" },
+  } as { user: { id: string }; session: { id: string } } | null,
+}));
+
+vi.mock("../../app/AppContext", () => ({
+  useApp: () => ({ session: testState.session }),
+}));
+
+vi.mock("./beecount-cloud/BeeCountCloudWorkspace", async () => {
+  const React = await import("react");
+  return {
+    BeeCountCloudWorkspace: () => {
+      const [instance] = React.useState(() => ++testState.mountCount);
+      return <div data-testid="finance-instance">{instance}</div>;
+    },
+  };
+});
+
+import { FinanceWorkspace } from "./FinanceWorkspace";
+
+afterEach(() => cleanup());
+
+function financeInstance(): string | null {
+  return screen.getByTestId("finance-instance").textContent;
+}
+
+describe("FinanceWorkspace session isolation", () => {
+  it("destroys the BeeCount workspace when the authenticated account changes", () => {
+    testState.mountCount = 0;
+    testState.session = {
+      user: { id: "user-a" },
+      session: { id: "session-a" },
+    };
+    const view = render(<FinanceWorkspace />);
+    expect(financeInstance()).toBe("1");
+
+    testState.session = {
+      user: { id: "user-b" },
+      session: { id: "session-b" },
+    };
+    view.rerender(<FinanceWorkspace />);
+
+    expect(financeInstance()).toBe("2");
+  });
+
+  it("also destroys cached finance state when the session rotates for the same user", () => {
+    testState.mountCount = 0;
+    testState.session = {
+      user: { id: "user-a" },
+      session: { id: "session-a" },
+    };
+    const view = render(<FinanceWorkspace />);
+    expect(financeInstance()).toBe("1");
+
+    testState.session = {
+      user: { id: "user-a" },
+      session: { id: "session-a-rotated" },
+    };
+    view.rerender(<FinanceWorkspace />);
+
+    expect(financeInstance()).toBe("2");
+  });
+});
