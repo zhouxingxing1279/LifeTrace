@@ -26,6 +26,10 @@ vi.mock("./beecount-cloud/BeeCountCloudWorkspace", async () => {
 
 import { FinanceWorkspace } from "./FinanceWorkspace";
 
+function financeInstance(): string | null {
+  return screen.getByTestId("finance-instance").textContent;
+}
+
 describe("FinanceWorkspace session isolation", () => {
   it("destroys the BeeCount workspace when the authenticated account changes", () => {
     testState.mountCount = 0;
@@ -34,7 +38,7 @@ describe("FinanceWorkspace session isolation", () => {
       session: { id: "session-a" },
     };
     const view = render(<FinanceWorkspace />);
-    expect(screen.getByTestId("finance-instance")).toHaveTextContent("1");
+    expect(financeInstance()).toBe("1");
 
     testState.session = {
       user: { id: "user-b" },
@@ -42,7 +46,7 @@ describe("FinanceWorkspace session isolation", () => {
     };
     view.rerender(<FinanceWorkspace />);
 
-    expect(screen.getByTestId("finance-instance")).toHaveTextContent("2");
+    expect(financeInstance()).toBe("2");
   });
 
   it("also destroys cached finance state when the session rotates for the same user", () => {
@@ -52,7 +56,7 @@ describe("FinanceWorkspace session isolation", () => {
       session: { id: "session-a" },
     };
     const view = render(<FinanceWorkspace />);
-    expect(screen.getByTestId("finance-instance")).toHaveTextContent("1");
+    expect(financeInstance()).toBe("1");
 
     testState.session = {
       user: { id: "user-a" },
@@ -60,6 +64,6 @@ describe("FinanceWorkspace session isolation", () => {
     };
     view.rerender(<FinanceWorkspace />);
 
-    expect(screen.getByTestId("finance-instance")).toHaveTextContent("2");
+    expect(financeInstance()).toBe("2");
   });
 });
