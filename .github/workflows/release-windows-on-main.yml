@@ -8,6 +8,7 @@ on:
       - ".github/workflows/release-windows-on-main.yml"
       - "apps/desktop/package.json"
       - "apps/desktop/package-lock.json"
+      - "apps/desktop/scripts/ensure-shared-web-deps.mjs"
       - "apps/desktop/src-tauri/tauri.conf.json"
       - "apps/desktop/src-tauri/Cargo.toml"
       - "apps/desktop/src-tauri/Cargo.lock"
