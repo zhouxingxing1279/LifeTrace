@@ -12,18 +12,10 @@ import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 import { installWindowPlacementPersistence, restoreWindowPlacement } from "./windowState";
 
-/* Shared browser workspaces are also rendered inside Tauri. Load their visual
- * contract first, then let native/local styles keep authority over local tools. */
-import "@/web-client/src/styles.css";
-import "@/web-client/src/cloud-pages.css";
-import "@/web-client/src/web-tokens.css";
-import "@/web-client/src/web-primitives.css";
-import "@/web-client/src/web-shell.css";
-import "@/web-client/src/web-auth.css";
-import "@/web-client/src/web-workspaces.css";
-import "@/web-client/src/web-beecount.css";
-import "@/web-client/src/web-features.css";
-import "@/web-client/src/web-photo-challenge.css";
+/* The authenticated cloud workspace reuses the current apps/web feature layer.
+ * Compile its Tailwind visual contract first, then keep desktop/local styles in
+ * control of native shell and local-only tools. */
+import "../../web/src/styles/globals.css";
 
 import "@/app/tokens.css";
 import "@/app/globals.css";
