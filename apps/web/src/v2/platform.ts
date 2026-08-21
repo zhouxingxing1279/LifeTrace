@@ -1,4 +1,5 @@
 import type { LifeTraceState } from "./model";
+import { cloudStateRepository, type CloudSession } from "./api/cloud";
 
 export interface NativeStatus {
   storage?: unknown;
@@ -10,29 +11,38 @@ export interface NativeStatus {
 export interface PlatformAdapter {
   kind: "web" | "desktop";
   label: string;
+  requiresAuthentication?: boolean;
   loadState(): Promise<LifeTraceState | null>;
   saveState(state: LifeTraceState): Promise<void>;
+  getSession?(): Promise<CloudSession>;
+  login?(email: string, password: string): Promise<CloudSession>;
+  logout?(): Promise<void>;
   getNativeStatus?(): Promise<NativeStatus>;
   syncNow?(): Promise<unknown>;
   openExternal?(url: string): Promise<void>;
 }
 
-// Browser Web is cloud-first. Keep unsynced V2 state only for the lifetime of
-// the current document so SPA navigation remains responsive without turning
-// the browser into a second durable application database. Durable data belongs
-// behind the authenticated cloud/sync adapter; Desktop owns local-first storage.
-let sessionState: LifeTraceState | null = null;
-
-const cloneState = (state: LifeTraceState): LifeTraceState => structuredClone(state);
-
 export const webPlatform: PlatformAdapter = {
   kind: "web",
-  label: "Web",
+  label: "Web Cloud",
+  requiresAuthentication: true,
+  async getSession() {
+    return cloudStateRepository.getSession();
+  },
+  async login(email, password) {
+    return cloudStateRepository.login(email, password);
+  },
+  async logout() {
+    await cloudStateRepository.logout();
+  },
   async loadState() {
-    return sessionState ? cloneState(sessionState) : null;
+    return cloudStateRepository.loadState();
   },
   async saveState(state) {
-    sessionState = cloneState(state);
+    await cloudStateRepository.saveState(state);
+  },
+  async syncNow() {
+    return cloudStateRepository.loadState();
   },
   async openExternal(url) {
     window.open(url, "_blank", "noopener,noreferrer");
