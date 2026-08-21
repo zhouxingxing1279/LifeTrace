@@ -16,6 +16,7 @@ export default defineConfig({
     alias: {
       "@": projectRoot,
     },
+    dedupe: ["react", "react-dom"],
   },
   server: {
     host: "127.0.0.1",
