@@ -1,0 +1,59 @@
+name: Verify LifeTrace v0.3.3 Publication
+
+on:
+  push:
+    branches:
+      - agent/release-v0.3.3-verify
+    paths:
+      - ".github/workflows/release-v0.3.3-verify-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-v0.3.3-verify
+
+      - name: Wait for signed v0.3.3 release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_json=""
+          for attempt in {1..150}; do
+            if release_json="$(gh api repos/zhouxingxing1279/LifeTrace-Releases/releases/tags/v0.3.3 2>/dev/null)"; then
+              names="$(jq -r '.assets[].name' <<<"$release_json")"
+              exe="$(grep -E '(_0\.3\.3_x64-setup\.exe)$' <<<"$names" | head -n1 || true)"
+              if [ -n "$exe" ] \
+                && grep -Fxq "$exe.sig" <<<"$names" \
+                && grep -Fxq 'latest.json' <<<"$names" \
+                && grep -Fxq 'latest.cn.json' <<<"$names"; then
+                break
+              fi
+            fi
+            release_json=""
+            sleep 10
+          done
+
+          if [ -z "$release_json" ]; then
+            echo "v0.3.3 release did not become complete within the verification window" >&2
+            exit 1
+          fi
+
+          jq '{tag_name, name, html_url, published_at, assets: [.assets[] | {name, size, browser_download_url}]}' <<<"$release_json" > release-v0.3.3-verified.json
+
+      - name: Persist verification and self-clean
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/release-v0.3.3-verify-temp.yml
+          git add release-v0.3.3-verified.json
+          git commit -m "chore(release): verify v0.3.3 published"
+          git push origin HEAD:agent/release-v0.3.3-verify
