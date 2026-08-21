@@ -7,6 +7,10 @@ on:
       - "apps/desktop/src/**"
       - "apps/desktop/tauri-ui/**"
       - "apps/desktop/tests/**"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/src-tauri/tauri.conf.json"
+      - "apps/desktop/src-tauri/Cargo.toml"
       - "apps/desktop/tsconfig.json"
       - "apps/desktop/vite.tauri.config.ts"
       - ".github/workflows/desktop-web-v2-sync.yml"
@@ -18,6 +22,10 @@ on:
       - "apps/desktop/src/**"
       - "apps/desktop/tauri-ui/**"
       - "apps/desktop/tests/**"
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/src-tauri/tauri.conf.json"
+      - "apps/desktop/src-tauri/Cargo.toml"
       - "apps/desktop/tsconfig.json"
       - "apps/desktop/vite.tauri.config.ts"
       - ".github/workflows/desktop-web-v2-sync.yml"
@@ -41,6 +49,8 @@ jobs:
         run: npm ci --prefix apps/desktop
       - name: Install shared Web dependencies
         run: npm install --prefix apps/web --no-audit --no-fund
+      - name: Check desktop version consistency
+        run: node scripts/check-version-consistency.mjs
       - name: Desktop typecheck
         run: npm --prefix apps/desktop run lint
       - name: Desktop unit tests
