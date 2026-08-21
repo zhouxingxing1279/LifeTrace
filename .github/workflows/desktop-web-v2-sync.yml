@@ -36,13 +36,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: |
-            apps/desktop/package-lock.json
-            apps/web/package-lock.json
+          cache-dependency-path: apps/desktop/package-lock.json
       - name: Install desktop dependencies
         run: npm ci --prefix apps/desktop
       - name: Install shared Web dependencies
-        run: npm ci --prefix apps/web
+        run: npm install --prefix apps/web --no-audit --no-fund
       - name: Desktop typecheck
         run: npm --prefix apps/desktop run lint
       - name: Desktop unit tests
