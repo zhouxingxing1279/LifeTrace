@@ -17,25 +17,24 @@ export interface PlatformAdapter {
   openExternal?(url: string): Promise<void>;
 }
 
-const STORAGE_KEY = "lifetrace.frontend-v2.state";
+// Browser Web is cloud-first. Keep unsynced V2 state only for the lifetime of
+// the current document so SPA navigation remains responsive without turning
+// the browser into a second durable application database. Durable data belongs
+// behind the authenticated cloud/sync adapter; Desktop owns local-first storage.
+let sessionState: LifeTraceState | null = null;
+
+const cloneState = (state: LifeTraceState): LifeTraceState => structuredClone(state);
 
 export const webPlatform: PlatformAdapter = {
   kind: "web",
   label: "Web",
   async loadState() {
-    try {
-      const raw = window.localStorage.getItem(STORAGE_KEY);
-      return raw ? (JSON.parse(raw) as LifeTraceState) : null;
-    } catch {
-      return null;
-    }
+    return sessionState ? cloneState(sessionState) : null;
   },
   async saveState(state) {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    sessionState = cloneState(state);
   },
   async openExternal(url) {
     window.open(url, "_blank", "noopener,noreferrer");
   }
 };
-
-export { STORAGE_KEY };
