@@ -15,9 +15,13 @@ test("quick capture persists a task across navigation", async ({ page }) => {
   await page.getByRole("button", { name: "Quick Capture" }).click();
   await page.getByPlaceholder("下一步要做什么？").fill("Validate clean-room rewrite");
   await page.getByRole("button", { name: "Save" }).click();
-  await expect(page.getByText("Validate clean-room rewrite")).toBeVisible();
+  const todayTask = page.locator(".lt-list-item").filter({ hasText: "Validate clean-room rewrite" });
+  await expect(todayTask).toHaveCount(1);
+  await expect(todayTask).toBeVisible();
   await page.goto("/app/execution");
-  await expect(page.getByText("Validate clean-room rewrite")).toBeVisible();
+  const planTask = page.locator(".lt-list-item").filter({ hasText: "Validate clean-room rewrite" });
+  await expect(planTask).toHaveCount(1);
+  await expect(planTask).toBeVisible();
 });
 
 test("keyboard command palette is usable", async ({ page }) => {

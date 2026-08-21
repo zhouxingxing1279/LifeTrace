@@ -16,7 +16,16 @@ export default defineConfig({
   },
   projects: [
     { name: "desktop", use: { ...devices["Desktop Chrome"] } },
-    { name: "mobile", use: { ...devices["iPhone 13"] } }
+    {
+      name: "mobile",
+      use: {
+        browserName: "chromium",
+        viewport: { width: 390, height: 844 },
+        isMobile: true,
+        hasTouch: true,
+        deviceScaleFactor: 3
+      }
+    }
   ],
   webServer: {
     command: "npm run dev -- --host 127.0.0.1 --port 4173",
