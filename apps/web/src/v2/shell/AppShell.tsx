@@ -53,15 +53,16 @@ export function AppShell({ path, navigate, state, openQuickCapture, children }: 
 
   const commandItems = navigation.filter((item) => !commandQuery || item.label.toLowerCase().includes(commandQuery.toLowerCase()));
   const go = (target: string) => { navigate(target); setCommandsOpen(false); setCommandQuery(""); };
-  return <div className={`lt-app-shell ${collapsed ? "is-collapsed" : ""}`}>
+  return <div className="lt-shell" style={collapsed ? { gridTemplateColumns: "84px minmax(0, 1fr)" } : undefined}>
     <aside className="lt-sidebar">
-      <div className="lt-sidebar-brand"><strong>LifeTrace</strong><IconButton aria-label="切换侧边栏" onClick={() => setCollapsed((value) => !value)}><PanelLeft size={18} /></IconButton></div>
-      <nav aria-label="主导航">{navigation.map((item) => { const Icon = item.icon; return <button key={item.path} className={`lt-nav-item ${active(path, item) ? "is-active" : ""}`} onClick={() => navigate(item.path)} aria-current={active(path, item) ? "page" : undefined}><Icon size={18} /><span>{item.label}</span></button>; })}</nav>
-      <div className="lt-sidebar-footer"><Badge tone="accent">V2</Badge><span className="lt-caption">Cloud + Native adapters</span></div>
+      <div className="lt-brand"><span className="lt-brand-mark">LT</span>{collapsed ? null : <span>LifeTrace</span>}<IconButton style={{ marginLeft: "auto" }} aria-label="切换侧边栏" onClick={() => setCollapsed((value) => !value)}><PanelLeft size={18} /></IconButton></div>
+      <nav className="lt-nav" aria-label="主导航">{navigation.map((item) => { const Icon = item.icon; return <button key={item.path} className={active(path, item) ? "is-active" : ""} onClick={() => navigate(item.path)} aria-current={active(path, item) ? "page" : undefined} aria-label={item.label}><Icon size={18} />{collapsed ? null : <span>{item.label}</span>}</button>; })}</nav>
+      <div className="lt-nav-spacer" />
+      <div className="lt-sidebar-footer"><Badge tone="accent">V2</Badge>{collapsed ? null : <span className="lt-caption" style={{ marginLeft: 8 }}>Cloud + Native adapters</span>}</div>
     </aside>
     <div className="lt-workspace">
-      <header className="lt-toolbar"><div className="lt-row"><strong>{routeTitle(path)}</strong></div><div className="lt-row"><IconButton aria-label="切换主题" onClick={() => { const html = document.documentElement; html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark"; }}>{document.documentElement.dataset.theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}</IconButton><Button className="secondary" onClick={() => setCommandsOpen(true)}><Command size={16} /> <span>Command</span></Button><Button onClick={openQuickCapture}><Plus size={16} /> Capture</Button></div></header>
-      <main className="lt-main">{children}</main>
+      <header className="lt-toolbar"><div className="lt-toolbar-title"><strong>{routeTitle(path)}</strong><span>LifeTrace personal workspace</span></div><div className="lt-toolbar-actions"><IconButton aria-label="切换主题" onClick={() => { const html = document.documentElement; html.dataset.theme = html.dataset.theme === "dark" ? "light" : "dark"; }}>{document.documentElement.dataset.theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}</IconButton><Button className="secondary" onClick={() => setCommandsOpen(true)}><Command size={16} /> <span>Command</span></Button><Button onClick={openQuickCapture}><Plus size={16} /> Capture</Button></div></header>
+      <main className="lt-content">{children}</main>
     </div>
     <nav className="lt-mobile-nav" aria-label="移动导航">{navigation.filter((item) => item.mobile).map((item) => { const Icon = item.icon; return <button key={item.path} className={active(path, item) ? "is-active" : ""} onClick={() => navigate(item.path)} aria-label={item.label}><Icon size={20} /><span>{item.label}</span></button>; })}</nav>
     <CommandPalette open={commandsOpen} query={commandQuery} onQuery={setCommandQuery} onClose={() => setCommandsOpen(false)}>{commandItems.map((item) => { const Icon = item.icon; return <button className="lt-command-item" key={item.path} onClick={() => go(item.path)}><Icon size={17} /><span>{item.label}</span></button>; })}{commandHits.map((item) => <button className="lt-command-item" key={`${item.type}-${item.id}`} onClick={() => go(item.path)}><Search size={17} /><span>{item.title}</span><Badge>{item.type}</Badge></button>)}</CommandPalette>
