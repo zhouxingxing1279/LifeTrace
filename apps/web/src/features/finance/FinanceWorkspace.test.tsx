@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 const testState = vi.hoisted(() => ({
   mountCount: 0,
@@ -25,6 +25,8 @@ vi.mock("./beecount-cloud/BeeCountCloudWorkspace", async () => {
 });
 
 import { FinanceWorkspace } from "./FinanceWorkspace";
+
+afterEach(() => cleanup());
 
 function financeInstance(): string | null {
   return screen.getByTestId("finance-instance").textContent;
