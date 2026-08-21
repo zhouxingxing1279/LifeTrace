@@ -1,0 +1,11 @@
+{
+  "status": "failure",
+  "version": "0.3.3",
+  "tag": "v0.3.3",
+  "merge_sha": "8ee4ebd9300bbfa2e8afbadcd96433b2e1c685f6",
+  "reason": "release dispatcher completed with failure",
+  "dispatcher_url": "https://github.com/zhouxingxing1279/LifeTrace/actions/runs/32454613194",
+  "release_run_url": "",
+  "published_url": "",
+  "assets": []
+}
