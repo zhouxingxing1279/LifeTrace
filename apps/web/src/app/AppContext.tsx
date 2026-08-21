@@ -12,9 +12,9 @@ import {
 
 export type ThemeMode = "system" | "light" | "dark";
 
-type StoreAction = (store: CloudDataStore) => Promise<CloudState>;
+export type StoreAction = (store: CloudDataStore) => Promise<CloudState>;
 
-interface AppContextValue {
+export interface AppContextValue {
   session: WebSession | null;
   state: CloudState;
   authLoading: boolean;
@@ -56,6 +56,10 @@ function themeFromCookie(): ThemeMode {
   if (typeof document === "undefined") return "system";
   const value = document.cookie.match(/(?:^|; )lifetrace_theme=([^;]+)/)?.[1];
   return value === "light" || value === "dark" || value === "system" ? value : "system";
+}
+
+export function AppRuntimeProvider({ value, children }: PropsWithChildren<{ value: AppContextValue }>) {
+  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
 }
 
 export function AppProvider({ children }: PropsWithChildren) {
@@ -202,7 +206,7 @@ export function AppProvider({ children }: PropsWithChildren) {
     setPrivacy, setTheme, clearError: () => setError(""),
   }), [session, state, authLoading, loading, online, error, privacy, theme, login, logout, refresh, run, upsert, remove, setTheme]);
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  return <AppRuntimeProvider value={value}>{children}</AppRuntimeProvider>;
 }
 
 export function useApp(): AppContextValue {

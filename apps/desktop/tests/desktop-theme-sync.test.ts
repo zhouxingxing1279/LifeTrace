@@ -12,8 +12,9 @@ test("desktop cloud workspace applies the loaded cloud appearance preference", (
   const source = cloudWorkspace();
   assert.match(source, /const \[cloudLoaded, setCloudLoaded\] = useState\(false\)/);
   assert.match(source, /if \(!session \|\| !cloudLoaded\) return/);
-  assert.match(source, /preferenceKey"\) === "appearance\.theme"/);
-  assert.match(source, /setAppThemePreference\(preference\?\.value === "dark" \? "dark" : "light"\)/);
+  assert.match(source, /item\.preferenceKey === "appearance\.theme"/);
+  assert.match(source, /mode === "dark" \|\| mode === "light" \|\| mode === "system"/);
+  assert.match(source, /setAppThemePreference\(resolveTheme\(next\)\)/);
 });
 
 test("tauri restores the cached theme before the react entrypoint", () => {
