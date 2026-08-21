@@ -1,0 +1,56 @@
+name: Release Windows On Version Change
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/desktop/package.json"
+      - "apps/desktop/package-lock.json"
+      - "apps/desktop/src-tauri/tauri.conf.json"
+      - "apps/desktop/src-tauri/Cargo.toml"
+      - "apps/desktop/src/services/cloudAuth.ts"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 130
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve desktop version
+        id: version
+        shell: bash
+        run: echo "value=$(node -p \"require('./apps/desktop/package.json').version\")" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch signed Windows release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        shell: bash
+        run: gh workflow run release-windows.yml --ref main -f version="$VERSION"
+
+      - name: Wait for published release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          run_id=""
+          for attempt in {1..18}; do
+            run_id="$(gh run list --workflow release-windows.yml --event workflow_dispatch --commit "$GITHUB_SHA" --limit 1 --json databaseId --jq '.[0].databaseId // empty')"
+            if [ -n "$run_id" ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo "Unable to locate the dispatched Windows release run for $GITHUB_SHA" >&2
+            exit 1
+          fi
+          echo "Watching Windows release run $run_id"
+          gh run watch "$run_id" --exit-status --interval 10
