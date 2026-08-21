@@ -1,0 +1,108 @@
+name: Verify LifeTrace v0.3.3 Retry
+
+on:
+  push:
+    branches:
+      - agent/release-v0.3.3-verify
+    paths:
+      - ".github/workflows/release-v0.3.3-retry-verify-temp.yml"
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/release-v0.3.3-verify
+
+      - name: Monitor retry and verify published assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_REPO: zhouxingxing1279/LifeTrace
+          RELEASE_REPO: zhouxingxing1279/LifeTrace-Releases
+          SOURCE_SHA: c10c978ac74b158fa1315806e0f0872f2a7fe5c0
+          RELEASE_TAG: v0.3.3
+        shell: bash
+        run: |
+          set -u
+          status="waiting"
+          reason=""
+          dispatcher_url=""
+          release_run_url=""
+          published_url=""
+          assets_json='[]'
+
+          for attempt in {1..180}; do
+            dispatcher="$(gh api "repos/$SOURCE_REPO/actions/workflows/release-windows-on-main.yml/runs?branch=main&per_page=20" \
+              --jq ".workflow_runs[] | select(.head_sha == \"$SOURCE_SHA\") | [.status, (.conclusion // \"\"), .html_url] | @tsv" 2>/dev/null | head -n1 || true)"
+            if [ -n "$dispatcher" ]; then
+              IFS=$'\t' read -r dispatcher_status dispatcher_conclusion dispatcher_url <<<"$dispatcher"
+              if [ "$dispatcher_status" = "completed" ] && [ "$dispatcher_conclusion" != "success" ]; then
+                status="failure"
+                reason="release dispatcher completed with $dispatcher_conclusion"
+                break
+              fi
+            fi
+
+            release_run="$(gh api "repos/$SOURCE_REPO/actions/workflows/release-windows.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              --jq ".workflow_runs[] | select(.head_sha == \"$SOURCE_SHA\") | [.status, (.conclusion // \"\"), .html_url] | @tsv" 2>/dev/null | head -n1 || true)"
+            if [ -n "$release_run" ]; then
+              IFS=$'\t' read -r release_status release_conclusion release_run_url <<<"$release_run"
+              if [ "$release_status" = "completed" ] && [ "$release_conclusion" != "success" ]; then
+                status="failure"
+                reason="Windows release completed with $release_conclusion"
+                break
+              fi
+              if [ "$release_status" = "completed" ] && [ "$release_conclusion" = "success" ]; then
+                release_json="$(gh api "repos/$RELEASE_REPO/releases/tags/$RELEASE_TAG" 2>/dev/null || true)"
+                if [ -n "$release_json" ]; then
+                  names="$(jq -r '.assets[].name' <<<"$release_json")"
+                  exe="$(grep -E '(_0\.3\.3_x64-setup\.exe)$' <<<"$names" | head -n1 || true)"
+                  if [ -n "$exe" ] && grep -Fxq "$exe.sig" <<<"$names" && grep -Fxq 'latest.json' <<<"$names" && grep -Fxq 'latest.cn.json' <<<"$names"; then
+                    status="success"
+                    published_url="$(jq -r '.html_url' <<<"$release_json")"
+                    assets_json="$(jq '[.assets[] | {name, size, browser_download_url}]' <<<"$release_json")"
+                    break
+                  fi
+                fi
+              fi
+            fi
+            sleep 10
+          done
+
+          if [ "$status" = "waiting" ]; then
+            status="failure"
+            reason="release verification timed out"
+          fi
+
+          jq -n \
+            --arg status "$status" \
+            --arg version "0.3.3" \
+            --arg tag "$RELEASE_TAG" \
+            --arg source_sha "$SOURCE_SHA" \
+            --arg reason "$reason" \
+            --arg dispatcher_url "$dispatcher_url" \
+            --arg release_run_url "$release_run_url" \
+            --arg published_url "$published_url" \
+            --argjson assets "$assets_json" \
+            '{status:$status,version:$version,tag:$tag,source_sha:$source_sha,reason:$reason,dispatcher_url:$dispatcher_url,release_run_url:$release_run_url,published_url:$published_url,assets:$assets}' \
+            > release-v0.3.3-verification-2.json
+
+      - name: Persist verification and self-clean
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/release-v0.3.3-retry-verify-temp.yml
+          git add release-v0.3.3-verification-2.json
+          git commit -m "chore(release): record v0.3.3 retry verification"
+          git push origin HEAD:agent/release-v0.3.3-verify
+
+      - name: Require successful publication
+        shell: bash
+        run: test "$(jq -r '.status' release-v0.3.3-verification-2.json)" = "success"
