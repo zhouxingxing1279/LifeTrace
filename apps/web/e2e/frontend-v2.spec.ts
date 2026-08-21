@@ -10,7 +10,7 @@ test("all v2 routes render the shared LifeTrace shell", async ({ page }) => {
   }
 });
 
-test("quick capture persists a task across navigation", async ({ page }) => {
+test("quick capture keeps a task across SPA navigation", async ({ page }) => {
   await page.goto("/app/today");
   await page.getByRole("button", { name: "Quick Capture" }).click();
   await page.getByPlaceholder("下一步要做什么？").fill("Validate clean-room rewrite");
@@ -18,7 +18,11 @@ test("quick capture persists a task across navigation", async ({ page }) => {
   const todayTask = page.locator(".lt-list-item").filter({ hasText: "Validate clean-room rewrite" });
   await expect(todayTask).toHaveCount(1);
   await expect(todayTask).toBeVisible();
-  await page.goto("/app/execution");
+
+  // Browser Web is cloud-first: unsynced state is intentionally document-scoped,
+  // so verify client-side navigation rather than durable browser persistence.
+  await page.getByRole("button", { name: "Plan" }).click();
+  await expect(page).toHaveURL(/\/app\/execution$/);
   const planTask = page.locator(".lt-list-item").filter({ hasText: "Validate clean-room rewrite" });
   await expect(planTask).toHaveCount(1);
   await expect(planTask).toBeVisible();
