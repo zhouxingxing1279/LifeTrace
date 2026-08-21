@@ -4,9 +4,9 @@
   "version": "0.3.3",
   "identifier": "com.lifetrace.desktop",
   "build": {
-    "beforeDevCommand": "npm.cmd run web:dev",
+    "beforeDevCommand": "npm run web:dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "npm.cmd run web:build",
+    "beforeBuildCommand": "npm run web:build",
     "frontendDist": "../dist-tauri"
   },
   "app": {
