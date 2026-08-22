@@ -440,7 +440,7 @@ export class CloudStateRepository {
     let pageToken: string | null = null;
 
     do {
-      const response = await apiRequest<SnapshotResponseV1>("/api/v1/sync/snapshot", {
+      const response: SnapshotResponseV1 = await apiRequest<SnapshotResponseV1>("/api/v1/sync/snapshot", {
         method: "POST",
         csrfToken: this.sessionValue.csrfToken,
         body: {
@@ -467,7 +467,7 @@ export class CloudStateRepository {
 
   saveState(next: LifeTraceState): Promise<void> {
     const snapshot = cloneState(next);
-    this.saveFlight = this.saveFlight.then(() => this.persist(snapshot));
+    this.saveFlight = this.saveFlight.catch(() => undefined).then(() => this.persist(snapshot));
     return this.saveFlight;
   }
 
