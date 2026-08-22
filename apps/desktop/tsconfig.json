@@ -1,11 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": [
-      "dom",
-      "dom.iterable",
-      "esnext"
-    ],
+    "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
@@ -17,37 +13,23 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "types": [
-      "vite/client"
-    ],
-    "paths": {
-      "@/*": [
-        "./*"
-      ]
-    }
+    "types": ["vite/client"],
+    "paths": { "@/*": ["./*"] }
   },
   "include": [
     "tauri-ui/**/*.ts",
     "tauri-ui/**/*.tsx",
-    "src/components/**/*.ts",
-    "src/components/**/*.tsx",
-    "src/hooks/**/*.ts",
+    "src/platform-v2/**/*.ts",
     "src/services/**/*.ts",
     "src/types/**/*.ts",
+    "src/lib/**/*.ts",
+    "src/stores/**/*.ts",
+    "src/utils/**/*.ts",
     "../../contracts/typescript/**/*.ts",
     "../web/src/**/*.ts",
     "../web/src/**/*.tsx",
     "vite.tauri.config.ts",
-    "vite.browser.config.ts",
-    "src/ui/**/*.ts",
-    "src/ui/**/*.tsx"
+    "vite.browser.config.ts"
   ],
-  "exclude": [
-    "node_modules",
-    "src/server",
-    "app/api",
-    "desktop",
-    "scripts",
-    "tests"
-  ]
+  "exclude": ["node_modules", "src/server", "desktop", "scripts", "tests"]
 }
