@@ -57,6 +57,19 @@ async function mockCloud(page: Page, startAuthenticated = true) {
   return { entities, isAuthenticated: () => authenticated };
 }
 
+async function waitForShell(page: Page) {
+  await expect(page.locator(".lt-shell")).toBeVisible();
+  await expect(page.locator("main")).toBeVisible();
+}
+
+async function navigateWithCommand(page: Page, label: string) {
+  await page.getByRole("button", { name: "Command" }).click();
+  const dialog = page.getByRole("dialog", { name: "命令菜单" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByPlaceholder("搜索页面、任务、笔记…").fill(label);
+  await dialog.getByRole("button", { name: label }).click();
+}
+
 test("all v2 routes render the shared LifeTrace shell", async ({ page }) => {
   await mockCloud(page);
   for (const route of routes) {
@@ -73,6 +86,7 @@ test("cloud login, task sync, reload and logout form one real user path", async 
   await page.getByLabel("Password").fill("correct-password");
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page).toHaveURL(/\/app\/today$/);
+  await waitForShell(page);
 
   await page.getByRole("button", { name: "Quick Capture" }).click();
   await page.getByPlaceholder("下一步要做什么？").fill("Validate cloud-backed rewrite");
@@ -81,8 +95,10 @@ test("cloud login, task sync, reload and logout form one real user path", async 
   await expect.poll(() => [...cloud.entities.values()].some((item) => item.entityType === "execution.task")).toBe(true);
 
   await page.reload();
+  await waitForShell(page);
   await expect(page.locator(".lt-list-item").filter({ hasText: "Validate cloud-backed rewrite" })).toHaveCount(1);
-  await page.getByRole("button", { name: "Settings" }).first().click();
+  await navigateWithCommand(page, "Settings");
+  await expect(page).toHaveURL(/\/app\/settings$/);
   await page.getByRole("button", { name: "Log out" }).click();
   await expect(page).toHaveURL(/\/login$/);
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
@@ -92,6 +108,7 @@ test("cloud login, task sync, reload and logout form one real user path", async 
 test("quick capture keeps a task across SPA navigation", async ({ page }) => {
   await mockCloud(page);
   await page.goto("/app/today");
+  await waitForShell(page);
   await page.getByRole("button", { name: "Quick Capture" }).click();
   await page.getByPlaceholder("下一步要做什么？").fill("Validate clean-room rewrite");
   await page.getByRole("button", { name: "Save" }).click();
@@ -103,7 +120,8 @@ test("quick capture keeps a task across SPA navigation", async ({ page }) => {
 test("keyboard command palette is usable", async ({ page }) => {
   await mockCloud(page);
   await page.goto("/app/today");
-  await page.keyboard.press(process.platform === "darwin" ? "Meta+K" : "Control+K");
+  await waitForShell(page);
+  await page.keyboard.press("ControlOrMeta+K");
   const dialog = page.getByRole("dialog", { name: "命令菜单" });
   await expect(dialog).toBeVisible();
   await dialog.getByPlaceholder("搜索页面、任务、笔记…").fill("Finance");
@@ -114,6 +132,7 @@ test("keyboard command palette is usable", async ({ page }) => {
 test("theme and responsive layout have no horizontal page overflow", async ({ page }) => {
   await mockCloud(page);
   await page.goto("/app/settings");
+  await waitForShell(page);
   await page.getByLabel("切换主题").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", /dark|light/);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
