@@ -39,7 +39,7 @@ concurrency:
 
 jobs:
   frontend:
-    name: New Web typecheck, unit tests and build
+    name: Frontend V2 typecheck, unit tests and build
     runs-on: ubuntu-latest
     timeout-minutes: 25
     defaults:
@@ -56,25 +56,35 @@ jobs:
       - name: Enforce browser persistence boundary
         shell: bash
         run: |
-          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts' --exclude='VditorEditor.tsx'; then
-            echo "Browser-local persistence is limited to the Vditor note draft cache"
+          set -euo pipefail
+          if grep -R -n -E 'localStorage[[:space:]]*\.|sessionStorage[[:space:]]*\.|indexedDB[[:space:]]*\.|IDBDatabase' src --exclude='*.test.ts'; then
+            echo "Browser Web must remain cloud-first and must not persist the application database locally"
             exit 1
           fi
-          grep -q 'cache: { id: cacheKey, enable: true }' src/features/notes/VditorEditor.tsx
           if grep -R -n -E 'PhotoSync|LocalVault|photo-sync|local-vault|manifest\.webmanifest|serviceWorker|sw\.js' src package.json; then
             echo "Photo/PWA-only code must not enter the browser application"
             exit 1
           fi
+          test -f src/v2/platform.ts
+          test -f src/v2/api/client.ts
+          test -f src/v2/api/cloud.ts
+          grep -q 'kind: "web"' src/v2/platform.ts
+          grep -q 'cloudStateRepository' src/v2/platform.ts
+          grep -q '/api/v1/sync/snapshot' src/v2/api/cloud.ts
+          grep -q '/api/v1/sync/push' src/v2/api/cloud.ts
+          grep -q 'credentials: "include"' src/v2/api/client.ts
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
       - name: Verify browser artifact
         shell: bash
         run: |
+          set -euo pipefail
           test -f dist/index.html
+          test -d dist/assets
           test ! -e dist/manifest.webmanifest
           test ! -e dist/sw.js
-          test -f dist/vendor/vditor/dist/js/lute/lute.min.js
+          find dist/assets -maxdepth 1 -type f -name '*.js' -print -quit | grep -q .
           SIZE=$(du -sk dist | cut -f1)
           echo "dist size: ${SIZE} KB"
           test "$SIZE" -lt 30000
