@@ -1,0 +1,58 @@
+name: Fix Web V2 sync app id (temporary)
+
+on:
+  push:
+    branches:
+      - fix/web-v2-sync-app-id-20260824
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/web-v2-sync-app-id-20260824
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.0'
+
+      - name: Apply sync client identity fix
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('apps/web/src/v2/api/cloud.ts')
+          text = path.read_text(encoding='utf-8')
+          old = '      appId: "web",\n      clientVersion: "2.0.0",\n      platform: "web",'
+          new = '      appId: "lifetrace-web",\n      clientVersion: "2.0.0",\n      platform: "web",'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one Web sync client block, found {text.count(old)}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+
+          test_path = Path('apps/web/tests/cloud-sync-client.test.ts')
+          test_path.write_text('''import assert from "node:assert/strict";\nimport test from "node:test";\nimport { CloudStateRepository } from "../src/v2/api/cloud";\n\ntest("web sync uses the authenticated lifetrace-web application id", async () => {\n  const originalFetch = globalThis.fetch;\n  const calls: Array<{ input: string; init?: RequestInit }> = [];\n  let requestNumber = 0;\n\n  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {\n    calls.push({ input: String(input), init });\n    requestNumber += 1;\n    if (requestNumber === 1) {\n      return new Response(JSON.stringify({\n        user: { id: "user-1", email: "user@example.com" },\n        session: { deviceId: "device-1" },\n        csrfToken: "csrf-1"\n      }), { status: 200, headers: { "content-type": "application/json" } });\n    }\n    return new Response(JSON.stringify({\n      snapshotId: "snapshot-1",\n      nextPageToken: null,\n      items: []\n    }), { status: 200, headers: { "content-type": "application/json" } });\n  }) as typeof fetch;\n\n  try {\n    const repository = new CloudStateRepository();\n    const session = await repository.getSession();\n    assert.equal(session.authenticated, true);\n    await repository.loadState();\n\n    assert.equal(calls[1]?.input, "/api/v1/sync/snapshot");\n    const body = JSON.parse(String(calls[1]?.init?.body));\n    assert.equal(body.client.appId, "lifetrace-web");\n    assert.equal(body.client.platform, "web");\n    assert.equal(body.client.deviceId, "device-1");\n  } finally {\n    globalThis.fetch = originalFetch;\n  }\n});\n''', encoding='utf-8')
+          PY
+
+      - name: Install Web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+
+      - name: Typecheck Web
+        run: npm --prefix apps/web run typecheck
+
+      - name: Test Web
+        run: npm --prefix apps/web test
+
+      - name: Commit fix and remove temporary workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-web-v2-sync-app-id-temp.yml
+          git add apps/web/src/v2/api/cloud.ts apps/web/tests/cloud-sync-client.test.ts
+          git commit -m "fix(web): align V2 sync application identity"
+          git push origin HEAD:fix/web-v2-sync-app-id-20260824
