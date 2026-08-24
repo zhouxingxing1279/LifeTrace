@@ -392,7 +392,7 @@ export class CloudStateRepository {
     const session = this.sessionValue;
     if (!session) throw new Error("Web session is not initialized");
     return {
-      appId: "web",
+      appId: "lifetrace-web",
       clientVersion: "2.0.0",
       platform: "web",
       protocolVersion: 1,
