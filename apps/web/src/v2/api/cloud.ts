@@ -50,6 +50,18 @@ const ENTITY_TYPES = [
 
 const SETTINGS_ENTITY_ID = "frontend-v2-settings";
 const SETTINGS_PREFERENCE_KEY = "frontend.v2.settings";
+export const WEB_SYNC_APP_ID = "lifetrace-web";
+
+export function buildWebSyncClient(deviceId: string) {
+  return {
+    appId: WEB_SYNC_APP_ID,
+    clientVersion: "2.0.0",
+    platform: "web",
+    protocolVersion: 1,
+    schemaVersion: 1,
+    deviceId
+  };
+}
 
 function record(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonRecord : {};
@@ -391,14 +403,7 @@ export class CloudStateRepository {
   private client() {
     const session = this.sessionValue;
     if (!session) throw new Error("Web session is not initialized");
-    return {
-      appId: "web",
-      clientVersion: "2.0.0",
-      platform: "web",
-      protocolVersion: 1,
-      schemaVersion: 1,
-      deviceId: session.session.deviceId
-    };
+    return buildWebSyncClient(session.session.deviceId);
   }
 
   async getSession(): Promise<CloudSession> {
