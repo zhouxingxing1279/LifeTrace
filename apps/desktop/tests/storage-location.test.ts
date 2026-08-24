@@ -29,10 +29,12 @@ test("old storage is committed only after verification and deleted by a backgrou
   assert.match(finalizeBody, /remove_stale_entries\(&pending\.source, &pending\.target\)\?/);
   assert.match(finalizeBody, /verify_tree\(&pending\.source, &pending\.target\)\?/);
   assert.doesNotMatch(finalizeBody, /remove_dir_all/);
+
   assert.match(commitBody, /config\.active_data_dir = Some\(pending\.target\.clone\(\)\)/);
   assert.match(commitBody, /config\.cleanup_pending = Some\(pending\.source\.clone\(\)\)/);
   assert.match(commitBody, /save_config\(locator, config\)/);
   assert.doesNotMatch(commitBody, /remove_dir_all/);
+
   assert.match(cleanupBody, /fs::remove_dir_all\(&old_path\)/);
   assert.match(scheduleBody, /tauri::async_runtime::spawn_blocking/);
   assert.match(scheduleBody, /retry_old_directory_cleanup\(&config_path\)/);
@@ -67,8 +69,16 @@ test("migrated database rewrites note attachment absolute paths to the new root"
   assert.match(source, /UPDATE note_attachments SET storage_path=\?1 WHERE id=\?2/);
 });
 
-test("frontend v2 desktop adapter keeps storage status and migration commands available", async () => {
-  const adapter = await readFile("src/platform-v2/desktop.ts", "utf8");
-  assert.match(adapter, /storage_status/);
-  assert.match(adapter, /storage_migrate/);
+test("settings exposes storage location picker, progress and restart completion", async () => {
+  const panel = await readFile("src/components/StorageLocationPanel.tsx", "utf8");
+  const bridge = await readFile("tauri-ui/apiBridge.ts", "utf8");
+  const settings = await readFile("src/components/CloudAccountPanel.tsx", "utf8");
+  assert.match(settings, /settings-storage/);
+  assert.match(settings, /<StorageLocationPanel/);
+  assert.match(panel, /更改位置/);
+  assert.match(panel, /重启并完成迁移/);
+  assert.match(panel, /后台线程执行/);
+  assert.match(bridge, /directory: true/);
+  assert.match(bridge, /storage_migrate/);
+  assert.match(bridge, /relaunch\(\)/);
 });

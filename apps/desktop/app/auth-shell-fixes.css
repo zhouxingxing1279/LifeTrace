@@ -1,0 +1,57 @@
+/* Signed-out state: do not expose any business navigation or content. */
+.hx-auth-shell{min-height:100vh}
+.hx-auth-shell>aside{display:flex;flex-direction:column}
+.hx-auth-sidebar-note{margin:8px 10px;color:#7f968b;display:flex;align-items:center;gap:8px;font-size:11px;line-height:1.45}
+.hx-auth-sidebar-note svg{width:15px;height:15px;flex:none}
+.hx-auth-shell .hx-sidebar-foot{margin-top:auto}
+.hx-auth-shell .hx-account-button{color:#fff!important}
+.hx-auth-shell .hx-account-button:hover{background:rgba(255,255,255,.06)!important}
+.hx-auth-shell .hx-account-button strong{color:#fff!important}
+.hx-auth-shell .hx-account-button small{color:#81978d!important}
+.hx-auth-shell .hx-account-button>svg{color:#789084!important}
+.hx-auth-shell .hx-account-avatar.anonymous{background:rgba(255,255,255,.07)!important;border-color:rgba(255,255,255,.09)!important;color:#a9bbb2!important}
+.hx-signed-out-main{display:grid;place-items:center;min-height:100vh;padding:48px!important}
+.hx-signed-out-card{width:min(440px,100%);display:flex;flex-direction:column;align-items:center;text-align:center;padding:42px 36px;border:1px solid var(--ui-border,var(--hx-line));border-radius:20px;background:var(--ui-bg-surface,var(--hx-panel));box-shadow:0 16px 48px rgba(20,36,29,.07)}
+.hx-signed-out-mark{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;background:var(--hx-accent);color:#fff;font-weight:800;letter-spacing:.04em}
+.hx-signed-out-card h1{margin:20px 0 8px;font-size:24px;line-height:1.25;letter-spacing:-.025em}
+.hx-signed-out-card p{max-width:360px;margin:0;color:var(--ui-text-secondary,var(--hx-muted));font-size:13px;line-height:1.7}
+.hx-signed-out-card .hx-btn{width:100%;margin-top:24px}
+.hx-signed-out-card .spin{animation:hx-spin .8s linear infinite}
+
+/* Auth dialog: isolate it from legacy dashboard layout rules. */
+.hx-account-overlay{padding:24px!important;overflow:hidden!important}
+.hx-account-dialog{display:block!important;width:min(420px,calc(100vw - 48px))!important;min-width:0!important;max-width:420px!important;max-height:calc(100vh - 48px)!important;overflow-y:auto!important;overflow-x:hidden!important;border-radius:16px!important}
+.hx-account-dialog,.hx-account-dialog *{box-sizing:border-box!important;min-width:0}
+.hx-account-dialog-head{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;align-items:start!important;gap:16px!important;padding:24px 24px 18px!important}
+.hx-account-dialog-head>div{display:grid!important;grid-template-columns:36px minmax(0,1fr)!important;align-items:center!important;gap:12px!important;min-width:0!important}
+.hx-account-dialog-head>div>div{display:block!important;min-width:0!important}
+.hx-account-dialog-head h2{font-size:19px!important;line-height:1.3!important;white-space:normal!important}
+.hx-account-dialog-head p{margin-top:4px!important;font-size:12px!important;line-height:1.5!important;white-space:normal!important}
+.hx-account-dialog-head>button{width:32px!important;height:32px!important;display:grid!important;place-items:center!important;padding:0!important;flex:none!important}
+.hx-account-mark{width:36px!important;height:36px!important;flex:none!important}
+.hx-account-tabs{display:flex!important;width:100%!important;gap:22px!important;padding:0 24px!important;overflow:visible!important}
+.hx-account-tabs button{flex:0 0 auto!important;width:auto!important;min-width:0!important;padding:0 1px!important}
+.hx-account-form{display:flex!important;flex-direction:column!important;width:100%!important;padding:20px 24px 10px!important;gap:14px!important;overflow:visible!important}
+.hx-account-form>label,.hx-account-server>label{display:flex!important;flex-direction:column!important;width:100%!important;gap:7px!important;font-size:12px!important;line-height:1.4!important}
+.hx-account-form input,.hx-account-server input{display:block!important;width:100%!important;max-width:none!important;min-width:0!important;height:42px!important;margin:0!important;padding:0 12px!important}
+.hx-account-password{position:relative!important;display:block!important;width:100%!important}
+.hx-account-password input{width:100%!important;padding-right:42px!important}
+.hx-account-password button{position:absolute!important;right:5px!important;top:5px!important;width:32px!important;height:32px!important;margin:0!important;padding:0!important}
+.hx-account-link{display:inline-flex!important;align-self:flex-start!important;width:auto!important;min-height:30px!important;margin:-2px 0 0!important;padding:0!important}
+.hx-account-error{width:100%!important}
+.hx-account-submit{display:flex!important;width:100%!important;min-height:42px!important;margin-top:2px!important}
+.hx-account-server{display:flex!important;flex-direction:column!important;width:100%!important;margin-top:8px!important;padding:8px 24px 20px!important;overflow:hidden!important}
+.hx-account-server>button{display:grid!important;width:100%!important;grid-template-columns:17px minmax(0,1fr) 15px!important;min-height:36px!important}
+.hx-account-server label small{font-size:10px!important;line-height:1.55!important}
+
+@media(max-width:780px){
+  .hx-auth-shell{grid-template-columns:1fr!important}
+  .hx-auth-shell>aside{display:none!important}
+  .hx-signed-out-main{min-height:100vh;padding:20px!important}
+  .hx-signed-out-card{padding:34px 24px}
+}
+@media(max-width:520px){
+  .hx-account-overlay{padding:12px!important}
+  .hx-account-dialog{width:calc(100vw - 24px)!important;max-height:calc(100vh - 24px)!important}
+  .hx-account-dialog-head,.hx-account-form,.hx-account-tabs,.hx-account-server{padding-left:18px!important;padding-right:18px!important}
+}
