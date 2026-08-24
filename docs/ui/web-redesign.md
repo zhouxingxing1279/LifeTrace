@@ -1,284 +1,29 @@
-# LifeTrace Web Frontend V2 Clean-room Rewrite
+# Web UI 完全重构实施方案
 
-> 状态：V2 / 执行规范  
-> 适用范围：`apps/web`  
-> 权威性：本文件替代旧版 Web 重构方案，作为后续 Codex / Agent 执行 Web 前端重写的唯一主规范。
+## 1. 文档目的
 
----
+本文档定义 LifeTrace **Web 端完全推倒重构**的目标架构、设计参考、页面规划、财务模块复用方式、实施顺序、测试门禁和最终切换标准，作为后续 Agent 执行 Web 重构时的权威依据。
 
-## 1. 目标与原则
+本次不是在现有 `apps/desktop/web-client` 上继续增量换肤，也不是继续叠加 `web-*.css`。目标是重新建立独立、长期可维护的 `apps/web`，新版本完成全部功能对账和测试后切换入口，再删除旧 Web 实现。
 
-LifeTrace Web V2 不再进行“基于现有前端继续重构、换肤、迁移组件或逐页改造”。
+核心定位：
 
-本次工作定义为 **Clean-room Frontend Rewrite（隔离式前端重写）**：
+> LifeTrace Web 是 Personal OS / Personal Dashboard，不是传统企业 Admin 后台。
 
-1. 在独立 Git 分支中工作；
-2. 为当前 `main` 保留可恢复基线；
-3. 删除 `apps/web` 现有前端实现；
-4. 禁止从 Git 历史恢复、复制或参考旧 Web 前端代码；
-5. 仅从后端能力、API 契约、业务文档、数据模型和明确需求重新推导产品功能；
-6. 先建立信息架构与 Design System，再实现业务页面；
-7. 所有模块完成、测试通过后才允许合并回 `main`。
+硬性目标：
 
-本次不是 refactor，而是 rewrite。
-
-核心产品定位：
-
-> **LifeTrace Web 是个人管理平台 / Personal OS / Productivity Application，不是传统 Admin Dashboard。**
-
-V2 必须解决旧版中由历史实现造成的视觉惯性、页面结构惯性、CSS 惯性、组件复用惯性和交互惯性。
+- 首页围绕“今天、趋势、下一步行动”组织；
+- Desktop / Tablet / Mobile 均为一等平台；
+- 使用统一 Design System 和正式 React UI Component；
+- 非财务模块必须参考本文指定的前端模板体系进行重新设计；
+- 财务栏目必须源码级复用 BeeCount Cloud Web，而不是重新仿写；
+- 旧 Web 仅作为功能、数据契约和回归基线，不作为新视觉实现的地基。
 
 ---
 
-## 2. 重写范围
+# 2. 设计参考：必须使用最初选定的模板体系
 
-### 2.1 本轮必须重写
-
-目标目录：
-
-```text
-apps/web/
-```
-
-现有 `apps/web` 中的以下内容均视为 Legacy Frontend Implementation：
-
-```text
-src/
-e2e/
-index.html
-package.json
-vite.config.*
-tailwind.config.*
-postcss.config.*
-tsconfig.*
-Playwright 配置
-Web 专用脚本
-旧 CI / cutover 文档
-其他只服务于旧 Web 实现的文件
-```
-
-执行阶段允许在删除后重新创建同名工程文件，但必须从 V2 架构重新生成，而不是复制旧实现。
-
-### 2.2 本轮默认不删除
-
-除非确有接口兼容问题，本次不推倒：
-
-```text
-services/
-contracts/
-crates/
-后端 API
-数据库 / 数据模型
-认证与会话协议
-同步协议
-LifeTrace 业务文档
-apps/desktop/
-apps/photo-challenge-pwa/
-```
-
-`apps/desktop` 不是本次 Web V2 clean-room rewrite 的删除对象。后续若桌面端需要统一 UI，应单独建立任务，不得顺手扩大本轮范围。
-
-### 2.3 后端修改原则
-
-默认复用现有后端。
-
-只有在 V2 前端通过真实业务需求发现以下问题时才允许补后端：
-
-- 缺失必要查询接口；
-- 接口无法满足合理的分页、过滤、聚合；
-- 数据模型与真实业务要求冲突；
-- BeeCount 财务模块兼容需要；
-- 安全、鉴权或同步协议存在明确缺口。
-
-禁止为了方便前端重写而无理由重构后端。
-
----
-
-## 3. Git 与隔离策略
-
-### 3.1 分支
-
-V2 必须在独立分支开发，例如：
-
-```text
-feature/frontend-v2-clean-rewrite
-```
-
-禁止直接在 `main` 上执行删除或重写。
-
-### 3.2 基线
-
-开始删除前必须确保：
-
-- `main` 已同步最新状态；
-- 当前 Legacy Web 可从 `main` 或基线 tag 恢复；
-- 如在本地执行，推荐建立 tag：
-
-```bash
-git checkout main
-git pull
-git tag frontend-v1-before-clean-rewrite
-git checkout -b feature/frontend-v2-clean-rewrite
-```
-
-如果已经通过远端分支开展任务，则 `main` 本身就是最低限度的恢复基线。
-
-### 3.3 删除必须形成独立提交
-
-建议第一阶段提交：
-
-```text
-chore(web): remove legacy frontend for v2 clean rewrite
-```
-
-删除旧前端和创建新 V2 不应混在同一个巨大提交中。
-
----
-
-## 4. Clean-room 强制规则
-
-这是 V2 最重要的约束。
-
-### 4.1 禁止读取旧 Web 实现
-
-在开始 V2 后，Agent **不得**通过以下方式恢复或学习旧 Web：
-
-```text
-git show <old-ref>:apps/web/...
-git checkout <old-ref> -- apps/web
-git restore --source=<old-ref> apps/web
-git diff <old-ref> -- apps/web
-git log -p -- apps/web
-git blame apps/web/...
-```
-
-也不得：
-
-- 从旧 PR、旧 commit patch 复制 `apps/web`；
-- 从缓存、构建产物或历史压缩包恢复旧 Web；
-- 将旧组件改名后继续使用；
-- 将旧 CSS / Tailwind class 体系搬入新工程；
-- 以“兼容旧页面”为理由保留旧布局；
-- 把旧 UI 当视觉参考。
-
-### 4.2 允许读取的事实来源
-
-Agent 可以并且应该读取：
-
-```text
-services/
-contracts/
-crates/
-docs/
-README.md
-LifeTrace_Future_Requirements.md
-后端路由 / Controller / Service
-API schema
-数据库模型
-测试用例中的业务约束
-明确的产品需求
-BeeCount Web 源码（仅财务模块）
-```
-
-### 4.3 功能与 UI 必须解耦
-
-旧 Web 中即使存在正确业务功能，也不能因为旧实现存在就复制 UI。
-
-正确流程是：
-
-```text
-后端 / 文档 / 契约
-        ↓
-业务能力清单
-        ↓
-用户任务与信息架构
-        ↓
-页面模型
-        ↓
-Design System
-        ↓
-全新实现
-```
-
-而不是：
-
-```text
-旧页面
- ↓
-换 CSS
- ↓
-V2
-```
-
-### 4.4 Agent 规则文件
-
-实际执行重写时，应在分支根目录建立或更新 `AGENTS.md`，至少加入：
-
-```text
-Frontend V2 is a clean-room rewrite.
-Do not inspect, restore, copy, or derive implementation from historical apps/web code.
-Do not use git history as a frontend implementation reference.
-Derive behavior from backend APIs, contracts, docs, tests, and explicit requirements.
-The legacy Web UI must be treated as nonexistent.
-```
-
-该约束在 V2 完成前持续有效。
-
----
-
-## 5. 设计目标
-
-### 5.1 产品气质
-
-V2 应接近成熟的 Productivity Software：
-
-```text
-Linear
-Raycast
-Notion / Notion Calendar
-Vercel Dashboard
-Apple 系统级生产力应用的信息克制程度
-```
-
-这些名称用于描述产品气质，不替代后续指定的模板参考体系。
-
-必须体现：
-
-- 低饱和视觉；
-- 清晰 typography hierarchy；
-- 高信息密度但不拥挤；
-- 有边界但不过度卡片化；
-- 大量功能通过列表、分区、工具栏、详情面板表达；
-- 强调“当前行动”和“信息浏览效率”；
-- 动效服务于状态反馈，而不是装饰；
-- Desktop / Tablet / Mobile 均为正式形态。
-
-### 5.2 明确禁止的视觉模式
-
-除非某一业务场景有充分理由，不允许：
-
-```text
-巨大 Hero
-营销型 Dashboard
-紫色 / 彩色大渐变背景
-Glassmorphism 全站化
-每个区块都套 Card
-四到八个 KPI Card 平铺成墙
-重阴影
-无意义的大圆角容器嵌套
-Emoji 作为主要 UI 图标
-“Welcome back 👋”式模板首页
-发光边框 / 粒子背景大面积使用
-为了炫技加入复杂动画
-```
-
-V2 必须看起来像长期使用的软件，而不是 SaaS Landing Page 或 AI UI demo。
-
----
-
-## 6. 指定前端模板参考体系
-
-V2 继续使用最初确定的优秀前端模板 / UI 体系作为实现参考：
+本次重构的视觉与页面设计，必须以最初筛选的以下前端模板 / UI 体系为参考库：
 
 1. **shadcn/ui**
 2. **Tremor**
@@ -289,104 +34,140 @@ V2 继续使用最初确定的优秀前端模板 / UI 体系作为实现参考�
 7. **Shadcnblocks**
 8. **TailAdmin**
 
-这些项目是 **布局、交互、组件组合、信息层级和数据呈现的参考源**，并不代表必须全部安装。
+这些参考不是要求把 8 套库全部安装进项目，而是作为 **页面结构、交互模式、信息层级、组件设计与动效设计的参考样本**。
 
-### 6.1 参考职责
+禁止只写一句“Linear / Vercel 风格”然后凭感觉实现。每个核心页面在编码前都必须能指出主要参考了哪一套模板的哪类页面模式。
 
-| 参考源 | V2 主要用途 |
-|---|---|
-| shadcn/ui | Primitive、Form、Dialog、Sheet、Command、Table、基础交互规范 |
-| Catalyst | App Shell、Sidebar、Settings、List、Detail、成熟应用布局 |
-| Shadcnblocks | Dashboard、Todo、Calendar、Settings 等页面级组合 |
-| Tremor | Analytics、Trend、KPI、图表与数据表达 |
-| Preline UI | 响应式页面、Account、Form、Dashboard Pattern |
-| TailAdmin | 高密度表格和复杂信息页面备用参考 |
-| Magic UI | 少量完成反馈、数字变化、微交互 |
-| Aceternity UI | AI 区域或少数重点入口的局部视觉增强 |
+## 2.1 各参考源的职责
 
-### 6.2 决策优先级
+| 参考源 | 主要参考内容 | 在 LifeTrace 中的角色 |
+|---|---|---|
+| shadcn/ui | Button、Dialog、Sheet、Tabs、Command、Table、Form、Card、Token | **基础组件规范，最高优先级** |
+| Catalyst | Sidebar、Application Shell、Settings、List、Table、Detail Layout | **全局布局与成熟应用感** |
+| Shadcnblocks | Dashboard、Settings、Todo、Kanban、Calendar、完整页面组合 | **页面级结构模板，避免从空白画页面** |
+| Tremor | KPI、Trend、Area/Bar/Donut、Analytics Dashboard | **数据可视化和分析页面** |
+| Preline UI | Dashboard、Profile、Account、Settings、Form、响应式页面 | **完整页面和响应式参考** |
+| Magic UI | Number Ticker、轻量进入动画、完成反馈 | **局部微交互** |
+| Aceternity UI | 高级 Hover、AI 区域、强调卡片、特殊背景 | **AI / 特殊入口局部增强** |
+| TailAdmin | 高密度 Dashboard、Data Table、管理型信息组织 | **复杂表格/高密度页面的备用参考** |
+
+## 2.2 参考优先级
+
+发生设计冲突时按以下优先级决策：
 
 ```text
 业务可用性
-> 信息架构
-> Design System 一致性
-> shadcn/ui 基础交互
-> Catalyst Application Layout
-> Shadcnblocks / Preline 页面组合
-> Tremor 数据表达
-> TailAdmin 高密度信息组织
-> Magic UI / Aceternity 装饰
+  > shadcn/ui 组件一致性
+  > Catalyst 应用布局
+  > Shadcnblocks / Preline 页面结构
+  > Tremor 数据表达
+  > TailAdmin 高密度信息组织
+  > Magic UI / Aceternity 装饰与动效
 ```
 
-### 6.3 页面参考映射
+Magic UI / Aceternity 永远不能为了视觉效果破坏可读性、性能或交互一致性。
 
-每个核心页面编码前，Agent 应记录类似：
+## 2.3 页面必须建立“参考映射”
+
+实现每个核心页面前，在任务记录或 PR 描述中写清：
 
 ```text
 Page: /app/today
-Primary page pattern: Shadcnblocks
-Application shell: Catalyst
-Primitive interaction: shadcn/ui
-Analytics: Tremor
-Motion: none unless required
+Primary reference: Shadcnblocks Dashboard
+Layout reference: Catalyst Application Shell
+Data reference: Tremor
+Interaction reference: shadcn/ui
+Special motion: Magic UI Number Ticker（如需要）
 ```
 
-目的不是像素复制，而是防止不同页面由 Agent 自由发挥后形成多套设计语言。
+这不是要求逐像素复制，而是防止 Agent 自由发挥导致全站页面风格漂移。
 
 ---
 
-## 7. V2 信息架构
+# 3. 页面与模板参考映射
 
-Agent 在编码之前必须首先根据业务能力完成功能 inventory，再验证下列 IA 是否覆盖实际能力。
+## 3.1 App Shell
 
-建议顶层导航：
+主要参考：
 
 ```text
-Today
-Plan
-Calendar
-Habits
-Fitness / Health
-Finance
-Reading / English
-Notes
-Review
-Search
-Settings
+Catalyst
++ shadcn/ui Sidebar / Command
++ Preline Dashboard Shell
 ```
 
-若实际后端能力与此不符，应根据真实业务调整，而不是为了保留旧路由强行兼容。
+目标：
 
-### 7.1 Today
+- 220–248px Desktop Sidebar；
+- 支持 collapsed；
+- 顶部 Header 克制，不做大 Hero；
+- `Ctrl/Cmd + K` 打开全局 Command Palette；
+- Desktop 使用 Sidebar，Mobile 使用 Bottom Navigation + More Sheet；
+- 页面标题、Breadcrumb、Page Action 形成稳定模板。
 
-Today 是行动中心，而不是 KPI 展示墙。
+不要沿用旧 `.hx-shell`。
 
-只回答：
+## 3.2 今日 / Dashboard
 
-1. 今天最重要的事情是什么；
-2. 今天计划完成什么；
-3. 已经完成什么；
-4. 下一步应该做什么；
-5. 是否存在值得关注的趋势或异常。
-
-推荐组成：
+主要参考：
 
 ```text
-Date + primary actions
+Shadcnblocks Dashboard
++ Tremor Analytics
++ Catalyst Dashboard composition
+```
+
+局部可参考：
+
+```text
+Magic UI Number Ticker
+Aceternity 的轻量重点卡片
+```
+
+首页只回答五个问题：
+
+1. 今天最重要的是什么；
+2. 已完成多少；
+3. 下一步做什么；
+4. 最近趋势是否异常；
+5. 是否需要进入某个业务模块。
+
+推荐结构：
+
+```text
+Greeting / Date / Quick Add
+
 Today Focus
-Tasks / Habits
-Schedule
-Recent / Important Signals
-Quick Capture
+┌──────────────────────────────────────────────┐
+│ 今日主要目标 / 完成度 / 下一步              │
+└──────────────────────────────────────────────┘
+
+Today Actions                 Schedule
+┌─────────────────────────┐   ┌──────────────────┐
+│ Tasks + Habits          │   │ Time blocks      │
+└─────────────────────────┘   └──────────────────┘
+
+Key Trends
+┌──────────────────────────────────────────────┐
+│ Habit / Workout / Learning / Finance         │
+└──────────────────────────────────────────────┘
+
+Recent Activity                  Quick Actions
 ```
 
-首屏最多保留少量真正必要的数字。
+首屏最多 4 个等权 KPI，不允许变成 KPI 墙。
 
-### 7.2 Plan / Tasks
+## 3.3 计划与待办
 
-参考：Shadcnblocks Todo + Catalyst List/Detail。
+主要参考：
 
-建议：
+```text
+Shadcnblocks Todo / Project Management
++ Catalyst Lists / Detail Panels
++ Preline Task UI
+```
+
+结构：
 
 ```text
 Inbox
@@ -396,97 +177,98 @@ Projects
 Completed
 ```
 
-Desktop 优先 List + Detail Panel / Drawer，Mobile 使用 List → Detail。
+Desktop 推荐 List + Detail Drawer；Mobile 使用 List → Fullscreen Detail。
 
-### 7.3 Calendar
+## 3.4 日历
 
-至少考虑：
-
-```text
-Month
-Week
-Day
-Agenda
-```
-
-Mobile 优先 Day / Agenda，不允许简单压缩 Desktop Month View。
-
-### 7.4 Habits
-
-核心是：
+主要参考：
 
 ```text
-Today check-in
-Streak
-7 / 30 day trend
-Heatmap
-Completion rate
+Shadcnblocks Calendar
++ Catalyst toolbar/filter patterns
++ Preline responsive layout
 ```
 
-趋势是辅助，不应让图表淹没当天打卡任务。
+至少支持 Month / Week / Day / Agenda。Mobile 默认 Agenda / Day，不把桌面 Month 强行压缩。
 
-### 7.5 Fitness / Health
+## 3.5 坚持 / Habits
 
-核心结构：
+主要参考：
+
+```text
+Tremor KPI / Trend
++ Shadcnblocks Dashboard Card
+```
+
+核心：今日打卡、streak、7/30 天趋势、Heatmap、完成率。
+
+## 3.6 Fitness / Health
+
+主要参考：
+
+```text
+Tremor Analytics
++ Shadcnblocks Dashboard
++ Apple Health 的信息组织方式
+```
+
+Apple Health 仅作为健康信息层级参考，不作为本项目最初模板列表的替代。
+
+推荐：
 
 ```text
 This Week
+Training Volume Trend
 Recent Workouts
-Training Volume
-Exercise / Muscle Distribution
-Body / Health Metrics
-Trend
+Muscle / Exercise Distribution
+Body Metrics
 ```
 
-采用数据密集但克制的分析布局。
+## 3.7 笔记
 
-### 7.6 Finance
-
-财务属于特殊模块，详见第 10 节。
-
-### 7.7 Reading / English
-
-阅读器必须内容优先。
-
-进入阅读状态后主动弱化 App Shell，保证：
-
-- 正文阅读；
-- 高亮；
-- 快捷笔记；
-- 已读状态；
-- 阅读完成反馈；
-- 历史笔记可重新打开；
-- 学习历史和必要统计。
-
-### 7.8 Notes
-
-Desktop 优先：
+主要参考：
 
 ```text
-Notes List | Editor
+Catalyst three/two-pane application layout
++ shadcn/ui command/dialog/editor controls
++ Preline content workspace
 ```
 
-需要组织层时可以扩展：
+Desktop：`Notes List | Editor`；需要文件夹时扩展为 `Folders | Notes | Editor`。
+
+## 3.8 英语学习
+
+主要参考：
 
 ```text
-Folders | Notes | Editor
+Catalyst content layout
++ shadcn/ui controls
++ Shadcnblocks dashboard for learning history
 ```
 
-不要把笔记做成卡片瀑布流作为唯一形态。
+阅读器必须以内容为中心，进入阅读模式后弱化 App Shell。保留高亮、快捷笔记、已读状态、学习历史等功能。
 
-### 7.9 Review
+## 3.9 复盘
 
-支持日 / 周 / 月级回顾时，应突出：
+主要参考：
 
-- 已完成事项；
-- 关键趋势；
-- 异常；
-- 主观总结；
-- 下一周期行动。
+```text
+Shadcnblocks Dashboard
++ Tremor 7/30-day summaries
++ Catalyst form/content layout
+```
 
-### 7.10 Settings
+## 3.10 Settings
 
-建议：
+主要参考：
+
+```text
+Catalyst Settings
++ shadcn/ui Form / Tabs / Switch / AlertDialog
++ Preline Account Settings
+```
+
+设置结构：
 
 ```text
 Profile
@@ -500,173 +282,129 @@ About
 Danger Zone
 ```
 
-### 7.11 Auth
+## 3.11 Auth
 
-只做成熟应用登录界面，不制作营销 Landing Page。
+主要参考：
 
-### 7.12 AI
+```text
+Preline Login / Account
++ shadcn/ui Form
++ Catalyst typography
+```
 
-AI 助手优先采用 Command / Dialog / Side Panel / Inline Assistant，而不是单独制造一套发光视觉体系。
+不要制作营销型登录页。
+
+## 3.12 AI 助手
+
+主要参考：
+
+```text
+shadcn/ui Command / Dialog
++ Aceternity UI
++ Magic UI
+```
+
+Aceternity / Magic UI 只用于 AI 输入、状态变化和少量强调，不把整个产品改造成发光 SaaS 官网。
 
 ---
 
-## 8. Design System 必须先于业务页面
+# 4. 已确认的架构决策
 
-任何业务页面大规模开发前，必须先建立 V2 Design System。
+## 4.1 Web 前端完全推倒重构
 
-### 8.1 Design Tokens
+允许：
 
-至少定义：
+- 重写 App Shell；
+- 重写路由；
+- 重写页面组件；
+- 重写 Design System；
+- 重写响应式布局；
+- 重写 Dashboard；
+- 重组目录；
+- 将 Web 从 `apps/desktop/web-client` 迁出为独立 `apps/web`；
+- 完成切换后删除旧 Web UI。
 
-```text
-Color
-Typography
-Spacing
-Radius
-Border
-Shadow
-Motion
-Breakpoint
-Z-index
-Chart palette
-Semantic status
-```
-
-颜色必须语义化，而不是页面内随意写颜色值。
-
-推荐语义：
+旧 Web 仅用于：
 
 ```text
-background
-foreground
-surface
-surface-subtle
-muted
-muted-foreground
-primary
-primary-foreground
-secondary
-accent
-destructive
-success
-warning
-info
-border
-input
-ring
-income
-expense
-chart-1 ... chart-n
+功能清单
+API 调用参考
+业务行为回归
+数据契约参考
 ```
 
-### 8.2 视觉约束
+不允许为了兼容旧 CSS 继续扩大历史包袱。
 
-- 主体 neutral；
-- LifeTrace 品牌色只用于主操作、选择态和必要强调；
-- 默认优先 border / spacing 区分区域，而不是阴影；
-- Card 只在“这确实是独立对象”时使用；
-- 圆角层级必须固定，禁止组件各自决定；
-- 字号、字重、行高必须形成固定层级；
-- 图表颜色必须统一；
-- Light / Dark 如实现，必须共享语义 token。
+## 4.2 后端不是本轮推倒对象
 
-### 8.3 Primitive 组件
+默认继续复用：
 
-至少建立：
+- LifeTrace Cloud；
+- 现有同步协议；
+- 现有实体模型；
+- 认证与会话；
+- BeeCount 兼容接口；
+- 现有业务数据。
 
-```text
-Button
-IconButton
-Input
-Textarea
-Select
-Checkbox
-Radio
-Switch
-Badge
-Tabs
-Table / DataTable
-Dialog / AlertDialog
-Sheet / Drawer
-DropdownMenu
-Popover
-Tooltip
-Command
-Toast
-Skeleton
-Separator
-ScrollArea
-Progress
-EmptyState
-ErrorState
-PageHeader
-SectionHeader
-```
-
-### 8.4 禁止页面私有设计系统
-
-业务 feature 可以组合组件，但不得重复实现：
-
-```text
-自己的 Button
-自己的 Modal
-自己的 Toast
-自己的 Badge
-自己的颜色 Token
-自己的 Typography 体系
-```
-
-所有模块必须共享一个 V2 设计语言。
+UI 暴露真实接口缺口时可以补 API，但不无理由重做后端。
 
 ---
 
-## 9. V2 前端架构
+# 5. 新 Web 目标架构
 
-重新初始化后的建议目录：
+推荐：
 
 ```text
-apps/web/
-├── package.json
-├── index.html
-├── vite.config.ts
-├── tsconfig.json
-├── public/
-├── e2e/
-└── src/
-    ├── app/
-    │   ├── router/
-    │   ├── providers/
-    │   └── bootstrap/
-    ├── layouts/
-    ├── components/
-    │   ├── ui/
-    │   ├── navigation/
-    │   ├── data-display/
-    │   └── feedback/
-    ├── features/
-    │   ├── today/
-    │   ├── planning/
-    │   ├── calendar/
-    │   ├── habits/
-    │   ├── fitness/
-    │   ├── health/
-    │   ├── finance/
-    │   ├── reading/
-    │   ├── notes/
-    │   ├── review/
-    │   ├── search/
-    │   └── settings/
-    ├── services/
-    ├── hooks/
-    ├── stores/
-    ├── lib/
-    ├── types/
-    └── styles/
+apps/
+├── desktop/
+├── web/
+│   ├── package.json
+│   ├── vite.config.ts
+│   ├── index.html
+│   └── src/
+│       ├── app/
+│       ├── layouts/
+│       ├── components/
+│       │   ├── ui/
+│       │   ├── data-display/
+│       │   ├── feedback/
+│       │   └── navigation/
+│       ├── features/
+│       │   ├── dashboard/
+│       │   ├── execution/
+│       │   ├── habits/
+│       │   ├── fitness/
+│       │   ├── health/
+│       │   ├── finance/
+│       │   │   ├── beecount/
+│       │   │   └── adapters/
+│       │   ├── notes/
+│       │   ├── english/
+│       │   ├── review/
+│       │   ├── search/
+│       │   └── settings/
+│       ├── services/
+│       ├── hooks/
+│       ├── stores/
+│       ├── lib/
+│       └── styles/
+└── photo-challenge-pwa/
 ```
 
-### 9.1 推荐技术栈
+重构期间允许双轨：
 
-优先：
+```text
+apps/desktop/web-client/   # legacy，只做回归
+apps/web/                  # new，唯一新开发目标
+```
+
+完成门禁后切换构建并删除 legacy。
+
+---
+
+# 6. 技术栈
+
+新 Web：
 
 ```text
 React 19
@@ -674,430 +412,618 @@ TypeScript
 Vite
 React Router
 Tailwind CSS
-shadcn/ui pattern
+shadcn/ui 模式组件
 Lucide React
-Recharts / 与 BeeCount 兼容的图表方案
-Zustand（仅必要客户端状态）
-Vitest
-Testing Library
-Playwright
+Recharts
+Zustand（只用于必要客户端状态）
+Vitest / 现有测试体系
 ```
 
-具体依赖版本应以执行时稳定版本、仓库约束和 BeeCount 复用兼容性为准，不为追求最新版而引入额外迁移风险。
+BeeCount Cloud Web 当前使用 React + Vite + Tailwind + shadcn schema + Recharts，因此新 LifeTrace Web 的技术选择应优先保证财务源码复用成本低。
 
-### 9.2 状态边界
+Tailwind 大版本升级不要与本次重构同时进行。先采用与导入 BeeCount Web 兼容的配置，完成切换后再单独升级。
 
-- Server state 不应无意义搬进全局 Zustand；
-- Feature local state 优先本地；
-- 全局 store 只保存真正跨页面共享的客户端状态；
-- API client 必须集中管理 auth、error、base URL 和序列化策略；
-- 页面不得自行散落实现 fetch 规则。
+路由统一使用 React Router，页面 lazy load。
 
-### 9.3 App Shell
-
-Desktop：
+建议路由：
 
 ```text
-Sidebar + Main Workspace
+/
+/login
+/app/today
+/app/execution
+/app/calendar
+/app/habits
+/app/fitness
+/app/health
+/app/finance/*
+/app/notes
+/app/english/*
+/app/review
+/app/search
+/app/settings/*
 ```
-
-应支持：
-
-- 清晰主导航；
-- 合理 collapsed 模式；
-- Page Header；
-- Command Palette (`Ctrl/Cmd + K`)；
-- Search；
-- 快速创建 / Capture；
-- 状态反馈。
-
-Mobile：
-
-```text
-Bottom Navigation + More Sheet / Contextual Header
-```
-
-Mobile 不是把 Sidebar 隐藏后结束。
 
 ---
 
-## 10. Finance：BeeCount Web 源码复用例外
+# 7. Design System
 
-财务模块不是 clean-room UI 规则的普通对象。
+## 7.1 基础组件来源
 
-已确定策略：
+新 UI Primitive 主要采用 shadcn/ui 的组织方式，而不是继续用 `.hx-*` / `.lt-*` 作为核心抽象。
 
-> **财务业务交互优先复用 BeeCount Web 的成熟实现，不重新从零仿写。**
+至少包含：
 
-允许 Agent 阅读 BeeCount Web 源码，并将其作为财务功能事实和交互实现来源。
+```text
+Button
+Input / Textarea
+Select
+Checkbox / Switch
+Badge
+Card
+Tabs
+Table
+Dialog / AlertDialog
+Sheet / Drawer
+DropdownMenu
+Popover
+Tooltip
+Command
+Skeleton
+Separator
+ScrollArea
+Progress
+Toast
+```
 
-但复用后必须完成 LifeTrace V2 适配：
+## 7.2 Token
 
-- 接入 LifeTrace 路由；
-- 接入 LifeTrace 鉴权 / API adapter；
-- 接入统一 Design Tokens；
-- 统一 Typography；
-- 统一导航与 Page Shell；
-- 统一 Dialog / Toast / Sheet 等公共 Primitive；
-- 保持 BeeCount 的成熟财务交互，不无理由重新设计核心记账流程。
+使用一套语义 Token：
 
-推荐结构：
+```text
+background
+foreground
+card
+card-foreground
+popover
+popover-foreground
+primary
+primary-foreground
+secondary
+secondary-foreground
+muted
+muted-foreground
+accent
+accent-foreground
+destructive
+border
+input
+ring
+success
+warning
+info
+income
+expense
+chart-1 ... chart-n
+```
+
+非财务区域保留低饱和绿色作为 LifeTrace 品牌色，页面主体以 neutral 为主。
+
+## 7.3 视觉约束
+
+建议：
+
+```text
+Page title      24–28 / 600
+Section title   18–20 / 600
+Card title      14–16 / 600
+Body            14 / 400
+Secondary       12–13 / 400
+Metric          24–32 / 600
+```
+
+圆角以 6 / 8 / 10 / 12 为主；普通信息卡主要依赖 border + surface 建立层级。
+
+禁止：
+
+- 大面积高饱和渐变；
+- 每张 Card 都有大阴影；
+- 20px+ 圆角滥用；
+- 无意义 Glassmorphism；
+- 每个模块自己发明组件规范；
+- Emoji 替代正式图标；
+- 所有内容都套 Card；
+- 把 TailAdmin 的企业 Admin 感原样带入 Personal OS。
+
+---
+
+# 8. 财务模块：BeeCount Web 源码级复用
+
+## 8.1 正确上游
+
+财务 Web 源码来自：
+
+```text
+TNT-Likely/BeeCount-Cloud
+frontend/apps/web/
+frontend/packages/ui/
+frontend/packages/web-features/
+frontend/packages/api-client/
+```
+
+不是 `BeeCount-Website`。
+
+## 8.2 复用优先级
+
+```text
+直接复用源码
+  > Adapter 适配
+  > 小范围视觉对齐
+  > 重新实现
+```
+
+禁止看 BeeCount 截图后重新写一份“差不多”的财务页。
+
+必须优先复用：
+
+```text
+OverviewPage
+TransactionsPage
+CalendarPage
+LedgersPage
+BudgetsPage
+AccountsPage
+CategoriesPage
+TagsPage
+ImportPage
+```
+
+后端能力满足时继续复用：
+
+- Shared Ledger dialogs；
+- Transaction edit dialogs；
+- Entity dialogs；
+- Category icon；
+- Attachment cache；
+- Page Data Cache；
+- SyncSocket；
+- AI Parse Transaction；
+- 财务颜色偏好。
+
+## 8.3 BeeCount 与最初模板体系的关系
+
+BeeCount **决定财务模块的功能、领域交互和源码基线**；最初选定的前端模板体系仍决定 LifeTrace 的整体产品视觉方向。
+
+因此：
+
+```text
+LifeTrace AppShell                 → Catalyst / shadcn / Preline
+LifeTrace Dashboard               → Shadcnblocks / Tremor
+LifeTrace Settings                → Catalyst / Preline / shadcn
+Finance feature logic & pages     → BeeCount Web 源码
+Finance outer integration         → LifeTrace AppShell
+Finance global UI consistency     → LifeTrace Token + shadcn 基础规范
+```
+
+不能为了统一外观大幅改写 BeeCount 财务内部逻辑，也不能让 BeeCount 的全局 Shell 覆盖整个 LifeTrace。
+
+## 8.4 集成结构
+
+```text
+LifeTrace AppShell
+└── FinanceWorkspace
+    ├── BeeCount Overview
+    ├── BeeCount Transactions
+    ├── BeeCount Calendar
+    ├── BeeCount Ledgers
+    ├── BeeCount Budgets
+    ├── BeeCount Accounts
+    ├── BeeCount Categories
+    ├── BeeCount Tags
+    └── BeeCount Import
+```
+
+不直接复制：
+
+```text
+BeeCount LoginPage
+BeeCount 全局 AppShell
+BeeCount 全局 AppHeader
+BeeCount Admin Users / Backup / Cleanup
+```
+
+## 8.5 Finance Adapter
 
 ```text
 features/finance/
 ├── beecount/
 ├── adapters/
-├── routes/
-└── integration/
+│   ├── auth-adapter.ts
+│   ├── ledger-adapter.ts
+│   ├── transaction-adapter.ts
+│   ├── account-adapter.ts
+│   ├── category-adapter.ts
+│   ├── tag-adapter.ts
+│   ├── budget-adapter.ts
+│   ├── import-adapter.ts
+│   └── sync-adapter.ts
+└── index.ts
 ```
 
-原则：
+BeeCount UI 尽量按原领域模型工作，Adapter 连接 LifeTrace 已实现的 BeeCount-compatible backend。
+
+## 8.6 上游追踪和许可
+
+新增：
 
 ```text
-BeeCount domain interaction
-        +
-LifeTrace V2 visual system
-        +
-LifeTrace backend compatibility
+apps/web/src/features/finance/beecount/UPSTREAM.md
 ```
 
-而不是把 BeeCount 页面以完全不同风格直接塞进 LifeTrace。
+记录：
 
-所有第三方 / 开源许可、作者信息和 notice 必须保留。
+```text
+Upstream repository
+Upstream commit SHA
+Imported paths
+Local modifications
+Intentionally omitted files
+Sync procedure
+License notice
+```
+
+必须保留 BeeCount Cloud 作者、版权和许可信息；第三方声明中登记 BeeCount Cloud。未来商业化前必须重新审查其商业许可要求。
 
 ---
 
-## 11. Codex / Agent 执行顺序
+# 9. 数据可视化
 
-禁止“一次提示词直接生成全站然后收尾”。
+全站使用 Recharts 作为底层，数据视觉主要参考 Tremor。
 
-Codex 可以连续自主执行，但必须遵守阶段门禁。
-
-### Phase 0：基线与隔离
-
-- 确认分支不是 `main`；
-- 确认 `main` 可恢复；
-- 建立 clean-room Agent 规则；
-- 记录当前后端 / contracts / docs 可用来源。
-
-### Phase 1：删除 Legacy Web
-
-- 删除当前 `apps/web` 实现；
-- 不恢复旧源码；
-- 形成独立提交。
-
-门禁：仓库其他应用和后端未被误删。
-
-### Phase 2：产品能力 Inventory
-
-Agent 必须从允许来源梳理：
+统一封装：
 
 ```text
+ChartCard
+ChartTooltip
+ChartLegend
+TimeRangeSelector
+TrendIndicator
+MetricCard
+```
+
+规则：
+
+- 不为不同 feature 引入不同图表库；
+- 财务保留 BeeCount Recharts 实现；
+- 非财务趋势也复用统一 primitive；
+- Dark mode 保证可读；
+- 空数据必须有 Empty State；
+- 手机端减少 legend 和轴信息密度。
+
+---
+
+# 10. 响应式
+
+统一断点：
+
+```text
+< 640px       Mobile
+640–1023px    Tablet
+>= 1024px     Desktop
+>= 1440px     Wide
+```
+
+Mobile：
+
+- 不显示桌面 Sidebar；
+- Bottom Nav + More Sheet；
+- Table 转 List/Card；
+- Dialog 优先 Sheet / Fullscreen；
+- 主要点击区域 >= 44px。
+
+Tablet：Sidebar 可 collapsed，Detail 使用 Drawer。
+
+Desktop：稳定 Sidebar，允许双/三栏工作区和高密度 Table。
+
+---
+
+# 11. 全局搜索 / Command Palette
+
+主要参考 shadcn `Command`、Catalyst Search 和现代 command palette。
+
+入口：Header Search + `Ctrl/Cmd + K`。
+
+搜索范围：任务、项目、坚持、训练、财务交易、账本、笔记、英语、复盘和设置。
+
+支持命令：
+
+```text
+新建任务
+记录支出
+开始训练
+新建笔记
+打开今日
+打开财务
+```
+
+---
+
+# 12. 主题与动效
+
+主题：`system / light / dark`。
+
+所有颜色必须来自 Token；BeeCount finance dark mode 和收入/支出颜色规则保留。
+
+动效主要参考 Magic UI / Aceternity，但只允许：
+
+- route fade / slide；
+- number ticker；
+- progress；
+- dialog / drawer；
+- command palette；
+- 成就完成反馈；
+- AI 状态反馈。
+
+禁止常驻发光、粒子背景、无限浮动和每张卡片都 stagger animation。
+
+必须支持 `prefers-reduced-motion`。
+
+---
+
+# 13. 实施阶段
+
+## Phase 0：功能与设计参考盘点
+
+先建立旧 Web 功能矩阵，同时建立页面设计参考矩阵。
+
+每页记录：
+
+```text
+Route
 Feature
-User goal
-Backend endpoint
-Data model
-Required states
-Create / Read / Update / Delete capability
-Cross-module dependency
-Auth requirement
-Responsive requirement
+Read / Write API
+Permission
+Desktop / Mobile behavior
+Edge states
+Replacement page
+Primary template reference
+Secondary template reference
+Data visualization reference
 ```
 
-产出 V2 功能清单，并与本文 IA 对账。
+没有完成这一步，不开始大规模编码。
 
-门禁：不能依赖旧 `apps/web` 获取功能清单。
+## Phase 1：建立 `apps/web`
 
-### Phase 3：信息架构与 UX Skeleton
+完成 Vite、React Router、Tailwind、shadcn-compatible UI、Token、Lint/Test/Build、Error Boundary、API Base。
 
-先定义：
+同时建立可运行的 Story / Showcase 页面，集中展示 Button、Card、Form、Table、Dialog、Sheet、Navigation、Metric 和 Chart，先确认视觉基线。
 
-- 顶层导航；
-- 路由；
-- 页面职责；
-- Desktop / Tablet / Mobile 行为；
-- List / Detail / Modal / Drawer 关系；
-- Loading / Empty / Error / Permission State。
+## Phase 2：App Shell + Auth
 
-禁止此时大量写视觉样式。
+按 Catalyst + shadcn + Preline 参考重写 App Shell、Login、Sidebar、Header、Mobile Navigation、Theme、Privacy、Loading/Error/Offline。
 
-### Phase 4：Design System
+## Phase 3：BeeCount 财务源码导入
 
-完成：
+1. 固定 BeeCount Cloud upstream commit；
+2. 复制实际需要的 UI / web-features / pages / contexts；
+3. 建立 Finance Adapter；
+4. 替换为 LifeTrace Session；
+5. 放入 `FinanceWorkspace`；
+6. 完成 Overview / Transactions / Accounts / Categories / Tags / Budgets / Ledgers / Calendar / Import；
+7. 跑 CRUD / filter / chart / sync / import 测试；
+8. 创建 `UPSTREAM.md` 并更新第三方声明。
 
-- Token；
-- Typography；
-- Primitive；
-- App Shell；
-- Navigation；
-- Page layout primitives；
-- Feedback primitives。
+## Phase 4：Dashboard
 
-门禁：至少使用 Story / test page / real shell 验证组件一致性后再铺业务页。
+按 Shadcnblocks + Tremor + Catalyst 参考完全重做。
 
-### Phase 5：核心工作区
+## Phase 5：计划系统
 
-优先实现：
+按 Shadcnblocks Todo / Calendar + Catalyst detail layout 重做 Execution、Calendar、Goals、Habits。
 
-1. Auth；
-2. App Shell；
-3. Today；
-4. Plan / Tasks；
-5. Calendar；
-6. Search / Command。
+## Phase 6：健康与知识
 
-这些页面先确定整个产品的交互密度和布局基准。
+Fitness / Health 重点参考 Tremor；Notes / English 重点参考 Catalyst / Preline；Review 参考 Shadcnblocks + Tremor。
 
-### Phase 6：业务模块
+## Phase 7：Search + Settings + System
 
-建议顺序：
+Settings 按 Catalyst / Preline；Command Palette 按 shadcn；AI 入口可使用少量 Aceternity / Magic UI。
+
+## Phase 8：Mobile / Tablet 专项
+
+至少验证：360、390、430、768、1024 宽度。不能最后只补几个 media query。
+
+## Phase 9：功能与设计双重对账
+
+功能矩阵逐项标记：
 
 ```text
-Habits
-Fitness / Health
-Reading / English
-Notes
-Review
-Settings
+PASS
+INTENTIONALLY_REMOVED
+DESKTOP_ONLY
+BLOCKED_BY_BACKEND
 ```
 
-每完成一个模块立即对齐 Design System，禁止多个 Agent 各自创造 UI。
+同时检查核心页面是否符合对应模板参考和统一 Design System。
 
-### Phase 7：Finance Integration
+## Phase 10：切换
 
-- 导入 / 复用 BeeCount Web；
-- 建 adapter；
-- 对接 LifeTrace；
-- 统一视觉；
-- 跑财务核心回归。
+更新根 `web:*` scripts、Docker/Caddy、CI 和生产构建入口，完成 smoke test。
 
-### Phase 8：Responsive & Polish
+## Phase 11：删除 legacy
 
-逐页验证：
+切换稳定后删除：
 
 ```text
-Desktop
-Tablet
-Mobile
-Keyboard
-Touch
-Long content
-Empty state
-Error state
-Loading
-Large data set
+apps/desktop/web-client/
 ```
 
-### Phase 9：测试与收口
+以及旧 browser CSS、route glue、旧 `BeeCountFinancePage.tsx`、`web-beecount.css` 和无引用 selector。
 
-必须执行并修复：
+---
+
+# 14. 测试门禁
+
+必须通过：
 
 ```text
-lint
 typecheck
 unit tests
-integration tests
-e2e
-production build
+web build
+production preview smoke test
 ```
 
-如果仓库已有额外 CI 门禁，也必须通过。
+核心 route 必测：URL 直达、refresh、back/forward、auth expiry、loading、empty、API error。
+
+响应式至少：
+
+```text
+360 × 800
+390 × 844
+430 × 932
+768 × 1024
+1024 × 768
+1366 × 768
+1440 × 900
+1920 × 1080
+```
+
+主题：Light / Dark / System。
+
+财务专项至少覆盖：
+
+```text
+进入财务
+切换账本
+Overview
+交易查询和多条件筛选
+新增 / 编辑 / 删除交易
+账户
+分类
+标签
+预算
+导入
+Dark mode
+收入/支出颜色方案
+隐私金额
+共享账本（启用时）
+WebSocket 刷新（启用时）
+```
+
+财务行为对照 BeeCount Web，而不是旧 LifeTrace 财务页。
+
+Accessibility 至少包括 keyboard、focus-visible、accessible name、form label、dialog focus trap、reduced motion。
 
 ---
 
-## 12. 测试要求
+# 15. Definition of Done
 
-### 12.1 功能测试
+## Architecture
 
-核心业务必须覆盖真实用户路径，而不是只测组件 render。
+- [ ] Web 已迁移到独立 `apps/web`；
+- [ ] 不依赖 legacy Web 运行；
+- [ ] React Router 路由统一；
+- [ ] Design System 只有一套；
+- [ ] 不再新增 `.hx-*` / `.lt-*` 作为新 UI contract。
 
-最低 E2E 建议：
+## Design
 
-```text
-login
-navigate major modules
-create / edit / complete task
-habit check-in
-open calendar / change view
-record or inspect fitness data where supported
-open reading item / highlight / note / complete reading
-create / edit note
-open review
-finance core workflow
-settings update
-logout
-```
+- [ ] App Shell 明确参考 Catalyst / shadcn / Preline；
+- [ ] Dashboard 明确参考 Shadcnblocks / Tremor；
+- [ ] Settings 明确参考 Catalyst / Preline；
+- [ ] 数据页明确参考 Tremor；
+- [ ] 每个核心页面有模板参考映射；
+- [ ] Magic UI / Aceternity 仅用于局部增强；
+- [ ] Desktop / Tablet / Mobile 完成；
+- [ ] Light / Dark 完成。
 
-具体路径以真实后端能力为准。
+## Finance
 
-### 12.2 UI 状态测试
+- [ ] 使用 BeeCount Cloud Web 源码级复用；
+- [ ] 核心财务页面已迁移；
+- [ ] LifeTrace Session 替代 BeeCount 独立登录；
+- [ ] Finance Adapter 已建立；
+- [ ] CRUD / Filter / Chart / Import 通过；
+- [ ] BeeCount 作者和 License 保留；
+- [ ] `UPSTREAM.md` 和第三方声明完成；
+- [ ] 旧 `BeeCountFinancePage.tsx` 不再是正式入口。
 
-所有核心页面至少处理：
+## Quality
 
-```text
-Loading
-Empty
-Success
-Partial data
-Error
-Unauthorized / expired session
-Long text
-Large list
-```
+- [ ] typecheck / unit / build 通过；
+- [ ] route smoke test 通过；
+- [ ] responsive matrix 通过；
+- [ ] theme matrix 通过；
+- [ ] accessibility 基础门禁通过；
+- [ ] 财务专项测试通过。
 
-### 12.3 响应式门禁
+## Cleanup
 
-至少验证典型：
-
-```text
-Mobile ~ 390px
-Tablet ~ 768-1024px
-Desktop >= 1280px
-```
-
-不允许只保证 Desktop 截图好看。
-
-### 12.4 可访问性
-
-至少确保：
-
-- keyboard focus 可见；
-- 表单 label 正确；
-- Dialog / Sheet focus 管理正确；
-- icon-only action 有 accessible name；
-- 颜色不是唯一状态表达；
-- 基本对比度合理；
-- reduced motion 不影响使用。
+- [ ] 生产已切到新 Web；
+- [ ] legacy Web 删除；
+- [ ] legacy browser CSS 删除；
+- [ ] 无失效 route 和无引用 selector；
+- [ ] 部署和文档已同步更新。
 
 ---
 
-## 13. 代码质量与反模式
+# 16. Agent 执行硬约束
 
-禁止：
-
-```text
-一个超大 App.tsx 承担全部路由
-页面内到处直接 fetch
-复制粘贴 Primitive
-任意 hardcoded color
-CSS specificity 战争
-大量 !important
-为了“好看”引入多套 UI library
-单页引入另一套 design language
-无测试的大范围视觉重写
-为了兼容旧代码保留 legacy wrapper
-```
-
-优先：
-
-```text
-feature-oriented architecture
-明确数据边界
-统一 API client
-组合式组件
-可预测路由
-语义 token
-小而稳定的 primitives
-按用户路径测试
-```
+1. 不要把任务解释成“继续优化旧 Web”。
+2. 在新 `apps/web` 中重建。
+3. **设计前必须先查看本文指定的模板参考，不能凭 Agent 默认审美自由发挥。**
+4. 每个核心页面必须声明 Primary / Secondary Template Reference。
+5. shadcn/ui 是组件规范核心；Catalyst 是 App Shell / Settings 的主要布局参考；Shadcnblocks / Preline 是完整页面参考；Tremor 是数据表达参考。
+6. Magic UI / Aceternity 只做局部增强，禁止全站炫技。
+7. TailAdmin 只在复杂高密度信息页参考，不把 LifeTrace 做成企业 Admin。
+8. 财务必须研究 BeeCount Cloud Web 实际源码后移植，禁止凭截图仿写。
+9. BeeCount 特有逻辑进入 `features/finance/beecount`，LifeTrace 特有对接进入 Adapter。
+10. 每个 feature 必须同时完成 Desktop / Mobile / Dark / Empty / Loading / Error。
+11. 每个 Phase 结束必须构建和测试。
+12. legacy 只能在正式切换和回归全部通过之后删除。
+13. BeeCount 源码复用必须保留作者、许可与来源记录。
 
 ---
 
-## 14. Git 提交建议
-
-建议保持可审计的提交序列：
+# 17. 最终产品结构
 
 ```text
-chore(web): remove legacy frontend for v2 clean rewrite
-chore(web): initialize v2 application architecture
-feat(web): establish v2 design system
-feat(web): implement application shell and navigation
-feat(web): implement today workspace
-feat(web): implement planning and calendar
-feat(web): implement habits
-feat(web): implement fitness and health
-feat(web): implement reading and notes
-feat(web): integrate beecount finance
-feat(web): implement review and settings
-feat(web): complete responsive experience
-test(web): add v2 integration and e2e coverage
-docs(web): finalize v2 architecture and migration notes
+LifeTrace Personal OS
+│
+├── Global Design Language
+│   ├── shadcn/ui component system
+│   ├── Catalyst application layout
+│   ├── Shadcnblocks page composition
+│   ├── Preline complete-page references
+│   ├── Tremor analytics patterns
+│   └── Magic UI / Aceternity micro-interactions
+│
+├── LifeTrace Native Modules
+│   ├── Today
+│   ├── Execution
+│   ├── Calendar
+│   ├── Habits
+│   ├── Fitness / Health
+│   ├── Notes
+│   ├── English
+│   ├── Review
+│   ├── Search
+│   └── Settings
+│
+└── Finance Workspace
+    └── BeeCount Web derived implementation
+        ├── Overview
+        ├── Transactions
+        ├── Calendar
+        ├── Ledgers
+        ├── Budgets
+        ├── Accounts
+        ├── Categories
+        ├── Tags
+        └── Import
 ```
 
-避免最终只有一个无法审查的 `rewrite frontend` 巨型 commit。
+最终目标不是“做一个像 shadcn 的网站”或“把 BeeCount 塞进 LifeTrace”，而是：
 
----
-
-## 15. Definition of Done
-
-只有满足以下全部条件，V2 才算完成：
-
-- [ ] 在独立分支完成开发；
-- [ ] Legacy `apps/web` 已被删除而非继续演化；
-- [ ] 未从 Git 历史恢复旧 Web 实现；
-- [ ] 功能清单由后端、contracts、docs、tests 推导；
-- [ ] 新 Design System 已建立；
-- [ ] 所有业务模块使用同一设计语言；
-- [ ] Finance 已按要求复用 BeeCount 并完成 LifeTrace 适配；
-- [ ] Desktop / Tablet / Mobile 均完成；
-- [ ] Loading / Empty / Error 等状态完整；
-- [ ] 核心业务 API 已真实接入；
-- [ ] lint 通过；
-- [ ] typecheck 通过；
-- [ ] unit / integration tests 通过；
-- [ ] E2E 通过；
-- [ ] production build 通过；
-- [ ] 无已知 Blocker / Critical regression；
-- [ ] 文档同步更新；
-- [ ] 最终 diff 已确认没有误改后端或其他应用；
-- [ ] 满足以上条件后才允许合并 `main`。
-
----
-
-## 16. Codex 主执行指令
-
-后续可以将下面内容作为 Codex 执行该文档时的核心指令：
-
-```text
-Implement docs/ui/web-redesign.md completely.
-
-This is a clean-room rewrite of LifeTrace Web, not a refactor.
-
-Work only on a dedicated feature branch. Never perform destructive frontend rewrite work directly on main.
-
-Treat the existing apps/web implementation and every historical version of apps/web as nonexistent.
-
-Do not inspect, restore, copy, diff against, or derive implementation from historical frontend code using git history, old commits, old PR patches, cached artifacts, or legacy bundles.
-
-You may inspect backend code, contracts, data models, documentation, tests, explicit requirements, and BeeCount Web only for the finance integration described in the specification.
-
-First remove the legacy Web implementation in an isolated commit. Then derive a complete feature inventory from allowed sources before rebuilding the frontend.
-
-Establish information architecture, responsive behavior, design tokens, primitives, application shell, navigation, error/loading/empty patterns, and API boundaries before implementing the full set of business pages.
-
-Use the template/reference hierarchy defined in the specification. The visual result must feel like a mature productivity application, not an admin template or marketing SaaS page.
-
-Do not allow separate modules or subagents to invent independent design systems.
-
-For Finance, reuse BeeCount Web's mature domain interaction and source implementation where appropriate, preserve required attribution/licenses, integrate it with LifeTrace APIs, and adapt it to the LifeTrace V2 design system.
-
-Execute the work phase by phase but continue autonomously until the complete Web frontend is implemented.
-
-After implementation, run lint, typecheck, unit/integration tests, E2E tests, and the production build. Fix all failures caused by the work. Update relevant documentation.
-
-Do not declare completion until the Definition of Done in docs/ui/web-redesign.md is satisfied.
-```
-
----
-
-## 17. 最终验收标准
-
-验收 V2 时，不以“和旧版功能长得一样”为标准。
-
-真正的标准是：
-
-> **在完全不继承旧 Web UI 实现的前提下，重新从 LifeTrace 的真实业务能力构建一套统一、成熟、高效率、可长期维护的 Personal OS Web 前端。**
-
-如果新页面只是旧页面换了一套颜色、圆角和 Tailwind class，则本次 clean-room rewrite 失败。
-
-如果页面漂亮但无法完整承载真实业务、移动端不可用、模块之间风格不一致或测试无法通过，同样视为失败。
+> 使用最开始筛选的优秀前端模板体系建立统一、成熟的 LifeTrace Personal OS；对通用 UI 采用行业成熟模式，对财务领域直接复用 BeeCount 的成熟实现，避免重复造轮子。

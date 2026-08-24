@@ -3,26 +3,32 @@ import path from "node:path";
 import { defineConfig } from "vite";
 
 const projectRoot = path.resolve(import.meta.dirname);
-const repoRoot = path.resolve(projectRoot, "../..");
+const appsRoot = path.resolve(projectRoot, "..");
 
 export default defineConfig({
   root: path.join(projectRoot, "tauri-ui"),
   publicDir: path.join(projectRoot, "public"),
   plugins: [react()],
+  css: {
+    postcss: path.join(appsRoot, "web", "postcss.config.cjs"),
+  },
   resolve: {
-    alias: { "@": projectRoot },
-    dedupe: ["react", "react-dom"]
+    alias: {
+      "@": projectRoot,
+    },
+    dedupe: ["react", "react-dom"],
   },
   server: {
     host: "127.0.0.1",
     port: 1420,
     strictPort: true,
-    fs: { allow: [repoRoot] }
+    fs: {
+      allow: [appsRoot],
+    },
   },
   build: {
     outDir: path.join(projectRoot, "dist-tauri"),
     emptyOutDir: true,
-    target: "es2022",
-    sourcemap: false
-  }
+    sourcemap: false,
+  },
 });
