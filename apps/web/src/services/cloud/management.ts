@@ -18,6 +18,73 @@ async function parseResponse<T>(response: Response): Promise<T> {
   return payload as T;
 }
 
+type ManagementRecord = {
+  current: boolean;
+  lastSeenAt: string;
+  revokedAt?: string | null;
+};
+
+function timestamp(value: string): number {
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function preferredRecord<T extends ManagementRecord>(existing: T, candidate: T): T {
+  if (existing.current !== candidate.current) return candidate.current ? candidate : existing;
+
+  const existingActive = !existing.revokedAt;
+  const candidateActive = !candidate.revokedAt;
+  if (existingActive !== candidateActive) return candidateActive ? candidate : existing;
+
+  return timestamp(candidate.lastSeenAt) > timestamp(existing.lastSeenAt) ? candidate : existing;
+}
+
+function normalized(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+/**
+ * The management backend can return multiple installation rows for the same
+ * visible device after repeated logins/registrations. The Settings page should
+ * show one logical device instead of one row per timestamped installation.
+ */
+export function dedupeDeviceInstallations(devices: DeviceInstallation[]): DeviceInstallation[] {
+  const unique = new Map<string, DeviceInstallation>();
+
+  for (const device of devices) {
+    const key = JSON.stringify([
+      normalized(device.appId),
+      normalized(device.deviceName),
+      normalized(device.platform),
+    ]);
+    const existing = unique.get(key);
+    unique.set(key, existing ? preferredRecord(existing, device) : device);
+  }
+
+  return [...unique.values()].sort((left, right) => timestamp(right.lastSeenAt) - timestamp(left.lastSeenAt));
+}
+
+/**
+ * Sessions are deduplicated by the content visible in Settings/Security. A new
+ * session id or a different lastSeenAt must not create another visually
+ * identical row for the same app/device/security classification.
+ */
+export function dedupeManagedSessions(sessions: ManagedSession[]): ManagedSession[] {
+  const unique = new Map<string, ManagedSession>();
+
+  for (const session of sessions) {
+    const key = JSON.stringify([
+      normalized(session.appId),
+      normalized(session.deviceId),
+      session.publicDevice,
+    ]);
+    const existing = unique.get(key);
+    unique.set(key, existing ? preferredRecord(existing, session) : session);
+  }
+
+  return [...unique.values()].sort((left, right) => timestamp(right.lastSeenAt) - timestamp(left.lastSeenAt));
+}
+
 export class WebManagementApi {
   constructor(private readonly fetcher: FetchLike = browserFetch) {}
 
@@ -35,7 +102,8 @@ export class WebManagementApi {
   }
 
   async devices(): Promise<DeviceInstallation[]> {
-    return (await this.request<{ devices: DeviceInstallation[] }>("/api/v1/web/devices")).devices;
+    const devices = (await this.request<{ devices: DeviceInstallation[] }>("/api/v1/web/devices")).devices;
+    return dedupeDeviceInstallations(devices);
   }
 
   renameDevice(deviceId: string, deviceName: string, csrfToken: string): Promise<DeviceInstallation> {
@@ -53,7 +121,8 @@ export class WebManagementApi {
   }
 
   async sessions(): Promise<ManagedSession[]> {
-    return (await this.request<{ sessions: ManagedSession[] }>("/api/v1/web/sessions")).sessions;
+    const sessions = (await this.request<{ sessions: ManagedSession[] }>("/api/v1/web/sessions")).sessions;
+    return dedupeManagedSessions(sessions);
   }
 
   async revokeSession(sessionId: string, csrfToken: string): Promise<void> {
