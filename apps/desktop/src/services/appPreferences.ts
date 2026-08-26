@@ -146,10 +146,16 @@ export function installAppPreferences(): AppPreferences {
   }
   if (typeof window !== "undefined" && !mediaListenerInstalled && window.matchMedia) {
     mediaListenerInstalled = true;
-    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const onThemeChange = () => {
       const current = readAppPreferences();
       if (current.theme === "system") applyAppPreferences(current);
-    });
+    };
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", onThemeChange);
+    } else if (typeof media.addListener === "function") {
+      media.addListener(onThemeChange);
+    }
   }
   return preferences;
 }

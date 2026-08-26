@@ -1,0 +1,72 @@
+name: PR Windows Installer
+
+on:
+  push:
+    branches:
+      - fix/desktop-webview2-oom
+    paths:
+      - "apps/desktop/**"
+      - "apps/web/**"
+      - "crates/lifetrace-sync-client/**"
+      - ".github/workflows/pr-windows-installer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-installer:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create required bundled dictionary resource
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force apps/desktop/xunji_service/data | Out-Null
+          python -c "import sqlite3; db=sqlite3.connect(r'apps/desktop/xunji_service/data/dictionary.db'); db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)'); db.close()"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-sync-client
+            apps/desktop/src-tauri
+
+      - name: Install desktop dependencies
+        run: npm ci --prefix apps/desktop
+
+      - name: Install shared web dependencies
+        run: npm install --prefix apps/web --no-audit --no-fund
+
+      - name: Typecheck
+        run: npm --prefix apps/desktop run lint
+
+      - name: Unit tests
+        run: npm --prefix apps/desktop run test:unit
+
+      - name: Disable updater artifact signing for PR package
+        shell: pwsh
+        run: |
+          '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding utf8 apps/desktop/tauri.pr-build.json
+
+      - name: Build unsigned NSIS installer
+        run: npm --prefix apps/desktop run tauri -- build --config tauri.pr-build.json
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: LifeTrace-0.3.3-pr113-windows-x64
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*-setup.exe
+          if-no-files-found: error
+          retention-days: 7

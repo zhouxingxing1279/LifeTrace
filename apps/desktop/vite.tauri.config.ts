@@ -27,6 +27,7 @@ export default defineConfig({
     },
   },
   build: {
+    target: "es2020",
     outDir: path.join(projectRoot, "dist-tauri"),
     emptyOutDir: true,
     sourcemap: false,

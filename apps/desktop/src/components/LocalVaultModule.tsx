@@ -10,6 +10,9 @@ import {
 import Toast from "@/src/components/Toast";
 
 const DELETE_CONFIRMATION = "永久删除私密相册";
+const VAULT_PAGE_SIZE = 48;
+const THUMBNAIL_BATCH_SIZE = 4;
+const MAX_INLINE_PREVIEW_BYTES = 32 * 1024 * 1024;
 
 const formatBytes = (value:number) => new Intl.NumberFormat("zh-CN", {
   style:"unit", unit:value >= 1024 ** 2 ? "megabyte" : "kilobyte", maximumFractionDigits:1,
@@ -29,6 +32,7 @@ export default function LocalVaultModule() {
   const [albums,setAlbums]=useState<VaultAlbum[]>([]);
   const [view,setView]=useState<"active"|"trash">("active");
   const [albumId,setAlbumId]=useState<string|null>(null);
+  const [page,setPage]=useState(0);
   const [thumbnails,setThumbnails]=useState<Record<string,string>>({});
   const [preview,setPreview]=useState<{asset:VaultAsset;url:string}|null>(null);
   const [loading,setLoading]=useState(true);
@@ -70,10 +74,20 @@ export default function LocalVaultModule() {
   },[contextMenu,closeContextMenu]);
 
   const trackUrl=useCallback((url:string)=>{objectUrls.current.add(url);return url},[]);
+  const revokeTrackedUrl=useCallback((url:string)=>{
+    URL.revokeObjectURL(url);
+    objectUrls.current.delete(url);
+  },[]);
+  const clearThumbnailUrls=useCallback(()=>{
+    setThumbnails(current=>{
+      for(const url of Object.values(current) as string[])revokeTrackedUrl(url);
+      return {};
+    });
+  },[revokeTrackedUrl]);
   const clearSensitive=useCallback(()=>{
     for(const url of objectUrls.current)URL.revokeObjectURL(url);
     objectUrls.current.clear();
-    setThumbnails({});setPreview(null);setAssets([]);setAlbums([]);setAlbumId(null);
+    setThumbnails({});setPreview(null);setAssets([]);setAlbums([]);setAlbumId(null);setPage(0);
   },[]);
 
   const loadStatus=useCallback(async()=>{
@@ -87,20 +101,45 @@ export default function LocalVaultModule() {
       api.listAssets({trashed:view==="trash",albumId:view==="active"?albumId:null}),
       api.listAlbums(),
     ]);
+    clearThumbnailUrls();
     setAssets(nextAssets);setAlbums(nextAlbums);
-    const nextThumbs:Record<string,string>={};
-    await Promise.all(nextAssets.filter(asset=>asset.hasThumbnail).map(async asset=>{
-      try{
-        const payload=await api.readThumbnail(asset.id);
-        nextThumbs[asset.id]=trackUrl(base64ObjectUrl(payload.dataBase64,payload.mimeType));
-      }catch{/* A damaged thumbnail is reported by integrity check; keep the placeholder here. */}
-    }));
-    setThumbnails(current=>{
-      for(const url of Object.values(current) as string[]){URL.revokeObjectURL(url);objectUrls.current.delete(url)}
-      return nextThumbs;
-    });
     setStatus(await api.status());
-  },[albumId,api,status?.unlocked,trackUrl,view]);
+  },[albumId,api,clearThumbnailUrls,status?.unlocked,view]);
+
+  const pageCount=Math.max(1,Math.ceil(assets.length/VAULT_PAGE_SIZE));
+  const pageAssets=useMemo(()=>assets.slice(page*VAULT_PAGE_SIZE,(page+1)*VAULT_PAGE_SIZE),[assets,page]);
+
+  useEffect(()=>{setPage(0)},[albumId,view]);
+  useEffect(()=>{setPage(current=>Math.min(current,pageCount-1))},[pageCount]);
+  useEffect(()=>{
+    if(!api||!status?.unlocked)return;
+    let cancelled=false;
+    const loadPageThumbnails=async()=>{
+      clearThumbnailUrls();
+      const candidates=pageAssets.filter(asset=>asset.hasThumbnail);
+      for(let start=0;start<candidates.length;start+=THUMBNAIL_BATCH_SIZE){
+        if(cancelled)return;
+        const batch=candidates.slice(start,start+THUMBNAIL_BATCH_SIZE);
+        const loaded=await Promise.all(batch.map(async asset=>{
+          try{
+            const payload=await api.readThumbnail(asset.id);
+            const url=trackUrl(base64ObjectUrl(payload.dataBase64,payload.mimeType));
+            return {assetId:asset.id,url};
+          }catch{return null}
+        }));
+        if(cancelled){
+          for(const item of loaded)if(item)revokeTrackedUrl(item.url);
+          return;
+        }
+        const next:Record<string,string>={};
+        for(const item of loaded)if(item)next[item.assetId]=item.url;
+        if(Object.keys(next).length>0)setThumbnails(current=>({...current,...next}));
+        await new Promise<void>(resolve=>window.setTimeout(resolve,0));
+      }
+    };
+    void loadPageThumbnails();
+    return()=>{cancelled=true};
+  },[api,clearThumbnailUrls,pageAssets,revokeTrackedUrl,status?.unlocked,trackUrl]);
 
   useEffect(()=>{void (async()=>{try{await loadStatus()}catch(cause){setError(String(cause))}finally{setLoading(false)}})()},[loadStatus]);
   useEffect(()=>{if(status?.unlocked)void refresh()},[refresh,status?.unlocked]);
@@ -136,11 +175,15 @@ export default function LocalVaultModule() {
     await perform(async()=>{setStatus(await api.unlock(password));setPassword("")})
   };
   const openPreview=(asset:VaultAsset)=>perform(async()=>{
-    if(!api)return;const payload=await api.readAsset(asset.id);
-    if(preview){URL.revokeObjectURL(preview.url);objectUrls.current.delete(preview.url)}
+    if(!api)return;
+    if(asset.size>MAX_INLINE_PREVIEW_BYTES){
+      throw new Error(`文件大小为 ${formatBytes(asset.size)}，超过桌面端内存安全预览上限（${formatBytes(MAX_INLINE_PREVIEW_BYTES)}）。请先恢复到同步相册后打开，避免 WebView2 内存不足。`);
+    }
+    const payload=await api.readAsset(asset.id);
+    if(preview)revokeTrackedUrl(preview.url);
     setPreview({asset:payload.asset,url:trackUrl(base64ObjectUrl(payload.dataBase64,payload.asset.mimeType))});
   });
-  const closePreview=()=>{if(preview){URL.revokeObjectURL(preview.url);objectUrls.current.delete(preview.url)}setPreview(null)};
+  const closePreview=()=>{if(preview)revokeTrackedUrl(preview.url);setPreview(null)};
   const moveToTrash=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.moveToTrash(asset.id);await refresh()},"已移入私密回收站。");
   const restore=(asset:VaultAsset)=>perform(async()=>{if(!api)return;await api.restoreAsset(asset.id);await refresh()},"已恢复到私密相册。");
   const restoreToSyncAlbum=async(asset:VaultAsset)=>{
@@ -216,9 +259,9 @@ export default function LocalVaultModule() {
       {albums.map(album=><button key={album.id} className={view==="active"&&albumId===album.id?"active":""} onClick={()=>{setView("active");setAlbumId(album.id)}}>{album.name}</button>)}
       <button className={view==="trash"?"active danger":"danger"} onClick={()=>{setView("trash");setAlbumId(null)}}><Trash2/>私密回收站</button>
       {currentAlbum&&<div className="vault-album-actions"><button onClick={renameAlbum}><Pencil/>重命名</button><button onClick={deleteAlbum}><Trash2/>删除子相册</button></div>}
-    </aside><main className="vault-content"><div className="vault-content-head"><div><span>{view==="trash"?"回收站":currentAlbum?.name||"全部内容"}</span><strong>{assets.length} 项</strong></div>{busy&&<LoaderCircle className="spin"/>}</div>
+    </aside><main className="vault-content"><div className="vault-content-head"><div><span>{view==="trash"?"回收站":currentAlbum?.name||"全部内容"}</span><strong>{assets.length} 项 · 第 {Math.min(page+1,pageCount)} / {pageCount} 页</strong></div>{busy?<LoaderCircle className="spin"/>:assets.length>VAULT_PAGE_SIZE?<div className="vault-actions"><button disabled={page===0} onClick={()=>setPage(current=>Math.max(0,current-1))}>上一页</button><button disabled={page>=pageCount-1} onClick={()=>setPage(current=>Math.min(pageCount-1,current+1))}>下一页</button></div>:null}</div>
       {assets.length===0?<div className="vault-empty"><ImageIcon/><h3>{view==="trash"?"回收站为空":"还没有私密内容"}</h3><p>{view==="trash"?"删除的内容会先进入这里。":"在“同步相册”中选择照片并点击“批量隐藏”，照片就会加密移入这里。"}</p></div>:
-      <div className="vault-grid">{assets.map(asset=><article className="vault-card" key={asset.id} onContextMenu={event=>openContextMenu(event,asset)}><button className="vault-card-preview" onClick={()=>openPreview(asset)}>{thumbnails[asset.id]?<img src={thumbnails[asset.id]} alt=""/>:<ImageIcon/>}{asset.mimeType.startsWith("video/")&&<span>视频</span>}</button>
+      <div className="vault-grid">{pageAssets.map(asset=><article className="vault-card" key={asset.id} onContextMenu={event=>openContextMenu(event,asset)}><button className="vault-card-preview" onClick={()=>openPreview(asset)}>{thumbnails[asset.id]?<img src={thumbnails[asset.id]} alt=""/>:<ImageIcon/>}{asset.mimeType.startsWith("video/")&&<span>视频</span>}</button>
         <div className="vault-card-copy"><strong title={asset.originalName}>{asset.originalName}</strong><small>{formatBytes(asset.size)} · {new Date(asset.importedAt).toLocaleString("zh-CN",{hour12:false})}</small></div>
       </article>)}</div>}
     </main></div>
