@@ -43,8 +43,9 @@ import "@/app/interaction-performance.css";
 import "@/app/desktop-cloud-workspace.css";
 import "@/app/desktop-local-tools.css";
 
-const root = document.getElementById("root");
-if (!root) throw new Error("LifeTrace root element is missing");
+const rootCandidate = document.getElementById("root");
+if (!rootCandidate) throw new Error("LifeTrace root element is missing");
+const root: HTMLElement = rootCandidate;
 
 function renderStartupStatus(message: string) {
   root.innerHTML = '<div class="hx-loading"><span>LT</span><p></p></div>';
