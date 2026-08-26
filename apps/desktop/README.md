@@ -1,39 +1,23 @@
 # LifeTrace Desktop
 
-LifeTrace 应用端，包括 Tauri 桌面程序、React UI、本地 SQLite、本地照片/私密相册能力、局域网服务以及浏览器版本。
+LifeTrace 的 Windows 桌面端基于 Tauri 2 + WebView2，前端使用 React/Vite，后端使用 Rust + SQLite。
 
-## 安装
+## 启动行为
 
-```powershell
-npm ci
-```
+桌面窗口创建后会先由静态 HTML 渲染启动界面，再进入 React/Tauri 初始化流程。窗口状态、主题、桥接层和本地 SQLite 服务初始化均受统一错误兜底保护；任何启动异常都应显示“LifeTrace 启动失败”和具体错误，而不是留下空白 WebView。
+
+Windows 构建使用 ES2020 作为桌面 WebView 的 JavaScript 输出目标，以兼容较旧的 WebView2 Runtime。若启动失败页面提示 WebView2 相关异常，应先更新 Microsoft Edge WebView2 Runtime 后重试。
 
 ## 开发
 
-```powershell
-npm run dev
+```bash
+npm install
+npm run desktop
 ```
 
-浏览器版本：
+## 校验
 
-```powershell
-npm run browser:dev
-```
-
-## 验证
-
-```powershell
-npm run lint
-npm run test:unit
-npm run web:build
-npm run browser:build
+```bash
+npm test
 npm run test:rust
 ```
-
-## 构建 Windows 应用
-
-```powershell
-npm run build
-```
-
-应用端依赖仓库根目录的共享 Rust crates（`../../crates`）以及生成契约（`../../contracts`），但不依赖 `services/cloud` 的内部实现。与云端通信只通过公开 API/同步协议完成。
