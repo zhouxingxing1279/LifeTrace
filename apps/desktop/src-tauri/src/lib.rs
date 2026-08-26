@@ -14,6 +14,7 @@ mod execution_structure;
 mod execution_waiting;
 mod observability;
 mod server;
+mod startup;
 mod storage;
 mod sync;
 mod vault;
@@ -39,6 +40,7 @@ pub fn run() {
             observability::client_log_write,
             observability::client_log_path,
             observability::client_log_read_recent,
+            startup::local_service_status,
             storage::storage_status,
             storage::storage_migrate,
             desktop::photo_status,
@@ -112,6 +114,9 @@ pub fn run() {
             ));
             storage::schedule_pending_cleanup(storage_config_path);
 
+            let local_service_state = startup::LocalServiceState::default();
+            app.manage(local_service_state.clone());
+
             let vault_state = Arc::new(vault::VaultState::new(data_dir.join("vault"))?);
             app.manage(vault_state);
             let photo_runtime = server::photo::Runtime::new(data_dir.clone());
@@ -147,6 +152,7 @@ pub fn run() {
                 if let Err(error) =
                     server::serve(data_dir, resource_dir, photo_runtime, sync_state).await
                 {
+                    local_service_state.fail(error.to_string());
                     eprintln!("LifeTrace local service stopped: {error}");
                 }
             });
