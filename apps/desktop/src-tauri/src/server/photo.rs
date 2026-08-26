@@ -71,20 +71,6 @@ impl Runtime {
         })
     }
 
-    pub fn mobile_upload_status(&self) -> Value {
-        let urls = lan_addresses()
-            .iter()
-            .map(|address| format!("http://{address}:3445/fitness"))
-            .collect::<Vec<_>>();
-        json!({
-            "available": true,
-            "active": self.active.load(Ordering::Relaxed),
-            "managed": true,
-            "port": 3445,
-            "urls": urls
-        })
-    }
-
     pub fn create_pairing(&self) -> Result<Value, String> {
         self.set_active(true);
         let code = format!("{:06}", Uuid::new_v4().as_u128() % 1_000_000);
@@ -496,63 +482,10 @@ fn clean_name(value: &str) -> String {
         .collect()
 }
 
-// Embedded so the phone only downloads a small upload UI; all parsing remains on the PC.
-const MOBILE_UPLOAD_PAGE: &str = include_str!("mobile-upload.html");
 const PHOTO_UPLOAD_PAGE: &str = include_str!("photo-upload.html");
 
-fn is_mobile_upload_route(method: &Method, path: &str) -> bool {
-    (*method == Method::GET && matches!(path, "/" | "/fitness" | "/photos" | "/api/health"))
-        || (*method == Method::POST && matches!(path, "/api/imports" | "/api/xunji/parse"))
-}
-
-async fn proxy_mobile_upload(request: Request<Body>) -> Response {
-    let (parts, body) = request.into_parts();
-    let path_and_query = parts
-        .uri
-        .path_and_query()
-        .map(|value| value.as_str())
-        .unwrap_or(parts.uri.path());
-    let url = format!("http://127.0.0.1:3103{path_and_query}");
-    let mut outgoing = reqwest::Client::new().request(parts.method, url);
-    for (name, value) in &parts.headers {
-        if !matches!(name.as_str(), "host" | "content-length" | "connection") {
-            outgoing = outgoing.header(name, value);
-        }
-    }
-    let upstream = match outgoing
-        .body(reqwest::Body::wrap_stream(body.into_data_stream()))
-        .send()
-        .await
-    {
-        Ok(value) => value,
-        Err(error) => {
-            return json_error(
-                StatusCode::BAD_GATEWAY,
-                "UPLOAD_SERVICE_UNAVAILABLE",
-                &format!("电脑上传服务暂时不可用：{error}"),
-            )
-        }
-    };
-    let status = upstream.status();
-    let headers = upstream.headers().clone();
-    let mut response = Response::builder().status(status);
-    for (name, value) in &headers {
-        if !matches!(
-            name.as_str(),
-            "connection" | "content-length" | "transfer-encoding"
-        ) {
-            response = response.header(name, value);
-        }
-    }
-    response
-        .body(Body::from_stream(upstream.bytes_stream()))
-        .unwrap_or_else(|_| {
-            json_error(
-                StatusCode::BAD_GATEWAY,
-                "UPLOAD_RESPONSE_INVALID",
-                "电脑上传服务返回了无效响应",
-            )
-        })
+fn is_photo_upload_page(method: &Method, path: &str) -> bool {
+    *method == Method::GET && matches!(path, "/photos" | "/api/health")
 }
 
 #[axum::debug_handler]
@@ -566,9 +499,6 @@ async fn lan_dispatch(State(state): State<AppState>, request: Request<Body>) -> 
     }
     let request_method = request.method().clone();
     let request_path = request.uri().path().to_owned();
-    if request_method == Method::GET && matches!(request_path.as_str(), "/" | "/fitness") {
-        return Html(MOBILE_UPLOAD_PAGE).into_response();
-    }
     if request_method == Method::GET && request_path == "/photos" {
         return Html(PHOTO_UPLOAD_PAGE).into_response();
     }
@@ -580,11 +510,6 @@ async fn lan_dispatch(State(state): State<AppState>, request: Request<Body>) -> 
             "checkedAt": Utc::now().to_rfc3339()
         }))
         .into_response();
-    }
-    if request_method == Method::POST
-        && matches!(request_path.as_str(), "/api/imports" | "/api/xunji/parse")
-    {
-        return proxy_mobile_upload(request).await;
     }
     let (parts, body) = request.into_parts();
     let method = parts.method;
@@ -1098,8 +1023,8 @@ pub async fn serve_lan(state: AppState) -> Result<(), Box<dyn std::error::Error 
 
 #[axum::debug_handler]
 async fn compatibility_dispatch(State(state): State<AppState>, request: Request<Body>) -> Response {
-    let mobile_upload_route = is_mobile_upload_route(request.method(), request.uri().path());
-    if !mobile_upload_route
+    let photo_upload_page = is_photo_upload_page(request.method(), request.uri().path());
+    if !photo_upload_page
         && !state
             .photo_runtime
             .allow_insecure_http

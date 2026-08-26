@@ -268,6 +268,11 @@ fn normalize_workout(raw: &Value) -> Option<Workout> {
         };
         let sets: Vec<WorkoutSet> = raw_sets
             .iter()
+            .filter(|set| {
+                first(set, &["done", "completed", "isDone"])
+                    .and_then(Value::as_bool)
+                    .unwrap_or(true)
+            })
             .enumerate()
             .map(|(set_index, set)| WorkoutSet {
                 weight_kg: numeric(first(set, &["weightKg", "weight", "kg", "load"])).max(0.0),
@@ -729,5 +734,20 @@ mod tests {
         assert_eq!(workout.date, "2026-07-24");
         assert_eq!(workout.exercises[0].name, "Squat");
         assert_eq!(workout.volume_kg, 450.0);
+    }
+
+    #[test]
+    fn excludes_unfinished_xunji_sets_from_imported_workout() {
+        let html = r#"<html><script>
+          window.Train={
+            movement:JSON.parse('[{\"label\":\"杠铃卧推\",\"sets\":[{\"done\":true,\"reps\":\"12\",\"weight\":\"60\"},{\"done\":true,\"reps\":\"4\",\"weight\":\"60\"},{\"done\":true,\"reps\":\"4\",\"weight\":\"60\"},{\"done\":true,\"reps\":\"4\",\"weight\":\"60\"}]},{\"label\":\"上斜杠铃卧推\",\"sets\":[{\"done\":true,\"reps\":\"12\",\"weight\":\"45\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"45\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"45\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"45\"}]},{\"label\":\"蝴蝶机夹胸（版本2）\",\"sets\":[{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"}]},{\"label\":\"绳索臂屈伸\",\"sets\":[{\"done\":true,\"reps\":\"12\",\"weight\":\"40\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"50\"},{\"done\":true,\"reps\":\"12\",\"weight\":\"40\"}]},{\"label\":\"绳索过头臂屈伸\",\"sets\":[{\"done\":false,\"reps\":\"12\",\"weight\":\"25\"}]},{\"label\":\"绳索十字夹胸\",\"sets\":[{\"done\":false,\"reps\":\"12\",\"weight\":\"50\"}]},{\"label\":\"哑铃臂屈伸\",\"sets\":[{\"done\":false,\"reps\":\"12\",\"weight\":\"30\"}]}]'),
+            title:"胸+三头",
+            datestr:"2026-08-25"
+          };
+        </script></html>"#;
+        let (workout, _, _) = parse_page(html).expect("completed workout should parse");
+        assert_eq!(workout.exercises.len(), 4);
+        assert_eq!(workout.volume_kg, 8_160.0);
+        assert_eq!(workout.exercises[3].name, "绳索臂屈伸");
     }
 }

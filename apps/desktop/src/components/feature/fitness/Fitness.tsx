@@ -3,7 +3,6 @@ import { NotebookPen } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import type { WorkoutHistory } from "@/src/types";
 import XunjiImportPanel from "@/src/components/XunjiImportPanel";
-import MobileUploadControl from "@/src/components/common/MobileUploadControl";
 import { EmptyState, PanelHead } from "@/src/components/common";
 import { Button } from "@/src/components/ui";
 
@@ -35,7 +34,6 @@ export default function Fitness({
         </div>
       </article>
 
-      <MobileUploadControl context="fitness" />
       <XunjiImportPanel />
 
       <article className="hx-panel hx-history">

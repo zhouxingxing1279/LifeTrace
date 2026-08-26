@@ -100,6 +100,18 @@
   --ui-topbar-bg: var(--ui-bg-app);
   --ui-topbar-border: var(--ui-border);
 
+  /* Native desktop shell aliases. Keep the three-column workspace on the
+   * same semantic palette as shared web content so theme changes are atomic. */
+  --lt-color-bg: var(--ui-bg-app);
+  --lt-color-surface: var(--ui-bg-surface);
+  --lt-color-hover: var(--ui-bg-hover);
+  --lt-color-border: var(--ui-border);
+  --lt-color-text: var(--ui-foreground);
+  --lt-color-text-secondary: var(--ui-muted);
+  --lt-color-text-tertiary: var(--ui-faint);
+  --lt-color-primary: var(--ui-primary);
+  --lt-color-primary-contrast: var(--ui-primary-contrast);
+
   /* ------------------------------------------------------------------
    * Shadows
    */

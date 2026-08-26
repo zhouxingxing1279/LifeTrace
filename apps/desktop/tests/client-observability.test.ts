@@ -12,7 +12,10 @@ import {
   serializeClientError,
   type FetchLike,
 } from "../src/services/clientObservability";
-import { installGlobalFetchInstrumentation } from "../src/services/fetchInstrumentation";
+import {
+  installGlobalFetchInstrumentation,
+  isTauriIpcRequest,
+} from "../src/services/fetchInstrumentation";
 
 test("serializeClientError preserves the cause chain", () => {
   const root = new TypeError("Can only call window.fetch on instance of Window");
@@ -194,4 +197,11 @@ test("global fetch instrumentation calls the captured native function exactly on
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("global fetch instrumentation recognizes Tauri IPC requests", () => {
+  assert.equal(isTauriIpcRequest("http://ipc.localhost/plugin%3Awindow%7Ccurrent_monitor"), true);
+  assert.equal(isTauriIpcRequest("ipc://localhost/plugin:window|current_monitor"), true);
+  assert.equal(isTauriIpcRequest("http://127.0.0.1:3103/api/health"), false);
+  assert.equal(isTauriIpcRequest("https://example.test/api"), false);
 });

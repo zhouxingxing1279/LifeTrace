@@ -7,6 +7,7 @@ const tauriIndex = () => readFileSync(new URL("../tauri-ui/index.html", import.m
 const tauriMain = () => readFileSync(new URL("../tauri-ui/main.tsx", import.meta.url), "utf8");
 const bootstrapScript = () => readFileSync(new URL("../public/desktop-theme-bootstrap.js", import.meta.url), "utf8");
 const bootstrapStyles = () => readFileSync(new URL("../public/desktop-theme-bootstrap.css", import.meta.url), "utf8");
+const designTokens = () => readFileSync(new URL("../app/tokens.css", import.meta.url), "utf8");
 
 test("desktop cloud workspace applies the loaded cloud appearance preference", () => {
   const source = cloudWorkspace();
@@ -43,4 +44,13 @@ test("legacy sqlite dark state and desktop DOM theme stay synchronized", () => {
   assert.match(source, /useLifeStore\.setState\(\{ dark: true \}\)/);
   assert.match(source, /state\.dark !== previous\.dark/);
   assert.match(source, /setAppThemePreference\(state\.dark \? "dark" : "light"\)/);
+});
+
+test("native desktop shell colors inherit the shared semantic theme", () => {
+  const tokens = designTokens();
+  assert.match(tokens, /--lt-color-bg:\s*var\(--ui-bg-app\)/);
+  assert.match(tokens, /--lt-color-surface:\s*var\(--ui-bg-surface\)/);
+  assert.match(tokens, /--lt-color-text:\s*var\(--ui-foreground\)/);
+  assert.match(tokens, /--lt-color-border:\s*var\(--ui-border\)/);
+  assert.match(tokens, /--lt-color-primary:\s*var\(--ui-primary\)/);
 });

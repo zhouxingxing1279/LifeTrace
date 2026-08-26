@@ -8,23 +8,17 @@ import {
   CheckSquare2,
   ChevronLeft,
   ChevronRight,
-  Cloud,
   Dumbbell,
   Eye,
   EyeOff,
-  FileText,
   GraduationCap,
   HardDrive,
   HeartPulse,
   Home,
+  Images,
   LoaderCircle,
   LogOut,
-  MonitorSmartphone,
   NotebookPen,
-  PanelRightClose,
-  PanelRightOpen,
-  Plus,
-  ReceiptText,
   RefreshCw,
   Search,
   Settings,
@@ -34,7 +28,6 @@ import {
 import CommandPalette, { type CommandItem } from "@/src/components/layout/CommandPalette";
 
 const SIDEBAR_COMPACT_KEY = "lifetrace:desktop:sidebar-compact";
-const INSPECTOR_OPEN_KEY = "lifetrace:desktop:inspector-open";
 
 type DesktopNavItem = {
   path: string;
@@ -71,6 +64,7 @@ const NAV_GROUPS: DesktopNavGroup[] = [
     items: [
       { path: "/app/notes", label: "笔记", icon: NotebookPen },
       { path: "/app/english", label: "英语学习", icon: GraduationCap },
+      { path: "/app/photos", label: "相册", icon: Images },
       { path: "/app/finance", label: "财务", icon: WalletCards },
     ],
   },
@@ -92,8 +86,9 @@ const PAGE_COPY: Record<string, [string, string]> = {
   "/app/review": ["复盘", "回顾阶段表现、完成情况与变化趋势。"],
   "/app/notes": ["笔记", "记录与整理个人知识。"],
   "/app/english": ["英语学习", "管理英语学习内容与练习记录。"],
+  "/app/photos": ["相册", "管理同步相册与本机私密相册。"],
   "/app/finance": ["财务", "使用 BeeCount Cloud Web 管理账单与资产。"],
-  "/app/finance/transactions": ["账单", "查看与维护收支交易记录。"],
+  "/app/finance/transactions": ["账单", "查看财务交易记录。"],
   "/app/search": ["全局搜索", "跨模块检索 LifeTrace 云端内容。"],
   "/app/settings": ["设置", "管理账户、外观、设备与偏好。"],
 };
@@ -128,7 +123,6 @@ type DesktopWorkbenchShellProps = {
   loading: boolean;
   privacy: boolean;
   error: string;
-  conflictCount: number;
   onNavigate: (route: string) => void;
   onRefresh: () => void;
   onTogglePrivacy: () => void;
@@ -162,7 +156,6 @@ export default function DesktopWorkbenchShell({
   loading,
   privacy,
   error,
-  conflictCount,
   onNavigate,
   onRefresh,
   onTogglePrivacy,
@@ -170,17 +163,11 @@ export default function DesktopWorkbenchShell({
   onOpenLocalTools,
   children,
 }: DesktopWorkbenchShellProps) {
-  const [inspectorOpen, setInspectorOpen] = useState(() => storedBoolean(INSPECTOR_OPEN_KEY, true));
   const [sidebarCompact, setSidebarCompact] = useState(() => storedBoolean(SIDEBAR_COMPACT_KEY, false));
   const [commandOpen, setCommandOpen] = useState(false);
   const [routeTitle, routeDescription] = pageCopy(route);
   const title = titleOverride ?? routeTitle;
   const description = descriptionOverride ?? routeDescription;
-
-  const setInspector = (next: boolean) => {
-    setInspectorOpen(next);
-    window.localStorage.setItem(INSPECTOR_OPEN_KEY, String(next));
-  };
 
   const setSidebar = (next: boolean) => {
     setSidebarCompact(next);
@@ -245,10 +232,10 @@ export default function DesktopWorkbenchShell({
       {
         id: "desktop-local-tools",
         label: "打开本机工具",
-        hint: "SQLite、照片、文件与离线能力",
+        hint: "SQLite、文件与离线能力",
         icon: HardDrive,
         group: "桌面能力",
-        keywords: "本机 本地 sqlite 照片 文件 离线 local",
+        keywords: "本机 本地 sqlite 文件 离线 local",
         execute: onOpenLocalTools,
       },
     ];
@@ -256,7 +243,7 @@ export default function DesktopWorkbenchShell({
 
   return (
     <>
-      <div className={`lt-desktop-native-shell${inspectorOpen ? " inspector-open" : ""}${sidebarCompact ? " sidebar-compact" : ""}`}>
+      <div className={`lt-desktop-native-shell${sidebarCompact ? " sidebar-compact" : ""}`}>
         <aside className="lt-desk-sidebar" aria-label="LifeTrace 桌面导航">
           <div className="lt-desk-brand-row">
             <button type="button" className="lt-desk-brand" title="LifeTrace" onClick={() => onNavigate("/app/today")}>
@@ -307,7 +294,6 @@ export default function DesktopWorkbenchShell({
                 <span>{online ? (loading ? "同步中" : "已连接") : "离线"}</span>
               </button>
               <button type="button" title={privacy ? "关闭隐私模式" : "开启隐私模式"} onClick={onTogglePrivacy}>{privacy ? <EyeOff /> : <Eye />}</button>
-              <button type="button" title={inspectorOpen ? "隐藏侧边信息" : "显示侧边信息"} onClick={() => setInspector(!inspectorOpen)}>{inspectorOpen ? <PanelRightClose /> : <PanelRightOpen />}</button>
             </div>
           </header>
 
@@ -317,30 +303,6 @@ export default function DesktopWorkbenchShell({
           </main>
         </section>
 
-        {inspectorOpen ? (
-          <aside className="lt-desk-inspector" aria-label="桌面辅助面板">
-            <section className="lt-desk-inspector-section">
-              <div className="lt-desk-inspector-title"><span>同步状态</span>{online ? <Cloud /> : <WifiOff />}</div>
-              <strong>{online ? "云端已连接" : "正在使用本机能力"}</strong>
-              <p>{online ? "修改会保存到云端，并同步一份到本机。" : "云端暂不可用，本机数据和离线能力仍可使用。"}</p>
-              {conflictCount > 0 ? <button type="button" onClick={() => onNavigate("/app/settings")}>{conflictCount} 个同步冲突待处理</button> : null}
-            </section>
-            <section className="lt-desk-inspector-section">
-              <div className="lt-desk-inspector-title"><span>快捷开始</span><Plus /></div>
-              <div className="lt-desk-quick-grid">
-                <button type="button" onClick={() => onNavigate("/app/execution")}><CheckSquare2 /><span>新建任务</span></button>
-                <button type="button" onClick={() => onNavigate("/app/notes")}><FileText /><span>记一条笔记</span></button>
-                <button type="button" onClick={() => onNavigate("/app/finance/transactions")}><ReceiptText /><span>手动记账</span></button>
-                <button type="button" onClick={onOpenLocalTools}><HardDrive /><span>本机工具</span></button>
-              </div>
-            </section>
-            <section className="lt-desk-inspector-section lt-desk-native-card">
-              <div className="lt-desk-inspector-title"><span>桌面能力</span><MonitorSmartphone /></div>
-              <ul><li>SQLite 本地副本</li><li>本地照片与文件导入</li><li>离线访问与后台同步</li><li>Ctrl+K 命令面板</li></ul>
-              <button type="button" onClick={onOpenLocalTools}>打开本机工具</button>
-            </section>
-          </aside>
-        ) : null}
       </div>
       <CommandPalette open={commandOpen} onClose={() => setCommandOpen(false)} items={commandItems} />
     </>

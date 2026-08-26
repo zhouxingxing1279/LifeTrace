@@ -8,7 +8,3 @@ h1,h2,h3,p{margin:0}
 svg{width:20px;height:20px;stroke-width:1.8}
 button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:2px solid #2a7a5e;outline-offset:2px}
 body{padding-top:env(safe-area-inset-top);padding-right:env(safe-area-inset-right);padding-bottom:env(safe-area-inset-bottom);padding-left:env(safe-area-inset-left)}
-.mobile-upload-status{position:fixed;z-index:180;left:50%;top:max(12px,env(safe-area-inset-top));transform:translateX(-50%);display:flex;align-items:center;gap:8px;max-width:calc(100vw - 28px);padding:10px 14px;border-radius:12px;box-shadow:0 12px 35px rgba(8,20,15,.18);font-size:12px}
-.mobile-upload-status svg{width:16px;flex:none}.mobile-upload-status.checking{background:#eff8f2;color:#175b40;border:1px solid #b9ddca}.mobile-upload-status.offline{background:#2b342f;color:#fff}.mobile-upload-status svg.spinning{animation:mobile-upload-spin .8s linear infinite}.mobile-upload-status button{border:0;background:transparent;color:inherit;text-decoration:underline;font-weight:700}.mobile-upload-status .mobile-upload-retry{display:inline-flex;min-height:44px;align-items:center;gap:5px;padding:0 4px;white-space:nowrap}.mobile-upload-status .mobile-upload-retry svg{width:14px}
-@media(max-width:780px){.mobile-upload-status{width:calc(100vw - 24px);justify-content:center}.mobile-upload-status>span{line-height:1.45}}
-@keyframes mobile-upload-spin{to{transform:rotate(360deg)}}

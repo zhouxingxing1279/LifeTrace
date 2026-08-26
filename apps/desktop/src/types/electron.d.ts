@@ -33,11 +33,6 @@ declare global {
       importMarkdown():Promise<{ok:boolean;canceled?:boolean;error?:string;title?:string;content?:string}>;
       onCommand(listener:(command:string)=>void):()=>void;
     };
-    mobileUploadApi?: {
-      status():Promise<MobileUploadResponse>;
-      start():Promise<MobileUploadResponse>;
-      stop():Promise<MobileUploadResponse>;
-    };
     photoSyncApi?: {
       status():Promise<PhotoSyncDesktopResponse>;
       createPairing():Promise<PhotoSyncDesktopResponse>;
@@ -136,7 +131,7 @@ declare global {
     dataBase64:string;
   };
 
-  type MobileUploadStatus = {
+  type PhotoSyncStatus = {
     available:boolean;
     active:boolean;
     managed:boolean;
@@ -155,12 +150,6 @@ declare global {
     transportProtocol?:"http"|"https";
   };
 
-  type MobileUploadResponse = {
-    ok:boolean;
-    status?:MobileUploadStatus;
-    error?:string;
-  };
-
   type PhotoSyncPairing = {
     success:boolean;
     pairCode:string;
@@ -170,7 +159,7 @@ declare global {
 
   type PhotoSyncDesktopResponse = {
     ok:boolean;
-    status?:MobileUploadStatus & { pairing?:PhotoSyncPairing };
+    status?:PhotoSyncStatus & { pairing?:PhotoSyncPairing };
     error?:string;
   };
 }

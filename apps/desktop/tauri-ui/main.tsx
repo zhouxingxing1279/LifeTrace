@@ -2,7 +2,6 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import ClientErrorBoundary from "@/src/components/ClientErrorBoundary";
 import DesktopApp from "@/src/components/DesktopApp";
-import MobileUploadConnectionStatus from "@/src/components/MobileUploadConnectionStatus";
 import { installAppPreferences, setAppThemePreference } from "@/src/services/appPreferences";
 import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientObservability";
 import { installDesktopContextMenuPolicy } from "@/src/services/contextMenuPolicy";
@@ -84,7 +83,6 @@ async function start() {
       <StrictMode>
         <ClientErrorBoundary>
           <DesktopApp />
-          <MobileUploadConnectionStatus />
         </ClientErrorBoundary>
       </StrictMode>,
     );

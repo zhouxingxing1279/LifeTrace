@@ -7,6 +7,7 @@
   },
   "scripts": {
     "tauri": "tauri",
+    "predev": "npm run prepare:web-shared",
     "dev": "tauri dev",
     "desktop": "tauri dev",
     "build": "tauri build",

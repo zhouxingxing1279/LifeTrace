@@ -3,6 +3,18 @@ export const APP_ID = "lifetrace-web";
 export const PROTOCOL_VERSION = 1;
 export const SCHEMA_VERSION = 1;
 
+export interface SyncClientIdentity {
+  appId: string;
+  clientVersion: string;
+  platform: string;
+}
+
+export const WEB_SYNC_CLIENT: SyncClientIdentity = {
+  appId: APP_ID,
+  clientVersion: APP_VERSION,
+  platform: "web",
+};
+
 /**
  * Every cloud-syncable LifeTrace domain used by the browser application.
  * Photos, the encrypted local album, credentials and local import uploads are

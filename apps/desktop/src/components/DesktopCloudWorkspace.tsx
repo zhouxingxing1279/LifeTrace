@@ -17,8 +17,10 @@ import {
   type WebSession,
 } from "../../../web/src/services/core";
 import DesktopLocalToolsCenter from "@/src/components/DesktopLocalToolsCenter";
+import DesktopFitnessImport from "@/src/components/DesktopFitnessImport";
 import DesktopWorkbenchShell from "@/src/components/DesktopWorkbenchShell";
-import { cloudAuthClient } from "@/src/services/cloudAuth";
+import PhotoSyncModule from "@/src/components/PhotoSyncModule";
+import { cloudAuthClient, CLIENT_VERSION } from "@/src/services/cloudAuth";
 import { setAppThemePreference } from "@/src/services/appPreferences";
 import { useCloudAuthStore } from "@/src/stores/useCloudAuthStore";
 
@@ -157,7 +159,11 @@ export default function DesktopCloudWorkspace() {
       return () => { active = false; };
     }
 
-    const store = new CloudDataStore(session.user.id, session.session.deviceId, "", desktopCloudFetch);
+    const store = new CloudDataStore(session.user.id, session.session.deviceId, "", desktopCloudFetch, {
+      appId: session.session.appId,
+      clientVersion: CLIENT_VERSION,
+      platform: "windows",
+    });
     storeRef.current = store;
     setLoading(true);
     setCloudLoaded(false);
@@ -276,20 +282,23 @@ export default function DesktopCloudWorkspace() {
           <DesktopWorkbenchShell
             route={path}
             titleOverride={localToolsOpen ? "本机工具" : undefined}
-            descriptionOverride={localToolsOpen ? "SQLite、照片、文件导入与其他仅桌面端提供的本机能力。" : undefined}
+            descriptionOverride={localToolsOpen ? "SQLite 与其他仅桌面端提供的本机能力。" : undefined}
             userLabel={session.user.displayName || session.user.email}
             online={networkOnline}
             loading={loading}
             privacy={privacy}
             error={error}
-            conflictCount={state.conflicts.length}
             onNavigate={(next) => { setLocalToolsOpen(false); navigate(next); }}
             onRefresh={() => void refresh()}
             onTogglePrivacy={() => setPrivacy((value) => !value)}
             onLogout={() => void logout()}
             onOpenLocalTools={() => setLocalToolsOpen(true)}
           >
-            {localToolsOpen ? <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} /> : content}
+            {localToolsOpen
+              ? <DesktopLocalToolsCenter onClose={() => setLocalToolsOpen(false)} />
+              : path === "/app/photos" ? <PhotoSyncModule />
+                : path === "/app/fitness" ? <><DesktopFitnessImport />{content}</>
+                  : content}
           </DesktopWorkbenchShell>
         )}
       />

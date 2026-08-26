@@ -74,11 +74,6 @@ export function installTauriApiBridge() {
     restart: () => relaunch(),
   };
   const photoStatus = () => invoke<PhotoSyncDesktopResponse>("photo_status");
-  window.mobileUploadApi = {
-    status: () => invoke<MobileUploadResponse>("mobile_upload_status"),
-    start: () => invoke<MobileUploadResponse>("mobile_upload_start"),
-    stop: () => invoke<MobileUploadResponse>("mobile_upload_stop"),
-  };
   window.photoSyncApi = {
     status: photoStatus,
     createPairing: () => invoke<PhotoSyncDesktopResponse>("photo_create_pairing"),

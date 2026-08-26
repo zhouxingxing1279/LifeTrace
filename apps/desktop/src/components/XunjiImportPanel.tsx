@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Check, ChevronDown, FileImage, Pencil, Plus, QrCode, RefreshCw, RotateCcw, Trash2, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, ChevronDown, FileImage, Pencil, Plus, QrCode, RotateCcw, Trash2, X } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
-import type { WorkoutImportRecord, XunjiWorkout } from "@/src/types";
+import type { XunjiWorkout } from "@/src/types";
 
 type ParsedImport = {
   importId: string;
   shareUrl: string;
-  parser: "embedded_json" | "dom" | "desktop";
+  parser: "embedded-json" | "dom";
   workout: XunjiWorkout;
 };
 
@@ -25,22 +25,6 @@ export default function XunjiImportPanel() {
   const [editing, setEditing] = useState(false);
   const [message, setMessage] = useState("");
   const [success, setSuccess] = useState(false);
-  const [pending, setPending] = useState<WorkoutImportRecord[]>([]);
-
-  const loadPending = async () => {
-    try {
-      const response = await fetch("/api/xunji/imports");
-      const payload = await response.json() as { items?: WorkoutImportRecord[] };
-      if (response.ok) setPending((payload.items ?? []).filter((item) => item.status === "pending" && Boolean(item.workout)));
-    } catch {
-      // 本地解析服务离线时仍允许电脑直接选择图片重试。
-    }
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadPending(), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const upload = async (file?: File) => {
     if (!file) return;
@@ -83,7 +67,6 @@ export default function XunjiImportPanel() {
       setParsed(null);
       setDraft(null);
       setEditing(false);
-      await loadPending();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "训练导入失败");
     } finally {
@@ -103,18 +86,9 @@ export default function XunjiImportPanel() {
       sets: exercise.sets.map((set, indexOfSet) => indexOfSet === setIndex ? { ...set, ...patch } : set),
     } : exercise),
   } : value);
-  const openPending = (record: WorkoutImportRecord) => {
-    if (!record.workout) return;
-    setParsed({ importId: record.id, shareUrl: record.shareUrl ?? "", parser: "desktop", workout: record.workout });
-    setDraft(cloneWorkout(record.workout));
-    setEditing(false);
-    setMessage("");
-    setExpanded(true);
-  };
-
   return <section className={`xj-panel ${expanded ? "expanded" : ""}`}>
     <button className="xj-panel-head" onClick={() => setExpanded((value) => !value)}>
-      <span><i><QrCode /></i><span><b>训记训练数据同步</b><small>上传分享图 · 扫描二维码 · {pending.length ? `${pending.length} 条待确认` : "确认后导入"}</small></span></span>
+      <span><i><QrCode /></i><span><b>训记训练数据导入</b><small>选择分享图 · 扫描二维码 · 确认后导入</small></span></span>
       <ChevronDown />
     </button>
     {expanded && <div className="xj-panel-body">
@@ -123,16 +97,9 @@ export default function XunjiImportPanel() {
         <button className="hx-btn primary" disabled={loading} onClick={() => fileInput.current?.click()}>{loading ? "正在解析…" : success ? "继续导入" : "选择图片"}</button>
         <input ref={fileInput} hidden type="file" accept="image/jpeg,image/png,image/webp,image/bmp" onChange={(event) => void upload(event.target.files?.[0])} />
       </div>}
-      {!parsed && <section className="xj-pending">
-        <header><div><b>手机上传待确认</b><small>手机上传后，解析结果会出现在这里</small></div><button onClick={() => void loadPending()}><RefreshCw />刷新</button></header>
-        {pending.map((record) => <button key={record.id} onClick={() => openPending(record)}>
-          <span><b>{record.workout?.title}</b><small>{record.workout?.date} · {record.workout?.exercises.length} 个动作 · {record.workout?.durationMinutes} 分钟</small></span><em>查看并确认</em>
-        </button>)}
-        {!pending.length && <p>当前没有待确认的手机训练数据。</p>}
-      </section>}
       {message && <div className="xj-error"><X /><span><b>无法完成解析</b>{message}</span><button onClick={() => setMessage("")}>关闭</button></div>}
       {parsed && draft && <div className="xj-preview">
-        <header><div><span className="xj-success"><Check />解析成功</span><h3>{editing ? "编辑训练数据" : draft.title}</h3><small>解析方式：{parsed.parser === "embedded_json" ? "网页内嵌数据" : parsed.parser === "desktop" ? "手机上传 · 电脑解析" : "网页结构"}</small></div><button className="hx-btn secondary" onClick={() => setEditing((value) => !value)}><Pencil />{editing ? "完成编辑" : "编辑"}</button></header>
+        <header><div><span className="xj-success"><Check />解析成功</span><h3>{editing ? "编辑训练数据" : draft.title}</h3><small>解析方式：{parsed.parser === "embedded-json" ? "网页内嵌数据" : "网页结构"}</small></div><button className="hx-btn secondary" onClick={() => setEditing((value) => !value)}><Pencil />{editing ? "完成编辑" : "编辑"}</button></header>
         <div className="xj-meta">
           <label>训练日期<input disabled={!editing} type="date" value={draft.date} onChange={(event) => updateWorkout({ date: event.target.value })} /></label>
           <label>训练名称<input disabled={!editing} value={draft.title} onChange={(event) => updateWorkout({ title: event.target.value })} /></label>

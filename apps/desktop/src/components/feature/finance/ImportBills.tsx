@@ -1,21 +1,10 @@
-import { useEffect, useRef, useState } from "react";
-import { Dumbbell, FileUp, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { FileUp } from "lucide-react";
 import { useLifeStore } from "@/src/stores/useLifeStore";
 import type { Transaction } from "@/src/types";
-import MobileUploadControl from "@/src/components/common/MobileUploadControl";
-import { EmptyState, PanelHead } from "@/src/components/common";
+import { PanelHead } from "@/src/components/common";
 import { notify } from "@/src/ui/feedback/toastBus";
 import { pad, transactionAmountText } from "@/src/utils/format";
-
-type ImportUploadItem = {
-  id: string;
-  kind: "fitness" | "bill";
-  filename: string;
-  contentType: string;
-  size: number;
-  status: "pending" | "parsed";
-  createdAt: string;
-};
 
 type ImportRow = {
   type: Transaction["type"];
@@ -51,24 +40,6 @@ export default function ImportBills() {
     invalid: 0,
   });
   const [importing, setImporting] = useState(false);
-  const [phoneUploads, setPhoneUploads] = useState<ImportUploadItem[]>([]);
-  const [loadingUploads, setLoadingUploads] = useState(true);
-
-  const loadPhoneUploads = async () => {
-    setLoadingUploads(true);
-    try {
-      const response = await fetch("/api/imports");
-      const payload = (await response.json()) as { items?: ImportUploadItem[] };
-      setPhoneUploads(payload.items ?? []);
-    } finally {
-      setLoadingUploads(false);
-    }
-  };
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => void loadPhoneUploads(), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
 
   const parseLine = (line: string) => {
     const result: string[] = [];
@@ -350,30 +321,6 @@ export default function ImportBills() {
     void read(file);
   };
 
-  const parsePhoneBill = async (item: ImportUploadItem) => {
-    setMessage(`正在从手机文件解析：${item.filename}`);
-    const response = await fetch(`/api/imports?id=${encodeURIComponent(item.id)}`);
-    if (!response.ok) {
-      setMessage("无法读取手机上传的账单文件");
-      return;
-    }
-    const file = new File([await response.blob()], item.filename, {
-      type: item.contentType,
-    });
-    await read(file);
-    await fetch("/api/imports", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: item.id, status: "parsed" }),
-    });
-    await loadPhoneUploads();
-  };
-
-  const deletePhoneUpload = async (id: string) => {
-    await fetch(`/api/imports?id=${encodeURIComponent(id)}`, { method: "DELETE" });
-    await loadPhoneUploads();
-  };
-
   const commit = async () => {
     setImporting(true);
     try {
@@ -407,73 +354,6 @@ export default function ImportBills() {
 
   return (
     <div className="hx-view">
-      <article className="hx-panel hx-phone-imports">
-        <PanelHead kicker="手机传输" title="待处理导入文件" />
-        <div className="hx-panel-body">
-          <MobileUploadControl context="bills" />
-          <div className="hx-phone-import-head">
-            <p>手机上传的健身数据图和账单文件保存在电脑本地。</p>
-            <button
-              type="button"
-              className="hx-btn secondary"
-              onClick={() => void loadPhoneUploads()}
-            >
-              刷新列表
-            </button>
-          </div>
-          <div className="hx-phone-import-list">
-            {phoneUploads.map((item) => (
-              <article key={item.id}>
-                <span>
-                  {item.kind === "fitness" ? <Dumbbell /> : <FileUp />}
-                </span>
-                <div>
-                  <strong>{item.filename}</strong>
-                  <small>
-                    {item.kind === "fitness" ? "健身数据图" : "账单文件"} ·{" "}
-                    {(item.size / 1024 / 1024).toFixed(2)} MB ·{" "}
-                    {new Date(item.createdAt).toLocaleString("zh-CN")}
-                  </small>
-                </div>
-                <div>
-                  <a
-                    className="hx-btn secondary"
-                    href={`/api/imports?id=${encodeURIComponent(item.id)}`}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {item.kind === "fitness" ? "查看" : "下载"}
-                  </a>
-                  {item.kind === "bill" && /\.(xlsx|csv)$/i.test(item.filename) ? (
-                    <button
-                      type="button"
-                      className="hx-btn primary"
-                      onClick={() => void parsePhoneBill(item)}
-                    >
-                      {item.status === "parsed" ? "重新解析" : "电脑解析"}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="hx-icon-btn"
-                    aria-label={`删除${item.filename}`}
-                    onClick={() => void deletePhoneUpload(item.id)}
-                  >
-                    <Trash2 />
-                  </button>
-                </div>
-              </article>
-            ))}
-            {!phoneUploads.length && !loadingUploads ? (
-              <EmptyState title="手机还没有上传文件" />
-            ) : null}
-            {loadingUploads ? (
-              <EmptyState title="正在读取手机上传文件…" />
-            ) : null}
-          </div>
-        </div>
-      </article>
-
       <div className="hx-import-grid">
         <article className="hx-panel">
           <PanelHead kicker="微信 / 支付宝" title="导入支付流水" />

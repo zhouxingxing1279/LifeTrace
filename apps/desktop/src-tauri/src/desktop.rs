@@ -57,23 +57,6 @@ pub fn photo_status(state: State<'_, DesktopState>) -> Value {
 }
 
 #[tauri::command]
-pub fn mobile_upload_status(state: State<'_, DesktopState>) -> Value {
-    json!({ "ok": true, "status": state.photo_runtime.mobile_upload_status() })
-}
-
-#[tauri::command]
-pub fn mobile_upload_start(state: State<'_, DesktopState>) -> Value {
-    state.photo_runtime.set_active(true);
-    json!({ "ok": true, "status": state.photo_runtime.mobile_upload_status() })
-}
-
-#[tauri::command]
-pub fn mobile_upload_stop(state: State<'_, DesktopState>) -> Value {
-    state.photo_runtime.set_active(false);
-    json!({ "ok": true, "status": state.photo_runtime.mobile_upload_status() })
-}
-
-#[tauri::command]
 pub fn photo_create_pairing(state: State<'_, DesktopState>) -> Value {
     match state.photo_runtime.create_pairing() {
         Ok(status) => json!({ "ok": true, "status": status }),

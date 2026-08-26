@@ -1,8 +1,9 @@
 import {
-  APP_ID, APP_VERSION, ENTITY_TYPES, PROTOCOL_VERSION, REQUESTED_SCOPES,
-  SCHEMA_VERSION, clone, uuid,
+  ENTITY_TYPES, PROTOCOL_VERSION, REQUESTED_SCOPES,
+  SCHEMA_VERSION, WEB_SYNC_CLIENT, clone, uuid,
   type CloudConflict, type CloudState, type DeviceInstallation, type EntityType,
   type FetchLike, type JsonEntity, type ManagedSession, type PullResponse,
+  type SyncClientIdentity,
   type PushResult, type SnapshotResponse, type SyncChange, type WebSession,
   type BeeCountIntegrationStatus, type BeeCountLedgerList, type BeeCountLedgerSnapshot,
 } from "./types";
@@ -182,6 +183,7 @@ export class CloudDataStore {
     private readonly deviceId: string,
     csrfToken: string,
     fetcher: FetchLike = browserFetch,
+    private readonly syncClient: SyncClientIdentity = WEB_SYNC_CLIENT,
   ) {
     this.csrfToken = csrfToken.trim();
     this.fetcher = bindFetch(fetcher);
@@ -193,7 +195,7 @@ export class CloudDataStore {
   list<T extends JsonEntity = JsonEntity>(entityType: EntityType): T[] { return Object.values(this.state.entities[entityType] ?? {}) as T[]; }
 
   private clientInfo() {
-    return { appId: APP_ID, clientVersion: APP_VERSION, platform: "web", protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION, deviceId: this.deviceId };
+    return { ...this.syncClient, protocolVersion: PROTOCOL_VERSION, schemaVersion: SCHEMA_VERSION, deviceId: this.deviceId };
   }
 
   private async post<T>(url: string, body: unknown): Promise<T> {
