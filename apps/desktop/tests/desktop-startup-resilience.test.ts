@@ -25,3 +25,9 @@ test("desktop bundle targets a conservative WebView2-compatible JavaScript level
   const vite = readFileSync("vite.tauri.config.ts", "utf8");
   assert.match(vite, /target:\s*"es2020"/);
 });
+
+test("theme preference listener supports WebView2 runtimes without MediaQueryList.addEventListener", () => {
+  const preferences = readFileSync("src/services/appPreferences.ts", "utf8");
+  assert.match(preferences, /typeof media\.addEventListener === "function"/);
+  assert.match(preferences, /typeof media\.addListener === "function"/);
+});
