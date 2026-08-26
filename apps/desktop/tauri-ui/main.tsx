@@ -8,7 +8,8 @@ import { clientLogger, installGlobalErrorHandlers } from "@/src/services/clientO
 import { installDesktopContextMenuPolicy } from "@/src/services/contextMenuPolicy";
 import { installGlobalFetchInstrumentation } from "@/src/services/fetchInstrumentation";
 import { useLifeStore } from "@/src/stores/useLifeStore";
-import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
+import { installTauriApiBridge } from "./apiBridge";
+import { waitForTauriBackend } from "./backendStartup";
 import { installVaultBridge } from "./vaultBridge";
 import { installWindowPlacementPersistence, restoreWindowPlacement } from "./windowState";
 
@@ -43,11 +44,20 @@ import "@/app/interaction-performance.css";
 import "@/app/desktop-cloud-workspace.css";
 import "@/app/desktop-local-tools.css";
 
+declare global {
+  interface Window {
+    __LIFETRACE_MODULE_STARTED__?: boolean;
+  }
+}
+
+window.__LIFETRACE_MODULE_STARTED__ = true;
+
 const rootCandidate = document.getElementById("root");
 if (!rootCandidate) throw new Error("LifeTrace root element is missing");
 const root: HTMLElement = rootCandidate;
 
 function renderStartupStatus(message: string) {
+  root.dataset.lifetraceBootStage = message;
   root.innerHTML = '<div class="hx-loading"><span>LT</span><p></p></div>';
   const detail = root.querySelector("p");
   if (detail) detail.textContent = message;
@@ -56,6 +66,7 @@ function renderStartupStatus(message: string) {
 function renderStartupFailure(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "桌面端初始化失败");
   root.dataset.lifetraceBootPending = "false";
+  root.dataset.lifetraceBootStage = "failed";
   root.innerHTML = "";
   const panel = document.createElement("div");
   panel.className = "hx-loading";
@@ -67,7 +78,7 @@ function renderStartupFailure(error: unknown) {
   const detail = document.createElement("p");
   detail.textContent = message;
   const hint = document.createElement("small");
-  hint.textContent = "如果仍然失败，请更新 Microsoft Edge WebView2 Runtime 后重试。";
+  hint.textContent = "请保留这段错误信息。若提示 WebView2 请更新 Runtime；若提示数据库迁移或端口占用，可直接据此修复。";
   const retry = document.createElement("button");
   retry.className = "hx-btn primary";
   retry.textContent = "重新启动";
@@ -115,11 +126,12 @@ async function start() {
 
     installTauriApiBridge();
     installVaultBridge();
-    renderStartupStatus("正在启动本地 SQLite 服务…");
+    renderStartupStatus("正在启动本地 SQLite 服务… 0s");
     clientLogger.info("desktop.start.begin");
 
-    await waitForTauriBackend();
+    await waitForTauriBackend(45_000, renderStartupStatus);
     clientLogger.info("desktop.backend.ready");
+    root.dataset.lifetraceBootStage = "rendering-app";
     createRoot(root).render(
       <StrictMode>
         <ClientErrorBoundary>
@@ -129,6 +141,7 @@ async function start() {
       </StrictMode>,
     );
     root.dataset.lifetraceBootPending = "false";
+    root.dataset.lifetraceBootStage = "ready";
   } catch (error) {
     try {
       clientLogger.fatal("desktop.start.failed", undefined, error);
