@@ -1,0 +1,86 @@
+name: Desktop execution sync one-off
+
+on:
+  push:
+    branches:
+      - refactor/desktop-decouple-web
+    paths:
+      - scripts/desktop_execution_sync_patch.py
+      - .github/workflows/desktop-execution-sync-oneoff.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      DEBIAN_FRONTEND: noninteractive
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/desktop-decouple-web
+          fetch-depth: 0
+
+      - name: Apply Execution sync patch
+        run: python3 scripts/desktop_execution_sync_patch.py
+
+      - name: Refresh Ubuntu package index
+        run: |
+          set -euo pipefail
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo timeout 300s apt-get -o Acquire::Retries=3 -o Acquire::ForceIPv4=true -o Acquire::Languages=none update
+
+      - name: Install Tauri Linux dependencies
+        run: |
+          set -euo pipefail
+          sudo timeout 300s apt-get -o Acquire::Retries=3 -o Acquire::ForceIPv4=true -o Acquire::Languages=none install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('apps/desktop/xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-contracts
+            crates/lifetrace-sync-client
+            apps/desktop/src-tauri
+
+      - name: Format and validate diff
+        run: |
+          cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml
+          git diff --check
+
+      - name: Desktop Rust tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
+
+      - name: Remove one-off machinery and commit
+        run: |
+          git rm -f scripts/desktop_execution_sync_patch.py .github/workflows/desktop-execution-sync-oneoff.yml
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "refactor(desktop): synchronize all execution write paths"
+          git push origin HEAD:refactor/desktop-decouple-web
