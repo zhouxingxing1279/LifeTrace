@@ -1,7 +1,7 @@
 //! `/api/notes` 处理器：统一委托给笔记 Repository。
 //!
-//! 处理器不直接承担数据库转换逻辑；schema 由版本化 Migration 管理，
-//! 本模块不再创建任何业务表。
+//! Desktop 本地写入在这一层同时写入 sync outbox；Repository 本身保持无写入来源
+//! 假设，避免远端 Pull/Migration 复用 Repository 时产生回声同步。
 
 use axum::{
     extract::{Query, State},
@@ -9,10 +9,13 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use lifetrace_contracts::registry::EntityType;
+use rusqlite::Connection;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::database::repositories::notes as notes_repo;
+use crate::sync::outbox::{enqueue_delete, enqueue_upsert, MutationOrigin};
 
 use super::AppState;
 
@@ -46,6 +49,41 @@ fn finish(result: Result<Value, String>) -> Response {
             message,
         ),
     }
+}
+
+fn meta_entity(connection: &Connection, collection: &str, id: &str) -> Result<Value, String> {
+    let meta = notes_repo::meta(connection)?;
+    meta.get(collection)
+        .and_then(Value::as_array)
+        .and_then(|items| {
+            items
+                .iter()
+                .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
+        })
+        .cloned()
+        .ok_or_else(|| "笔记元数据保存后无法重新读取".to_owned())
+}
+
+fn assign_meta_owner(connection: &Connection, table: &str, id: &str) -> Result<(), String> {
+    let profile_id = crate::database::profile::active_profile_id(connection)?;
+    connection
+        .execute(
+            &format!("UPDATE {table} SET user_id=?1 WHERE id=?2"),
+            rusqlite::params![profile_id, id],
+        )
+        .map(|_| ())
+        .map_err(|error| error.to_string())
+}
+
+fn enqueue_note(connection: &Connection, note: &Value) -> Result<(), String> {
+    enqueue_upsert(
+        connection,
+        EntityType::NOTE_NOTE,
+        note,
+        None,
+        MutationOrigin::Local,
+    )?;
+    Ok(())
 }
 
 pub async fn get(State(state): State<AppState>, Query(query): Query<NoteQuery>) -> Response {
@@ -99,28 +137,52 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
         Err(_) => return failure(StatusCode::INTERNAL_SERVER_ERROR, "SQLite 锁已损坏"),
     };
     let result: Result<Value, String> = (|| match action {
-        "create" => {
+        "create" | "update" => {
             let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
-            let saved = notes_repo::save_note(&connection, note, false, false)?;
-            crate::database::note_links::sync_note_links(&connection, &saved)?;
-            crate::database::note_links::enrich_note(&connection, saved)
-        }
-        "update" => {
-            let note = body.get("note").ok_or_else(|| "缺少笔记内容".to_owned())?;
-            let create_revision = body
-                .get("createRevision")
-                .and_then(Value::as_bool)
-                .unwrap_or(false);
-            let saved = notes_repo::save_note(&connection, note, true, create_revision)?;
-            crate::database::note_links::sync_note_links(&connection, &saved)?;
-            crate::database::note_links::enrich_note(&connection, saved)
+            let create_revision = action == "update"
+                && body
+                    .get("createRevision")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            let saved = notes_repo::save_note(
+                &transaction,
+                note,
+                action == "update",
+                create_revision,
+            )?;
+            crate::database::note_links::sync_note_links(&transaction, &saved)?;
+            let enriched = crate::database::note_links::enrich_note(&transaction, saved)?;
+            enqueue_note(&transaction, &enriched)?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(enriched)
         }
         "trash" | "restore" => {
             let note_id = body
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少笔记 id".to_owned())?;
-            notes_repo::set_deleted(&connection, note_id, action == "trash")?;
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            let deleting = action == "trash";
+            notes_repo::set_deleted(&transaction, note_id, deleting)?;
+            if deleting {
+                enqueue_delete(
+                    &transaction,
+                    EntityType::NOTE_NOTE,
+                    note_id,
+                    None,
+                    MutationOrigin::Local,
+                )?;
+            } else {
+                let restored = notes_repo::get_note(&transaction, note_id)?
+                    .ok_or_else(|| "笔记不存在".to_owned())?;
+                enqueue_note(&transaction, &restored)?;
+            }
+            transaction.commit().map_err(|error| error.to_string())?;
             Ok(json!({ "ok": true }))
         }
         "delete" => {
@@ -128,7 +190,18 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少笔记 id".to_owned())?;
-            notes_repo::delete_note(&connection, note_id)?;
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            notes_repo::delete_note(&transaction, note_id)?;
+            enqueue_delete(
+                &transaction,
+                EntityType::NOTE_NOTE,
+                note_id,
+                None,
+                MutationOrigin::Local,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
             Ok(json!({ "ok": true }))
         }
         "duplicate" => {
@@ -136,38 +209,73 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少笔记 id".to_owned())?;
-            let duplicated = notes_repo::duplicate_note(&connection, note_id)?;
-            crate::database::note_links::sync_note_links(&connection, &duplicated)?;
-            crate::database::note_links::enrich_note(&connection, duplicated)
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            let duplicated = notes_repo::duplicate_note(&transaction, note_id)?;
+            crate::database::note_links::sync_note_links(&transaction, &duplicated)?;
+            let enriched = crate::database::note_links::enrich_note(&transaction, duplicated)?;
+            enqueue_note(&transaction, &enriched)?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(enriched)
         }
         "folder.save" | "tag.save" => {
-            let key = if action == "folder.save" {
-                "folder"
-            } else {
-                "tag"
-            };
+            let is_folder = action == "folder.save";
+            let key = if is_folder { "folder" } else { "tag" };
             let input = body.get(key).ok_or_else(|| format!("缺少{key}数据"))?;
-            let entity_id = if action == "folder.save" {
-                notes_repo::save_folder(&connection, input)?
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            let entity_id = if is_folder {
+                notes_repo::save_folder(&transaction, input)?
             } else {
-                notes_repo::save_tag(&connection, input)?
+                notes_repo::save_tag(&transaction, input)?
             };
+            // The legacy repository still writes historical `local` ownership for
+            // folder/tag rows. Normalize it at the Desktop write boundary so the
+            // active profile remains isolated until the repository is fully modernized.
+            assign_meta_owner(
+                &transaction,
+                if is_folder { "note_folders" } else { "note_tags" },
+                &entity_id,
+            )?;
+            let entity = meta_entity(
+                &transaction,
+                if is_folder { "folders" } else { "tags" },
+                &entity_id,
+            )?;
+            enqueue_upsert(
+                &transaction,
+                if is_folder { EntityType::NOTE_FOLDER } else { EntityType::NOTE_TAG },
+                &entity,
+                None,
+                MutationOrigin::Local,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
             Ok(json!({ "ok": true, "id": entity_id }))
         }
-        "folder.delete" => {
+        "folder.delete" | "tag.delete" => {
             let entity_id = body
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少 id".to_owned())?;
-            notes_repo::delete_folder(&connection, entity_id)?;
-            Ok(json!({ "ok": true }))
-        }
-        "tag.delete" => {
-            let entity_id = body
-                .get("id")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "缺少 id".to_owned())?;
-            notes_repo::delete_tag(&connection, entity_id)?;
+            let is_folder = action == "folder.delete";
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            if is_folder {
+                notes_repo::delete_folder(&transaction, entity_id)?;
+            } else {
+                notes_repo::delete_tag(&transaction, entity_id)?;
+            }
+            enqueue_delete(
+                &transaction,
+                if is_folder { EntityType::NOTE_FOLDER } else { EntityType::NOTE_TAG },
+                entity_id,
+                None,
+                MutationOrigin::Local,
+            )?;
+            transaction.commit().map_err(|error| error.to_string())?;
             Ok(json!({ "ok": true }))
         }
         "revision.restore" => {
@@ -175,9 +283,15 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
                 .get("id")
                 .and_then(Value::as_str)
                 .ok_or_else(|| "缺少版本 id".to_owned())?;
-            let restored = notes_repo::restore_revision(&connection, revision_id)?;
-            crate::database::note_links::sync_note_links(&connection, &restored)?;
-            crate::database::note_links::enrich_note(&connection, restored)
+            let transaction = connection
+                .unchecked_transaction()
+                .map_err(|error| error.to_string())?;
+            let restored = notes_repo::restore_revision(&transaction, revision_id)?;
+            crate::database::note_links::sync_note_links(&transaction, &restored)?;
+            let enriched = crate::database::note_links::enrich_note(&transaction, restored)?;
+            enqueue_note(&transaction, &enriched)?;
+            transaction.commit().map_err(|error| error.to_string())?;
+            Ok(enriched)
         }
         "attachment.record" => {
             let file = body.get("file").ok_or_else(|| "缺少附件数据".to_owned())?;
@@ -198,15 +312,51 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
         }
         "backup.restore" => {
             let data = body.get("data").ok_or_else(|| "备份格式错误".to_owned())?;
-            // 恢复前必须创建一致性数据库备份。
             crate::database::backup::create_backup(
                 &connection,
                 &state.data_dir,
                 "before-notes-restore",
-            )
-            .map_err(|message| message)?;
+            )?;
             notes_repo::restore_backup(&mut *connection, data)?;
             crate::database::note_links::rebuild_all(&connection)?;
+            // Backup restore is explicitly a local mutation. Queue restored note
+            // entities so the next background sync can reconcile the cloud copy.
+            for note in notes_repo::list_notes(
+                &connection,
+                None,
+                Some("all"),
+                None,
+                None,
+                None,
+                None,
+                250,
+            )? {
+                if let Some(id) = note.get("id").and_then(Value::as_str) {
+                    if let Some(full) = notes_repo::get_note(&connection, id)? {
+                        enqueue_note(&connection, &full)?;
+                    }
+                }
+            }
+            let meta = notes_repo::meta(&connection)?;
+            for (collection, entity_type) in [
+                ("folders", EntityType::NOTE_FOLDER),
+                ("tags", EntityType::NOTE_TAG),
+            ] {
+                for entity in meta
+                    .get(collection)
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+                {
+                    enqueue_upsert(
+                        &connection,
+                        entity_type,
+                        &entity,
+                        None,
+                        MutationOrigin::Local,
+                    )?;
+                }
+            }
             Ok(json!({ "ok": true }))
         }
         _ => Err("不支持的笔记操作".to_owned()),
