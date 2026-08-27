@@ -16,6 +16,7 @@ impl AppId {
     pub const NOTES_ANDROID: &'static str = "lifetrace-notes-android";
     pub const ENGLISH_ANDROID: &'static str = "lifetrace-english-android";
     pub const HABITS_ANDROID: &'static str = "lifetrace-habits-android";
+    pub const EXECUTE_ANDROID: &'static str = "lifetrace-execute-android";
     /// Unmodified BeeCount Flutter/iOS/Android clients through the compatibility facade.
     pub const BEECOUNT: &'static str = "beecount-mobile";
     pub const WEB: &'static str = "lifetrace-web";
