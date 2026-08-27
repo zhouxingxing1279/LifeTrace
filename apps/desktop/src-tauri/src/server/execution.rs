@@ -69,13 +69,7 @@ fn enqueue_record<T: Serialize>(
     record: &T,
 ) -> Result<(), String> {
     let value = serde_json::to_value(record).map_err(|error| error.to_string())?;
-    enqueue_upsert(
-        connection,
-        entity_type,
-        &value,
-        None,
-        MutationOrigin::Local,
-    )?;
+    enqueue_upsert(connection, entity_type, &value, None, MutationOrigin::Local)?;
     Ok(())
 }
 
