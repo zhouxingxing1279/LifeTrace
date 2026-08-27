@@ -12,8 +12,8 @@ test("desktop app keeps the local workspace as the primary runtime", () => {
   assert.match(shell, /正在连接 SQLite 个人系统/);
 });
 
-test("desktop local shell keeps native-only modules available", () => {
-  const shell = readFileSync("src/components/HengXuShell.tsx", "utf8");
+test("desktop local shell routes native-only modules through the desktop router", () => {
+  const router = readFileSync("src/app/DesktopRouter.tsx", "utf8");
 
   for (const moduleName of [
     "PhotoSyncModule",
@@ -23,7 +23,7 @@ test("desktop local shell keeps native-only modules available", () => {
     "MailActionCenter",
     "AnalyticsModule",
   ]) {
-    assert.match(shell, new RegExp(moduleName));
+    assert.match(router, new RegExp(moduleName));
   }
 });
 
@@ -34,7 +34,7 @@ test("desktop runtime treats cloud as background replication", () => {
   assert.match(runtime, /cloudSync\.now/);
   assert.match(runtime, /syncStatus/);
   assert.match(runtime, /window\.addEventListener\("offline"/);
-  assert.match(runtime, /never blocks the local Desktop runtime/);
+  assert.match(runtime, /background replication target/);
   assert.doesNotMatch(app, /navigator\.onLine.*当前无网络，数据未保存/s);
 });
 
