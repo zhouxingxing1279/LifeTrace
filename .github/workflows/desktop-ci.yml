@@ -1,0 +1,57 @@
+name: Desktop CI
+
+on:
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - "contracts/**"
+      - "crates/lifetrace-contracts/**"
+      - "scripts/check-app-boundaries.mjs"
+      - "scripts/check-version-consistency.mjs"
+      - ".github/workflows/desktop-ci.yml"
+  push:
+    branches:
+      - main
+      - refactor/desktop-decouple-web
+    paths:
+      - "apps/desktop/**"
+      - "contracts/**"
+      - "crates/lifetrace-contracts/**"
+      - "scripts/check-app-boundaries.mjs"
+      - "scripts/check-version-consistency.mjs"
+      - ".github/workflows/desktop-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop-frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install Desktop dependencies only
+        run: npm ci --prefix apps/desktop
+
+      - name: Enforce app boundaries
+        run: npm run architecture:check
+
+      - name: Check desktop version consistency
+        run: node scripts/check-version-consistency.mjs
+
+      - name: Desktop typecheck
+        run: npm --prefix apps/desktop run lint
+
+      - name: Desktop unit tests
+        run: npm --prefix apps/desktop run test:unit
+
+      - name: Tauri frontend production build
+        run: npm --prefix apps/desktop run web:build
