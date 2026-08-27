@@ -43,6 +43,32 @@ pub fn enqueue_upsert(
     )
 }
 
+/// Enqueue a local tombstone after the local repository has accepted a delete.
+/// Remote/migration application must never call this as `Local`, otherwise a
+/// pulled delete would be echoed back to the server.
+pub fn enqueue_delete(
+    connection: &Connection,
+    entity_type: &str,
+    entity_id: &str,
+    atomic_group_id: Option<&str>,
+    origin: MutationOrigin,
+) -> Result<Option<String>, String> {
+    if origin != MutationOrigin::Local {
+        return Ok(None);
+    }
+    if entity_id.trim().is_empty() {
+        return Err("outbox delete entity is missing id".to_owned());
+    }
+    enqueue(
+        connection,
+        entity_type,
+        entity_id,
+        "delete",
+        None,
+        atomic_group_id,
+    )
+}
+
 fn enqueue(
     connection: &Connection,
     entity_type: &str,
