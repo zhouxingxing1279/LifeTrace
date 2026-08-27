@@ -1,7 +1,6 @@
 import { useEffect } from "react";
-import { Cloud, LogIn, LoaderCircle, ShieldCheck, WifiOff } from "lucide-react";
+import { LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
 import HengXuShell from "@/src/components/HengXuShell";
-import DesktopCloudWorkspace from "@/src/components/DesktopCloudWorkspace";
 import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { AccountEntry, AccountEntryHost } from "@/src/components/account/AccountEntry";
 import { clientLogger } from "@/src/services/clientObservability";
@@ -36,7 +35,6 @@ function SignedOutShell({ restoring }: { restoring: boolean }) {
 
 export default function DesktopApp() {
   const user = useCloudAuthStore((state) => state.user);
-  const session = useCloudAuthStore((state) => state.session);
   const authenticated = useCloudAuthStore((state) => state.authenticated);
   const phase = useCloudAuthStore((state) => state.phase);
   const initialize = useCloudAuthStore((state) => state.initialize);
@@ -76,6 +74,16 @@ export default function DesktopApp() {
     };
   }, [phase, reconnect, user]);
 
+  useEffect(() => {
+    if (!authenticated || phase !== "authenticated") return;
+    // Authentication already binds the active local profile to the sync runtime.
+    // Kick a non-blocking sync pass, but never make cloud availability a
+    // prerequisite for rendering or mutating the desktop workspace.
+    void window.syncApi?.now(false).catch((error) => {
+      clientLogger.warn("desktop.sync.background_kick_failed", undefined, error);
+    });
+  }, [authenticated, phase]);
+
   const hasIdentity = Boolean(user && (authenticated || phase === "offline"));
   const restoring = phase === "bootstrapping" || phase === "refreshing";
 
@@ -83,30 +91,11 @@ export default function DesktopApp() {
     return <SignedOutShell restoring={restoring}/>;
   }
 
-  const cloudAvailable = Boolean(authenticated && session && phase === "authenticated");
-
+  // Desktop is always local-first once an identity is known. Cloud connectivity
+  // only controls background synchronization; it no longer swaps the application
+  // into the Web feature runtime.
   return <>
-    {cloudAvailable ? (
-      <DesktopCloudWorkspace />
-    ) : (
-      <div className="lt-desktop-local-tools-host" aria-label="本机工具离线回退">
-        <HengXuShell/>
-        <AccountEntryHost/>
-        <div className="lt-desktop-local-tools-toolbar">
-          <div>
-            <WifiOff/>
-            <span>
-              <strong>离线模式</strong>
-              <small>云端暂不可用，继续使用本机 SQLite 数据</small>
-            </span>
-          </div>
-          <button type="button" disabled>
-            <Cloud/>
-            等待云端恢复
-          </button>
-        </div>
-      </div>
-    )}
-    <AppUpdaterHost />
+    <HengXuShell />
+    <AccountEntryHost />
   </>;
 }
