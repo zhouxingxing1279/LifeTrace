@@ -28,6 +28,11 @@ type DesktopRouterProps = {
 };
 
 export default function DesktopRouter({ view, navigate, openEditor }: DesktopRouterProps) {
+  const openNotes = (id?: string) => {
+    if (id) window.localStorage.setItem("lifetrace:last-note", id);
+    navigate("notes");
+  };
+
   const makeLinkedNote = async (
     noteType: "habit_log" | "workout_review" | "expense_note",
     title: string,
@@ -67,8 +72,7 @@ export default function DesktopRouter({ view, navigate, openEditor }: DesktopRou
         },
       ],
     });
-    window.localStorage.setItem("lifetrace:last-note", created.id);
-    navigate("notes");
+    openNotes(created.id);
     window.dispatchEvent(
       new CustomEvent("hengxu-toast", { detail: "关联笔记已创建" }),
     );
@@ -77,8 +81,7 @@ export default function DesktopRouter({ view, navigate, openEditor }: DesktopRou
   const openAnalyticsEntity = (entityType: string, entityId: string) => {
     switch (entityType) {
       case "note":
-        window.localStorage.setItem("lifetrace:last-note", entityId);
-        navigate("notes");
+        openNotes(entityId);
         return;
       case "transaction":
         navigate("transactions");
@@ -117,10 +120,7 @@ export default function DesktopRouter({ view, navigate, openEditor }: DesktopRou
         <Dashboard
           go={(next) => navigate(next as PlatformView)}
           record={(value) => openEditor({ kind: "record", value })}
-          openNotes={(id) => {
-            if (id) window.localStorage.setItem("lifetrace:last-note", id);
-            navigate("notes");
-          }}
+          openNotes={openNotes}
         />
       );
     case "execution":
@@ -197,6 +197,12 @@ export default function DesktopRouter({ view, navigate, openEditor }: DesktopRou
     case "gallery":
       return <DesignGallery />;
     default:
-      return <Dashboard go={(next) => navigate(next as PlatformView)} record={(value) => openEditor({ kind: "record", value })} />;
+      return (
+        <Dashboard
+          go={(next) => navigate(next as PlatformView)}
+          record={(value) => openEditor({ kind: "record", value })}
+          openNotes={openNotes}
+        />
+      );
   }
 }
