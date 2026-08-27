@@ -11,11 +11,6 @@ import { installTauriApiBridge, waitForTauriBackend } from "./apiBridge";
 import { installVaultBridge } from "./vaultBridge";
 import { installWindowPlacementPersistence, restoreWindowPlacement } from "./windowState";
 
-/* The authenticated cloud workspace reuses the current apps/web feature layer.
- * Compile its Tailwind visual contract first, then keep desktop/local styles in
- * control of native shell and local-only tools. */
-import "../../web/src/styles/globals.css";
-
 import "@/app/tokens.css";
 import "@/app/globals.css";
 import "@/app/hengxu.css";
@@ -39,7 +34,6 @@ import "@/app/record-workspace.css";
 import "@/app/module-layout-overrides.css";
 import "@/app/apple-polish.css";
 import "@/app/interaction-performance.css";
-import "@/app/desktop-cloud-workspace.css";
 import "@/app/desktop-local-tools.css";
 
 installGlobalFetchInstrumentation();
