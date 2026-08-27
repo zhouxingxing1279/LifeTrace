@@ -1,4 +1,5 @@
 use chrono::{DateTime, NaiveDate, Utc};
+use lifetrace_contracts::registry::EntityType;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
@@ -18,6 +19,7 @@ use crate::{
     },
     execution::{self, ExecutionError, ExecutionErrorKind, ExecutionResult},
     execution_structure::RecurrenceRuleInput,
+    sync::outbox::{enqueue_delete, enqueue_upsert, MutationOrigin},
 };
 
 #[derive(Debug, Clone, Deserialize)]
@@ -127,6 +129,33 @@ fn conflict(message: impl Into<String>) -> ExecutionError {
 
 fn active_user(connection: &Connection) -> ExecutionResult<String> {
     profile::active_profile_id(connection).map_err(storage)
+}
+
+fn enqueue_record<T: Serialize>(
+    connection: &Connection,
+    entity_type: &str,
+    record: &T,
+) -> ExecutionResult<()> {
+    let value = serde_json::to_value(record).map_err(|error| storage(error.to_string()))?;
+    enqueue_upsert(connection, entity_type, &value, None, MutationOrigin::Local)
+        .map_err(storage)?;
+    Ok(())
+}
+
+fn enqueue_tombstone(
+    connection: &Connection,
+    entity_type: &str,
+    entity_id: &str,
+) -> ExecutionResult<()> {
+    enqueue_delete(
+        connection,
+        entity_type,
+        entity_id,
+        None,
+        MutationOrigin::Local,
+    )
+    .map_err(storage)?;
+    Ok(())
 }
 
 fn clean_required(value: &str, label: &str, max: usize) -> ExecutionResult<String> {
@@ -409,7 +438,9 @@ pub fn create_event(
     let user_id = active_user(connection)?;
     let write = normalize_event(user_id.clone(), None, input, None)?;
     ensure_source_task(connection, &user_id, write.source_task_id.as_deref())?;
-    repository::save_event(connection, &write).map_err(storage)
+    let event = repository::save_event(connection, &write).map_err(storage)?;
+    enqueue_record(connection, EntityType::EXECUTION_CALENDAR_EVENT, &event)?;
+    Ok(event)
 }
 
 pub fn update_event(
@@ -426,7 +457,9 @@ pub fn update_event(
     }
     let write = normalize_event(user_id.clone(), Some(id.to_owned()), input, Some(&current))?;
     ensure_source_task(connection, &user_id, write.source_task_id.as_deref())?;
-    repository::save_event(connection, &write).map_err(storage)
+    let event = repository::save_event(connection, &write).map_err(storage)?;
+    enqueue_record(connection, EntityType::EXECUTION_CALENDAR_EVENT, &event)?;
+    Ok(event)
 }
 
 pub fn move_event(
@@ -457,7 +490,9 @@ pub fn move_event(
         recurrence_rule_id: current.recurrence_rule_id,
         source_task_id: current.source_task_id,
     };
-    repository::save_event(connection, &write).map_err(storage)
+    let event = repository::save_event(connection, &write).map_err(storage)?;
+    enqueue_record(connection, EntityType::EXECUTION_CALENDAR_EVENT, &event)?;
+    Ok(event)
 }
 
 pub fn cancel_event(connection: &Connection, id: &str) -> ExecutionResult<CalendarEventRecord> {
@@ -483,7 +518,9 @@ pub fn cancel_event(connection: &Connection, id: &str) -> ExecutionResult<Calend
         recurrence_rule_id: current.recurrence_rule_id,
         source_task_id: current.source_task_id,
     };
-    repository::save_event(connection, &write).map_err(storage)
+    let event = repository::save_event(connection, &write).map_err(storage)?;
+    enqueue_record(connection, EntityType::EXECUTION_CALENDAR_EVENT, &event)?;
+    Ok(event)
 }
 
 pub fn delete_event(connection: &Connection, id: &str) -> ExecutionResult<()> {
@@ -495,6 +532,7 @@ pub fn delete_event(connection: &Connection, id: &str) -> ExecutionResult<()> {
         return Err(not_found("日历事件不存在"));
     }
     if repository::soft_delete_event(connection, &user_id, id).map_err(storage)? {
+        enqueue_tombstone(connection, EntityType::EXECUTION_CALENDAR_EVENT, id)?;
         Ok(())
     } else {
         Err(not_found("日历事件不存在"))
@@ -595,6 +633,7 @@ pub fn schedule_task(
     };
     repository::create_task_schedule_link(&transaction, &user_id, task_id, &event.id)
         .map_err(storage)?;
+    enqueue_record(&transaction, EntityType::EXECUTION_CALENDAR_EVENT, &event)?;
     transaction
         .commit()
         .map_err(|error| storage(error.to_string()))?;
@@ -693,6 +732,15 @@ pub fn set_event_recurrence(
         recurrence_repository::save_recurrence_rule(&transaction, &write).map_err(storage)?;
     repository::set_event_recurrence_rule(&transaction, &user_id, event_id, Some(&rule.id))
         .map_err(storage)?;
+    enqueue_record(&transaction, EntityType::EXECUTION_RECURRENCE_RULE, &rule)?;
+    let updated_event = repository::get_event(&transaction, &user_id, event_id)
+        .map_err(storage)?
+        .ok_or_else(|| not_found("日历事件不存在"))?;
+    enqueue_record(
+        &transaction,
+        EntityType::EXECUTION_CALENDAR_EVENT,
+        &updated_event,
+    )?;
     transaction
         .commit()
         .map_err(|error| storage(error.to_string()))?;
@@ -714,6 +762,19 @@ pub fn clear_event_recurrence(connection: &Connection, event_id: &str) -> Execut
         .map_err(storage)?;
     recurrence_repository::soft_delete_recurrence_rule(&transaction, &user_id, &rule_id)
         .map_err(storage)?;
+    enqueue_tombstone(
+        &transaction,
+        EntityType::EXECUTION_RECURRENCE_RULE,
+        &rule_id,
+    )?;
+    let updated_event = repository::get_event(&transaction, &user_id, event_id)
+        .map_err(storage)?
+        .ok_or_else(|| not_found("日历事件不存在"))?;
+    enqueue_record(
+        &transaction,
+        EntityType::EXECUTION_CALENDAR_EVENT,
+        &updated_event,
+    )?;
     transaction
         .commit()
         .map_err(|error| storage(error.to_string()))?;
@@ -755,7 +816,14 @@ pub fn materialize_occurrence(
         title_override: clean_optional(input.title_override, "本次标题", 240)?,
         description_override: clean_optional(input.description_override, "本次描述", 20_000)?,
     };
-    repository::create_occurrence(connection, &user_id, &write).map_err(storage)
+    let occurrence =
+        repository::create_occurrence(connection, &user_id, &write).map_err(storage)?;
+    enqueue_record(
+        connection,
+        EntityType::EXECUTION_CALENDAR_OCCURRENCE,
+        &occurrence,
+    )?;
+    Ok(occurrence)
 }
 
 pub fn update_occurrence(
@@ -785,7 +853,14 @@ pub fn update_occurrence(
         title_override: clean_optional(input.title_override, "本次标题", 240)?,
         description_override: clean_optional(input.description_override, "本次描述", 20_000)?,
     };
-    repository::update_occurrence(connection, &user_id, occurrence_id, &write).map_err(storage)
+    let occurrence = repository::update_occurrence(connection, &user_id, occurrence_id, &write)
+        .map_err(storage)?;
+    enqueue_record(
+        connection,
+        EntityType::EXECUTION_CALENDAR_OCCURRENCE,
+        &occurrence,
+    )?;
+    Ok(occurrence)
 }
 
 pub fn change_occurrence_status(
@@ -822,7 +897,14 @@ pub fn change_occurrence_status(
         title_override: current.title_override,
         description_override: current.description_override,
     };
-    repository::update_occurrence(connection, &user_id, occurrence_id, &write).map_err(storage)
+    let occurrence = repository::update_occurrence(connection, &user_id, occurrence_id, &write)
+        .map_err(storage)?;
+    enqueue_record(
+        connection,
+        EntityType::EXECUTION_CALENDAR_OCCURRENCE,
+        &occurrence,
+    )?;
+    Ok(occurrence)
 }
 
 #[cfg(test)]
@@ -925,6 +1007,14 @@ mod tests {
         .unwrap();
         assert_eq!(event.start_local_date.as_deref(), Some("2026-11-01"));
         assert!(event.start_at.is_none());
+        let operation: String = connection
+            .query_row(
+                "SELECT operation FROM sync_outbox WHERE entity_type=?1 AND entity_id=?2 AND status='pending'",
+                [EntityType::EXECUTION_CALENDAR_EVENT, event.id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(operation, "upsert");
         let moved = move_event(
             &connection,
             &event.id,

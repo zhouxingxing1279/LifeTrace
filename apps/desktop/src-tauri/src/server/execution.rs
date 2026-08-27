@@ -274,20 +274,8 @@ pub async fn delete_task(State(state): State<AppState>, Path(id): Path<String>) 
         Ok(value) => value,
         Err(_) => return lock_error(),
     };
-    // `execution::delete_task` currently owns its transaction because it also
-    // clears completion relations. Queue the tombstone immediately afterwards;
-    // a later service cleanup can fold both operations into one transaction.
     if let Err(error) = execution::delete_task(&connection, &id) {
         return execution_error(error);
-    }
-    if let Err(error) = enqueue_delete(
-        &connection,
-        EntityType::EXECUTION_TASK,
-        &id,
-        None,
-        MutationOrigin::Local,
-    ) {
-        return storage_error(error);
     }
     Json(OkResponse { ok: true }).into_response()
 }

@@ -1,12 +1,16 @@
 use chrono::{DateTime, Utc};
+use lifetrace_contracts::registry::EntityType;
 use rusqlite::Connection;
 use serde::Deserialize;
 
-use crate::database::{
-    profile,
-    repositories::execution::{
-        self as repository, ProjectRecord, ProjectWrite, TaskListFilter, TaskRecord, TaskWrite,
+use crate::{
+    database::{
+        profile,
+        repositories::execution::{
+            self as repository, ProjectRecord, ProjectWrite, TaskListFilter, TaskRecord, TaskWrite,
+        },
     },
+    sync::outbox::{enqueue_delete, MutationOrigin},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -535,6 +539,14 @@ pub fn delete_task(connection: &Connection, id: &str) -> ExecutionResult<()> {
         return Err(ExecutionError::not_found("任务不存在"));
     }
     crate::execution_relation::clear_completion_for_task(&transaction, &user_id, id)?;
+    enqueue_delete(
+        &transaction,
+        EntityType::EXECUTION_TASK,
+        id,
+        None,
+        MutationOrigin::Local,
+    )
+    .map_err(ExecutionError::storage)?;
     transaction
         .commit()
         .map_err(|error| ExecutionError::storage(error.to_string()))?;
@@ -600,6 +612,14 @@ mod tests {
         assert_eq!(task.status, "todo");
         assert!(delete_project(&connection, &project.id).is_err());
         delete_task(&connection, &task.id).unwrap();
+        let operation: String = connection
+            .query_row(
+                "SELECT operation FROM sync_outbox WHERE entity_type=?1 AND entity_id=?2 AND status='pending'",
+                [EntityType::EXECUTION_TASK, task.id.as_str()],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(operation, "delete");
         delete_project(&connection, &project.id).unwrap();
         assert!(get_project(&connection, &project.id).is_err());
     }

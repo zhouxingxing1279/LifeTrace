@@ -8,11 +8,14 @@ use axum::{
     Json,
 };
 use chrono::{Duration, Utc};
+use lifetrace_contracts::registry::EntityType;
 use regex::Regex;
 use rusqlite::{params, Connection, OptionalExtension};
 use scraper::{Html, Selector};
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
+
+use crate::sync::outbox::{enqueue_delete, enqueue_upsert, MutationOrigin};
 
 use super::AppState;
 
@@ -46,34 +49,66 @@ fn table(key: &str) -> Option<&'static str> {
         .find_map(|(name, table)| (*name == key).then_some(*table))
 }
 
+fn sync_entity_type(key: &str) -> Option<&'static str> {
+    match key {
+        "records" => Some(EntityType::ENGLISH_LEARNING_RECORD),
+        "highlights" => Some(EntityType::ENGLISH_HIGHLIGHT),
+        "notes" => Some(EntityType::ENGLISH_NOTE),
+        "vocabulary" => Some(EntityType::ENGLISH_VOCABULARY),
+        _ => None,
+    }
+}
+
 fn put(connection: &Connection, key: &str, value: &Value) -> Result<(), String> {
-    let Some(table) = table(key) else {
+    if let Some(table) = table(key) {
+        let entity_id = value
+            .get("id")
+            .or_else(|| value.get("taskId"))
+            .and_then(Value::as_str)
+            .ok_or_else(|| "数据缺少 id".to_owned())?;
+        let stamp = value
+            .get("updatedAt")
+            .and_then(Value::as_str)
+            .unwrap_or_else(|| "");
+        let stamp = if stamp.is_empty() {
+            now()
+        } else {
+            stamp.to_owned()
+        };
+        connection
+            .execute(
+                &format!(
+                    "INSERT INTO {table}(id,data_json,updated_at) VALUES(?1,?2,?3)
+                     ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at"
+                ),
+                params![entity_id, value.to_string(), stamp],
+            )
+            .map_err(|value| value.to_string())?;
+        return Ok(());
+    }
+
+    let Some(entity_type) = sync_entity_type(key) else {
         return crate::database::repositories::english::put(connection, key, value);
     };
     let entity_id = value
         .get("id")
-        .or_else(|| value.get("taskId"))
         .and_then(Value::as_str)
-        .ok_or_else(|| "数据缺少 id".to_owned())?;
-    let stamp = value
-        .get("updatedAt")
-        .and_then(Value::as_str)
-        .unwrap_or_else(|| "");
-    let stamp = if stamp.is_empty() {
-        now()
-    } else {
-        stamp.to_owned()
-    };
-    connection
-        .execute(
-            &format!(
-                "INSERT INTO {table}(id,data_json,updated_at) VALUES(?1,?2,?3)
-                 ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at"
-            ),
-            params![entity_id, value.to_string(), stamp],
-        )
-        .map_err(|value| value.to_string())?;
-    Ok(())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "本地英语同步实体缺少 id".to_owned())?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    crate::database::repositories::english::put(&transaction, key, value)?;
+    let stored = crate::database::repositories::english::get(&transaction, key, entity_id)?
+        .ok_or_else(|| "英语实体写入后无法重新读取".to_owned())?;
+    enqueue_upsert(
+        &transaction,
+        entity_type,
+        &stored,
+        None,
+        MutationOrigin::Local,
+    )?;
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 fn list(connection: &Connection, key: &str) -> Result<Vec<Value>, String> {
@@ -112,13 +147,30 @@ fn get(connection: &Connection, key: &str, entity_id: &str) -> Result<Option<Val
 }
 
 fn remove(connection: &Connection, key: &str, entity_id: &str) -> Result<bool, String> {
-    let Some(table) = table(key) else {
+    if let Some(table) = table(key) {
+        return connection
+            .execute(&format!("DELETE FROM {table} WHERE id=?1"), [entity_id])
+            .map(|count| count > 0)
+            .map_err(|value| value.to_string());
+    }
+    let Some(entity_type) = sync_entity_type(key) else {
         return crate::database::repositories::english::remove(connection, key, entity_id);
     };
-    connection
-        .execute(&format!("DELETE FROM {table} WHERE id=?1"), [entity_id])
-        .map(|count| count > 0)
-        .map_err(|value| value.to_string())
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    let removed = crate::database::repositories::english::remove(&transaction, key, entity_id)?;
+    if removed {
+        enqueue_delete(
+            &transaction,
+            entity_type,
+            entity_id,
+            None,
+            MutationOrigin::Local,
+        )?;
+    }
+    transaction.commit().map_err(|error| error.to_string())?;
+    Ok(removed)
 }
 
 fn query(uri: &Uri) -> HashMap<String, String> {
@@ -1570,5 +1622,77 @@ pub async fn dispatch(
         Ok(value) => Json(value).into_response(),
         Err(message) if message.contains("不存在") => error(StatusCode::NOT_FOUND, message),
         Err(message) => error(StatusCode::BAD_REQUEST, message),
+    }
+}
+
+#[cfg(test)]
+mod local_first_tests {
+    use super::*;
+    use crate::database::migration_runner::{run, MigrationContext};
+    use crate::database::migrations::all;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn database() -> Connection {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let directory =
+            std::env::temp_dir().join(format!("lifetrace-english-local-first-{unique}"));
+        std::fs::create_dir_all(&directory).unwrap();
+        let mut connection = Connection::open_in_memory().unwrap();
+        connection.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+        run(&mut connection, &MigrationContext::new(directory), &all()).unwrap();
+        ensure_schema(&connection).unwrap();
+        connection
+    }
+
+    fn pending_operation(connection: &Connection, entity_type: &str, entity_id: &str) -> String {
+        connection
+            .query_row(
+                "SELECT operation FROM sync_outbox WHERE entity_type=?1 AND entity_id=?2 AND status='pending' ORDER BY created_at DESC LIMIT 1",
+                params![entity_type, entity_id],
+                |row| row.get(0),
+            )
+            .unwrap()
+    }
+
+    #[test]
+    fn core_english_mutations_enqueue_local_sync_changes() {
+        let connection = database();
+        let record = reading(&connection, "local-healthy-habits", Some("start"), 12).unwrap();
+        let record_id = record.get("id").and_then(Value::as_str).unwrap();
+        assert_eq!(
+            pending_operation(&connection, EntityType::ENGLISH_LEARNING_RECORD, record_id),
+            "upsert"
+        );
+
+        let highlight = upsert_annotation(
+            &connection,
+            "highlights",
+            json!({"articleId":"local-healthy-habits","text":"lasting change","color":"yellow"}),
+        )
+        .unwrap();
+        let highlight_id = highlight.get("id").and_then(Value::as_str).unwrap();
+        assert_eq!(
+            pending_operation(&connection, EntityType::ENGLISH_HIGHLIGHT, highlight_id),
+            "upsert"
+        );
+
+        let vocabulary = add_vocabulary(
+            &connection,
+            json!({"word":"lasting","selectedMeanings":["持续的"],"sourceArticleId":"local-healthy-habits"}),
+        )
+        .unwrap();
+        let vocabulary_id = vocabulary.get("id").and_then(Value::as_str).unwrap();
+        assert_eq!(
+            pending_operation(&connection, EntityType::ENGLISH_VOCABULARY, vocabulary_id),
+            "upsert"
+        );
+        assert!(remove(&connection, "vocabulary", vocabulary_id).unwrap());
+        assert_eq!(
+            pending_operation(&connection, EntityType::ENGLISH_VOCABULARY, vocabulary_id),
+            "delete"
+        );
     }
 }

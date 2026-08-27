@@ -138,7 +138,7 @@ pub fn enqueue_existing_profile(
     profile_id: &str,
 ) -> Result<usize, String> {
     let mut total = 0usize;
-    let sources: [(&str, Vec<Value>); 10] = [
+    let sources: [(&str, Vec<Value>); 12] = [
         (
             EntityType::FINANCE_ACCOUNT,
             crate::database::repositories::finance::list_accounts(connection)?,
@@ -146,6 +146,10 @@ pub fn enqueue_existing_profile(
         (
             EntityType::FINANCE_TRANSACTION,
             crate::database::repositories::finance::list_transactions(connection)?,
+        ),
+        (
+            EntityType::FINANCE_CATEGORY,
+            crate::database::repositories::finance::list_categories(connection)?,
         ),
         (
             EntityType::HABIT_ACTIVITY,
@@ -174,6 +178,10 @@ pub fn enqueue_existing_profile(
         (
             EntityType::ENGLISH_HIGHLIGHT,
             crate::database::repositories::english::list(connection, "highlights")?,
+        ),
+        (
+            EntityType::ENGLISH_NOTE,
+            crate::database::repositories::english::list(connection, "notes")?,
         ),
         (
             EntityType::ENGLISH_VOCABULARY,
