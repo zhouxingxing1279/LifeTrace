@@ -4,10 +4,12 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
+use lifetrace_contracts::registry::EntityType;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::{json, Map, Value};
 
 use crate::database::repositories::{finance, habits, workouts};
+use crate::sync::outbox::{enqueue_delete, enqueue_upsert, MutationOrigin};
 
 use super::AppState;
 
@@ -17,6 +19,19 @@ fn table_name(key: &str) -> Option<&'static str> {
     JSON_TABLES
         .iter()
         .find_map(|(candidate, table)| (*candidate == key).then_some(*table))
+}
+
+fn sync_entity_type(key: &str) -> Option<&'static str> {
+    match key {
+        "accounts" => Some(EntityType::FINANCE_ACCOUNT),
+        "transactions" => Some(EntityType::FINANCE_TRANSACTION),
+        "categories" => Some(EntityType::FINANCE_CATEGORY),
+        "activities" => Some(EntityType::HABIT_ACTIVITY),
+        "logs" => Some(EntityType::HABIT_LOG),
+        "reviews" => Some(EntityType::REVIEW_DAILY),
+        "workoutHistory" => Some(EntityType::WORKOUT_WORKOUT),
+        _ => None,
+    }
 }
 
 fn error(status: StatusCode, message: impl Into<String>) -> Response {
@@ -85,6 +100,79 @@ fn read_table(connection: &Connection, table: &str) -> Result<Value, String> {
         values.push(serde_json::from_str(&raw).map_err(|value| value.to_string())?);
     }
     Ok(Value::Array(values))
+}
+
+fn find_by_id(values: Vec<Value>, id: &str) -> Result<Value, String> {
+    values
+        .into_iter()
+        .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
+        .ok_or_else(|| "本地写入完成后无法重新读取实体".to_owned())
+}
+
+fn stored_sync_value(connection: &Connection, key: &str, id: &str) -> Result<Value, String> {
+    match key {
+        "accounts" => find_by_id(finance::list_accounts(connection)?, id),
+        "transactions" => find_by_id(finance::list_transactions(connection)?, id),
+        "categories" => find_by_id(finance::list_categories(connection)?, id),
+        "activities" => find_by_id(habits::list_activities(connection)?, id),
+        "logs" => find_by_id(habits::list_activity_logs(connection)?, id),
+        "reviews" => find_by_id(habits::list_daily_reviews(connection)?, id),
+        "workoutHistory" => find_by_id(workouts::list_workouts(connection)?, id),
+        _ => Err("该数据类型不属于同步实体".to_owned()),
+    }
+}
+
+fn save_syncable(connection: &Connection, key: &str, value: &Value) -> Result<(), String> {
+    let entity_type = sync_entity_type(key).ok_or_else(|| "不支持的数据表".to_owned())?;
+    let id = value
+        .get("id")
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| "本地同步实体缺少 id".to_owned())?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    match key {
+        "accounts" => finance::save_account(&transaction, value)?,
+        "transactions" => finance::save_transaction(&transaction, value)?,
+        "categories" => finance::save_category(&transaction, value)?,
+        "activities" => habits::save_activity(&transaction, value)?,
+        "logs" => habits::save_activity_log(&transaction, value)?,
+        "reviews" => habits::save_daily_review(&transaction, value)?,
+        "workoutHistory" => workouts::save_workout(&transaction, value)?,
+        _ => return Err("不支持的数据表".to_owned()),
+    }
+    let stored = stored_sync_value(&transaction, key, id)?;
+    enqueue_upsert(
+        &transaction,
+        entity_type,
+        &stored,
+        None,
+        MutationOrigin::Local,
+    )?;
+    transaction.commit().map_err(|error| error.to_string())
+}
+
+fn delete_syncable(connection: &Connection, key: &str, id: &str) -> Result<(), String> {
+    let entity_type = sync_entity_type(key).ok_or_else(|| "不支持的数据表".to_owned())?;
+    let transaction = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    match key {
+        "accounts" => finance::delete_account(&transaction, id)?,
+        "transactions" => finance::delete_transaction(&transaction, id)?,
+        "categories" => finance::delete_category(&transaction, id)?,
+        "workoutHistory" => workouts::delete_workout(&transaction, id)?,
+        _ => return Err("该数据类型不支持删除".to_owned()),
+    }
+    enqueue_delete(
+        &transaction,
+        entity_type,
+        id,
+        None,
+        MutationOrigin::Local,
+    )?;
+    transaction.commit().map_err(|error| error.to_string())
 }
 
 pub fn ensure_schema(connection: &Connection) -> rusqlite::Result<()> {
@@ -204,52 +292,14 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let Some(value) = body.get("value") else {
                 return error(StatusCode::BAD_REQUEST, "缺少写入数据");
             };
-            if key == "accounts" {
-                return match finance::save_account(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
+            if sync_entity_type(key).is_some() {
+                save_syncable(&connection, key, value)
+            } else {
+                let Some(table) = table_name(key) else {
+                    return error(StatusCode::BAD_REQUEST, "不支持的数据表");
                 };
+                put(&connection, table, value)
             }
-            if key == "transactions" {
-                return match finance::save_transaction(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "categories" {
-                return match finance::save_category(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "activities" {
-                return match habits::save_activity(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "logs" {
-                return match habits::save_activity_log(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "reviews" {
-                return match habits::save_daily_review(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "workoutHistory" {
-                return match workouts::save_workout(&connection, value) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
-            put(&connection, table, value)
         }
         "patch" => {
             let key = body
@@ -265,74 +315,25 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let Some(patch) = body.get("patch").and_then(Value::as_object) else {
                 return error(StatusCode::BAD_REQUEST, "缺少更新内容");
             };
-            if key == "accounts" {
-                let existing = finance::list_accounts(&connection)
-                    .ok()
-                    .and_then(|items| {
-                        items
-                            .into_iter()
-                            .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
-                    })
-                    .ok_or_else(|| "项目不存在".to_owned());
-                return match existing {
-                    Ok(mut value) => {
-                        if let Some(object) = value.as_object_mut() {
-                            object.extend(patch.clone());
-                            object.insert("id".to_owned(), Value::String(id.to_owned()));
-                        }
-                        match finance::save_account(&connection, &value) {
-                            Ok(()) => Json(json!({ "ok": true })).into_response(),
-                            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                        }
-                    }
-                    Err(message) => error(StatusCode::NOT_FOUND, message),
-                };
+            let existing = match key {
+                "accounts" => finance::list_accounts(&connection),
+                "activities" => habits::list_activities(&connection),
+                _ => return error(StatusCode::BAD_REQUEST, "该数据类型不支持局部更新"),
             }
-            if key == "activities" {
-                let existing = habits::list_activities(&connection)
-                    .ok()
-                    .and_then(|items| {
-                        items
-                            .into_iter()
-                            .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
-                    })
-                    .ok_or_else(|| "项目不存在".to_owned());
-                return match existing {
-                    Ok(mut value) => {
-                        if let Some(object) = value.as_object_mut() {
-                            object.extend(patch.clone());
-                            object.insert("id".to_owned(), Value::String(id.to_owned()));
-                        }
-                        match habits::save_activity(&connection, &value) {
-                            Ok(()) => Json(json!({ "ok": true })).into_response(),
-                            Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                        }
-                    }
-                    Err(message) => error(StatusCode::NOT_FOUND, message),
-                };
+            .ok()
+            .and_then(|items| {
+                items
+                    .into_iter()
+                    .find(|item| item.get("id").and_then(Value::as_str) == Some(id))
+            });
+            let Some(mut value) = existing else {
+                return error(StatusCode::NOT_FOUND, "项目不存在");
+            };
+            if let Some(object) = value.as_object_mut() {
+                object.extend(patch.clone());
+                object.insert("id".to_owned(), Value::String(id.to_owned()));
             }
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
-            let sql = format!("SELECT data_json FROM {table} WHERE id=?1");
-            let raw = match connection
-                .query_row(&sql, [id], |row| row.get::<_, String>(0))
-                .optional()
-            {
-                Ok(Some(value)) => value,
-                Ok(None) => return error(StatusCode::NOT_FOUND, "项目不存在"),
-                Err(value) => return error(StatusCode::INTERNAL_SERVER_ERROR, value.to_string()),
-            };
-            let mut value: Value = match serde_json::from_str(&raw) {
-                Ok(value) => value,
-                Err(value) => return error(StatusCode::INTERNAL_SERVER_ERROR, value.to_string()),
-            };
-            let Some(object) = value.as_object_mut() else {
-                return error(StatusCode::INTERNAL_SERVER_ERROR, "数据库记录格式错误");
-            };
-            object.extend(patch.clone());
-            object.insert("id".to_owned(), Value::String(id.to_owned()));
-            put(&connection, table, &value)
+            save_syncable(&connection, key, &value)
         }
         "delete" => {
             let key = body
@@ -345,37 +346,7 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let Some(id) = body.get("id").and_then(Value::as_str) else {
                 return error(StatusCode::BAD_REQUEST, "缺少数据 id");
             };
-            if key == "accounts" {
-                return match finance::delete_account(&connection, id) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "transactions" {
-                return match finance::delete_transaction(&connection, id) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "categories" {
-                return match finance::delete_category(&connection, id) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            if key == "workoutHistory" {
-                return match workouts::delete_workout(&connection, id) {
-                    Ok(()) => Json(json!({ "ok": true })).into_response(),
-                    Err(message) => error(StatusCode::INTERNAL_SERVER_ERROR, message),
-                };
-            }
-            let Some(table) = table_name(key) else {
-                return error(StatusCode::BAD_REQUEST, "不支持的数据表");
-            };
-            connection
-                .execute(&format!("DELETE FROM {table} WHERE id=?1"), [id])
-                .map(|_| ())
-                .map_err(|value| value.to_string())
+            delete_syncable(&connection, key, id)
         }
         "restore" => {
             let Some(data) = body.get("data").and_then(Value::as_object) else {
