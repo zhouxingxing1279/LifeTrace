@@ -2,20 +2,21 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const cloudWorkspace = () => readFileSync(new URL("../src/components/DesktopCloudWorkspace.tsx", import.meta.url), "utf8");
+const appPreferences = () => readFileSync(new URL("../src/services/appPreferences.ts", import.meta.url), "utf8");
 const tauriIndex = () => readFileSync(new URL("../tauri-ui/index.html", import.meta.url), "utf8");
 const tauriMain = () => readFileSync(new URL("../tauri-ui/main.tsx", import.meta.url), "utf8");
 const bootstrapScript = () => readFileSync(new URL("../public/desktop-theme-bootstrap.js", import.meta.url), "utf8");
 const bootstrapStyles = () => readFileSync(new URL("../public/desktop-theme-bootstrap.css", import.meta.url), "utf8");
 const designTokens = () => readFileSync(new URL("../app/tokens.css", import.meta.url), "utf8");
 
-test("desktop cloud workspace applies the loaded cloud appearance preference", () => {
-  const source = cloudWorkspace();
-  assert.match(source, /const \[cloudLoaded, setCloudLoaded\] = useState\(false\)/);
-  assert.match(source, /if \(!session \|\| !cloudLoaded\) return/);
-  assert.match(source, /item\.preferenceKey === "appearance\.theme"/);
-  assert.match(source, /mode === "dark" \|\| mode === "light" \|\| mode === "system"/);
-  assert.match(source, /setAppThemePreference\(resolveTheme\(next\)\)/);
+test("desktop appearance is owned by local app preferences", () => {
+  const source = appPreferences();
+  assert.match(source, /APP_PREFERENCES_STORAGE_KEY = "lifetrace\.app-preferences\.v1"/);
+  assert.match(source, /export function readAppPreferences/);
+  assert.match(source, /export function applyAppPreferences/);
+  assert.match(source, /export function setAppThemePreference/);
+  assert.match(source, /target\.dataset\.theme = resolvedTheme/);
+  assert.doesNotMatch(source, /CloudDataStore|appearance\.theme.*cloud/i);
 });
 
 test("tauri restores the cached theme before the react entrypoint", () => {
