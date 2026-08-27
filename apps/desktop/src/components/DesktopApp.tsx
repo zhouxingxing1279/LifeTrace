@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { LogIn, LoaderCircle, ShieldCheck } from "lucide-react";
+import DesktopProviders from "@/src/app/DesktopProviders";
 import HengXuShell from "@/src/components/HengXuShell";
 import AppUpdaterHost from "@/src/components/AppUpdaterHost";
 import { AccountEntry, AccountEntryHost } from "@/src/components/account/AccountEntry";
@@ -74,16 +75,6 @@ export default function DesktopApp() {
     };
   }, [phase, reconnect, user]);
 
-  useEffect(() => {
-    if (!authenticated || phase !== "authenticated") return;
-    // Authentication already binds the active local profile to the sync runtime.
-    // Kick a non-blocking sync pass, but never make cloud availability a
-    // prerequisite for rendering or mutating the desktop workspace.
-    void window.syncApi?.now(false).catch((error) => {
-      clientLogger.warn("desktop.sync.background_kick_failed", undefined, error);
-    });
-  }, [authenticated, phase]);
-
   const hasIdentity = Boolean(user && (authenticated || phase === "offline"));
   const restoring = phase === "bootstrapping" || phase === "refreshing";
 
@@ -94,8 +85,10 @@ export default function DesktopApp() {
   // Desktop is always local-first once an identity is known. Cloud connectivity
   // only controls background synchronization; it no longer swaps the application
   // into the Web feature runtime.
-  return <>
-    <HengXuShell />
-    <AccountEntryHost />
-  </>;
+  return (
+    <DesktopProviders>
+      <HengXuShell />
+      <AccountEntryHost />
+    </DesktopProviders>
+  );
 }
