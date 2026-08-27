@@ -1,0 +1,26 @@
+name: Architecture Boundaries
+
+on:
+  push:
+    branches:
+      - main
+      - refactor/desktop-decouple-web
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  app-boundaries:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.0
+
+      - name: Check Desktop/Web boundaries
+        run: npm run architecture:check
