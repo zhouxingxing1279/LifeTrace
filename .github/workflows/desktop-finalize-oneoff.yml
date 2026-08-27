@@ -43,7 +43,7 @@ jobs:
           test -n "$(git status --porcelain)"
       - name: Remove one-off machinery and commit
         run: |
-          git rm scripts/desktop_finalize_patch.py .github/workflows/desktop-finalize-oneoff.yml
+          git rm -f scripts/desktop_finalize_patch.py .github/workflows/desktop-finalize-oneoff.yml
           git add -A
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
