@@ -23,6 +23,9 @@ jobs:
           ref: refactor/desktop-decouple-web
           fetch-depth: 0
 
+      - name: Normalize staged patch
+        run: sed -i 's/EXECUTION_DEPENDENCY/EXECUTION_TASK_DEPENDENCY/g' scripts/desktop_execution_sync_patch.py
+
       - name: Apply Execution sync patch
         run: python3 scripts/desktop_execution_sync_patch.py
 
