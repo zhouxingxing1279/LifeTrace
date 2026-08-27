@@ -6,15 +6,7 @@ const root = process.cwd();
 const sourceExtensions = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".json"]);
 const ignoredDirectories = new Set(["node_modules", "dist", "dist-tauri", "dist-browser", "target", ".git"]);
 
-// Temporary historical debt. New cross-app coupling is forbidden. Every migrated
-// phase must shrink this set until it reaches zero.
-const desktopToWebAllowlist = new Set([
-  "apps/desktop/tauri-ui/main.tsx",
-  "apps/desktop/src/components/DesktopCloudWorkspace.tsx",
-  "apps/desktop/vite.tauri.config.ts",
-  "apps/desktop/scripts/ensure-shared-web-deps.mjs",
-]);
-
+const desktopToWebAllowlist = new Set([]);
 const webToDesktopAllowlist = new Set([]);
 
 const desktopToWebPatterns = [
@@ -96,4 +88,4 @@ if (stale.length > 0) {
   process.exit(1);
 }
 
-console.log(`Cross-app boundary check passed. Historical desktop -> web exceptions: ${desktopToWebAllowlist.size}; web -> desktop exceptions: ${webToDesktopAllowlist.size}.`);
+console.log("Cross-app boundary check passed. Desktop/Web application internals are fully isolated.");
