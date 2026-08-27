@@ -2,35 +2,35 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 
-test("signed-out desktop gates both cloud and local business workspaces", async () => {
+test("signed-out desktop gates the local business workspace", async () => {
   const source = await readFile("src/components/DesktopApp.tsx", "utf8");
   assert.match(source, /const hasIdentity = Boolean\(user && \(authenticated \|\| phase === "offline"\)\)/);
   assert.match(source, /if \(!hasIdentity\)[\s\S]*return <SignedOutShell restoring=\{restoring\}\/>/);
 
   const identityGate = source.indexOf("if (!hasIdentity)");
   const signedOutReturn = source.indexOf("return <SignedOutShell", identityGate);
-  const cloudWorkspace = source.indexOf("<DesktopCloudWorkspace", signedOutReturn);
+  const providers = source.indexOf("<DesktopProviders>", signedOutReturn);
   const localWorkspace = source.indexOf("<HengXuShell", signedOutReturn);
 
   assert.ok(identityGate >= 0, "desktop must gate business UI on an authenticated identity");
-  assert.ok(signedOutReturn > identityGate, "signed-out users must return before business workspaces render");
-  assert.ok(cloudWorkspace > signedOutReturn, "cloud workspace must stay behind the identity gate");
+  assert.ok(signedOutReturn > identityGate, "signed-out users must return before business workspace renders");
+  assert.ok(providers > signedOutReturn, "desktop runtime providers must stay behind the identity gate");
   assert.ok(localWorkspace > signedOutReturn, "local workspace must stay behind the identity gate");
+  assert.doesNotMatch(source, /DesktopCloudWorkspace|CloudDataStore|DesktopFeatureRouter/);
 });
 
-test("desktop updater is available before login and outside workspace-specific UI", async () => {
-  const [desktop, cloudWorkspace] = await Promise.all([
+test("desktop updater is available before login without a web workspace lifecycle", async () => {
+  const [desktop, shell] = await Promise.all([
     readFile("src/components/DesktopApp.tsx", "utf8"),
-    readFile("src/components/DesktopCloudWorkspace.tsx", "utf8"),
+    readFile("src/components/HengXuShell.tsx", "utf8"),
   ]);
   const signedOutStart = desktop.indexOf("function SignedOutShell");
   const desktopStart = desktop.indexOf("export default function DesktopApp");
   const signedOut = desktop.slice(signedOutStart, desktopStart);
-  const authenticatedRoot = desktop.slice(desktopStart);
 
   assert.match(signedOut, /<AppUpdaterHost \/>/, "signed-out desktop must still check for updates");
-  assert.match(authenticatedRoot, /<AppUpdaterHost \/>/, "authenticated desktop root must own update checks");
-  assert.doesNotMatch(cloudWorkspace, /AppUpdaterHost/, "cloud workspace must not own or duplicate updater lifecycle");
+  assert.match(shell, /<AppUpdaterHost \/>/, "signed-in local shell must own the updater lifecycle");
+  assert.doesNotMatch(desktop, /DesktopCloudWorkspace/, "updater must not depend on a web workspace bridge");
 });
 
 test("signed-out shell keeps the account entry visible and opens login automatically", async () => {
