@@ -44,6 +44,7 @@ pub fn supported_app(app_id: &str) -> bool {
             | AppId::NOTES_ANDROID
             | AppId::ENGLISH_ANDROID
             | AppId::HABITS_ANDROID
+            | AppId::EXECUTE_ANDROID
             | AppId::BEECOUNT
             | AppId::WEB
     )
@@ -87,6 +88,22 @@ pub fn allowed_scopes(app_id: &str) -> BTreeSet<String> {
             "habits:write",
             "reviews:read",
             "reviews:write",
+        ],
+        AppId::EXECUTE_ANDROID => &[
+            "account:read",
+            "account:write",
+            "devices:read",
+            "devices:write",
+            "sync:read",
+            "sync:write",
+            "execution:read",
+            "execution:write",
+            "habits:read",
+            "habits:write",
+            "reviews:read",
+            "reviews:write",
+            "files:read",
+            "files:write",
         ],
         AppId::BEECOUNT => &[
             "account:read",
@@ -205,6 +222,33 @@ mod tests {
             &granted,
         );
         assert_eq!(issued, vec!["finance:read"]);
+    }
+
+    #[test]
+    fn execute_android_has_only_required_product_scopes() {
+        assert!(supported_app(AppId::EXECUTE_ANDROID));
+        let granted = allowed_scopes(AppId::EXECUTE_ANDROID);
+        for required in [
+            "account:read",
+            "account:write",
+            "devices:read",
+            "devices:write",
+            "sync:read",
+            "sync:write",
+            "execution:read",
+            "execution:write",
+            "habits:read",
+            "habits:write",
+            "reviews:read",
+            "reviews:write",
+            "files:read",
+            "files:write",
+        ] {
+            assert!(granted.contains(required), "missing scope: {required}");
+        }
+        assert!(!granted.contains("finance:read"));
+        assert!(!granted.contains("notes:read"));
+        assert!(!granted.contains("mail:read"));
     }
 
     #[test]
