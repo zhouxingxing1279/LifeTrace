@@ -6,6 +6,7 @@ on:
       - "apps/desktop/**"
       - "contracts/**"
       - "crates/lifetrace-contracts/**"
+      - "crates/lifetrace-sync-client/**"
       - "scripts/check-app-boundaries.mjs"
       - "scripts/check-version-consistency.mjs"
       - ".github/workflows/desktop-ci.yml"
@@ -17,6 +18,7 @@ on:
       - "apps/desktop/**"
       - "contracts/**"
       - "crates/lifetrace-contracts/**"
+      - "crates/lifetrace-sync-client/**"
       - "scripts/check-app-boundaries.mjs"
       - "scripts/check-version-consistency.mjs"
       - ".github/workflows/desktop-ci.yml"
@@ -55,3 +57,78 @@ jobs:
 
       - name: Tauri frontend production build
         run: npm --prefix apps/desktop run web:build
+
+  desktop-rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Refresh Ubuntu package index
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            echo 'https://archive.ubuntu.com/ubuntu' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          fi
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list 2>/dev/null || true
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo sed -i 's|https://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources 2>/dev/null || true
+          sudo timeout 300s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Languages=none \
+            update
+
+      - name: Install Tauri Linux dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          set -euo pipefail
+          sudo timeout 300s apt-get \
+            -o Acquire::Retries=3 \
+            -o Acquire::http::Timeout=20 \
+            -o Acquire::https::Timeout=20 \
+            -o Acquire::ForceIPv4=true \
+            -o Acquire::Languages=none \
+            install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Create required bundled dictionary resource
+        run: |
+          python3 - <<'PY'
+          import sqlite3
+          from pathlib import Path
+          path = Path('apps/desktop/xunji_service/data/dictionary.db')
+          path.parent.mkdir(parents=True, exist_ok=True)
+          with sqlite3.connect(path) as db:
+              db.execute('CREATE TABLE IF NOT EXISTS dictionary_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)')
+          PY
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.88.0
+          components: rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            crates/lifetrace-contracts
+            crates/lifetrace-sync-client
+            apps/desktop/src-tauri
+
+      - name: Rustfmt
+        run: cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check
+
+      - name: Contract tests
+        run: cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml
+
+      - name: Sync core tests
+        run: cargo test --manifest-path crates/lifetrace-sync-client/Cargo.toml --all-features
+
+      - name: Desktop SQLite and adapter tests
+        run: cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml --lib -- --test-threads=1
