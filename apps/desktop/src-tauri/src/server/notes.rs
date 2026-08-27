@@ -147,12 +147,8 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             let transaction = connection
                 .unchecked_transaction()
                 .map_err(|error| error.to_string())?;
-            let saved = notes_repo::save_note(
-                &transaction,
-                note,
-                action == "update",
-                create_revision,
-            )?;
+            let saved =
+                notes_repo::save_note(&transaction, note, action == "update", create_revision)?;
             crate::database::note_links::sync_note_links(&transaction, &saved)?;
             let enriched = crate::database::note_links::enrich_note(&transaction, saved)?;
             enqueue_note(&transaction, &enriched)?;
@@ -236,7 +232,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             // active profile remains isolated until the repository is fully modernized.
             assign_meta_owner(
                 &transaction,
-                if is_folder { "note_folders" } else { "note_tags" },
+                if is_folder {
+                    "note_folders"
+                } else {
+                    "note_tags"
+                },
                 &entity_id,
             )?;
             let entity = meta_entity(
@@ -246,7 +246,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             )?;
             enqueue_upsert(
                 &transaction,
-                if is_folder { EntityType::NOTE_FOLDER } else { EntityType::NOTE_TAG },
+                if is_folder {
+                    EntityType::NOTE_FOLDER
+                } else {
+                    EntityType::NOTE_TAG
+                },
                 &entity,
                 None,
                 MutationOrigin::Local,
@@ -270,7 +274,11 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             }
             enqueue_delete(
                 &transaction,
-                if is_folder { EntityType::NOTE_FOLDER } else { EntityType::NOTE_TAG },
+                if is_folder {
+                    EntityType::NOTE_FOLDER
+                } else {
+                    EntityType::NOTE_TAG
+                },
                 entity_id,
                 None,
                 MutationOrigin::Local,
@@ -321,16 +329,9 @@ pub async fn mutate(State(state): State<AppState>, Json(body): Json<Value>) -> R
             crate::database::note_links::rebuild_all(&connection)?;
             // Backup restore is explicitly a local mutation. Queue restored note
             // entities so the next background sync can reconcile the cloud copy.
-            for note in notes_repo::list_notes(
-                &connection,
-                None,
-                Some("all"),
-                None,
-                None,
-                None,
-                None,
-                250,
-            )? {
+            for note in
+                notes_repo::list_notes(&connection, None, Some("all"), None, None, None, None, 250)?
+            {
                 if let Some(id) = note.get("id").and_then(Value::as_str) {
                     if let Some(full) = notes_repo::get_note(&connection, id)? {
                         enqueue_note(&connection, &full)?;
