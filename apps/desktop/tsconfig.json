@@ -29,18 +29,21 @@
   "include": [
     "tauri-ui/**/*.ts",
     "tauri-ui/**/*.tsx",
+    "src/app/**/*.ts",
+    "src/app/**/*.tsx",
     "src/components/**/*.ts",
     "src/components/**/*.tsx",
+    "src/db/**/*.ts",
     "src/hooks/**/*.ts",
     "src/services/**/*.ts",
+    "src/stores/**/*.ts",
     "src/types/**/*.ts",
-    "../../contracts/typescript/**/*.ts",
-    "../web/src/**/*.ts",
-    "../web/src/**/*.tsx",
-    "vite.tauri.config.ts",
-    "vite.browser.config.ts",
     "src/ui/**/*.ts",
-    "src/ui/**/*.tsx"
+    "src/ui/**/*.tsx",
+    "src/utils/**/*.ts",
+    "../../contracts/typescript/**/*.ts",
+    "vite.tauri.config.ts",
+    "vite.browser.config.ts"
   ],
   "exclude": [
     "node_modules",
