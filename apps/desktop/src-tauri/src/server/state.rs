@@ -165,13 +165,7 @@ fn delete_syncable(connection: &Connection, key: &str, id: &str) -> Result<(), S
         "workoutHistory" => workouts::delete_workout(&transaction, id)?,
         _ => return Err("该数据类型不支持删除".to_owned()),
     }
-    enqueue_delete(
-        &transaction,
-        entity_type,
-        id,
-        None,
-        MutationOrigin::Local,
-    )?;
+    enqueue_delete(&transaction, entity_type, id, None, MutationOrigin::Local)?;
     transaction.commit().map_err(|error| error.to_string())
 }
 
