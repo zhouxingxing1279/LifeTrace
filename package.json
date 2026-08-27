@@ -20,6 +20,7 @@
     "browser:dev": "npm run web:dev",
     "browser:build": "npm run web:build",
     "browser:preview": "npm run web:preview",
+    "architecture:check": "node scripts/check-app-boundaries.mjs",
     "lint": "npm --prefix apps/desktop run lint",
     "test": "npm run test:desktop",
     "test:desktop": "npm --prefix apps/desktop run test",
@@ -31,6 +32,6 @@
     "contracts:generate": "cargo run --manifest-path tools/contract-exporter/Cargo.toml",
     "contracts:test": "cargo test --manifest-path crates/lifetrace-contracts/Cargo.toml",
     "contracts:check": "npm run contracts:generate && git diff --exit-code -- contracts/",
-    "test:all": "npm run test:desktop && npm run test:cloud && npm run contracts:check"
+    "test:all": "npm run architecture:check && npm run test:desktop && npm run test:cloud && npm run contracts:check"
   }
 }
