@@ -135,6 +135,8 @@ pub const REGISTRY: &[EntityDescriptor] = &[
     user_owned(EntityType::EXECUTION_WAITING_ITEM, false),
     user_owned(EntityType::EXECUTION_CALENDAR_EVENT, false),
     user_owned(EntityType::EXECUTION_CALENDAR_OCCURRENCE, false),
+    user_owned(EntityType::EXECUTION_IMPORTANT_DATE, false),
+    user_owned(EntityType::EXECUTION_FOCUS_SESSION, false),
     user_owned(EntityType::EXECUTION_MEMO, false),
     user_owned(EntityType::EXECUTION_MEMO_TAG, false),
     user_owned(EntityType::EXECUTION_MEMO_TAG_RELATION, false),
@@ -201,6 +203,8 @@ impl EntityType {
     pub const EXECUTION_WAITING_ITEM: &'static str = "execution.waiting_item";
     pub const EXECUTION_CALENDAR_EVENT: &'static str = "execution.calendar_event";
     pub const EXECUTION_CALENDAR_OCCURRENCE: &'static str = "execution.calendar_occurrence";
+    pub const EXECUTION_IMPORTANT_DATE: &'static str = "execution.important_date";
+    pub const EXECUTION_FOCUS_SESSION: &'static str = "execution.focus_session";
     pub const EXECUTION_MEMO: &'static str = "execution.memo";
     pub const EXECUTION_MEMO_TAG: &'static str = "execution.memo_tag";
     pub const EXECUTION_MEMO_TAG_RELATION: &'static str = "execution.memo_tag_relation";
@@ -259,6 +263,8 @@ impl EntityType {
             Self::EXECUTION_WAITING_ITEM,
             Self::EXECUTION_CALENDAR_EVENT,
             Self::EXECUTION_CALENDAR_OCCURRENCE,
+            Self::EXECUTION_IMPORTANT_DATE,
+            Self::EXECUTION_FOCUS_SESSION,
             Self::EXECUTION_MEMO,
             Self::EXECUTION_MEMO_TAG,
             Self::EXECUTION_MEMO_TAG_RELATION,
@@ -370,5 +376,7 @@ mod tests {
         assert!(!is_syncable("secret.credential"));
         assert!(is_syncable(EntityType::FINANCE_TRANSACTION));
         assert!(is_syncable(EntityType::EXECUTION_GOAL));
+        assert!(is_syncable(EntityType::EXECUTION_IMPORTANT_DATE));
+        assert!(is_syncable(EntityType::EXECUTION_FOCUS_SESSION));
     }
 }
