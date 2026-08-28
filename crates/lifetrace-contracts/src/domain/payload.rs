@@ -265,6 +265,8 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             EntityType::EXECUTION_WAITING_ITEM => registered(value, EntityType::EXECUTION_WAITING_ITEM),
             EntityType::EXECUTION_CALENDAR_EVENT => registered(value, EntityType::EXECUTION_CALENDAR_EVENT),
             EntityType::EXECUTION_CALENDAR_OCCURRENCE => registered(value, EntityType::EXECUTION_CALENDAR_OCCURRENCE),
+            EntityType::EXECUTION_IMPORTANT_DATE => registered(value, EntityType::EXECUTION_IMPORTANT_DATE),
+            EntityType::EXECUTION_FOCUS_SESSION => registered(value, EntityType::EXECUTION_FOCUS_SESSION),
             EntityType::EXECUTION_MEMO => registered(value, EntityType::EXECUTION_MEMO),
             EntityType::EXECUTION_MEMO_TAG => registered(value, EntityType::EXECUTION_MEMO_TAG),
             EntityType::EXECUTION_MEMO_TAG_RELATION => registered(value, EntityType::EXECUTION_MEMO_TAG_RELATION),
