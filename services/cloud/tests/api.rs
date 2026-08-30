@@ -174,6 +174,24 @@ async fn capabilities_ok() {
 }
 
 #[tokio::test]
+async fn auth_capabilities_advertise_execute_android() {
+    let (status, body) = send(
+        test_app(),
+        Method::GET,
+        "/api/v1/auth/capabilities",
+        TOKEN_A,
+        Value::Null,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body["supportedApps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|app| app == "lifetrace-execute-android"));
+}
+
+#[tokio::test]
 async fn push_create_pull_and_delete() {
     let app = test_app();
 
