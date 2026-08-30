@@ -21,7 +21,7 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/lifetrace-cloud
+  IMAGE_NAME: zhouxingxing1279/lifetrace-cloud
 
 jobs:
   build-and-push:

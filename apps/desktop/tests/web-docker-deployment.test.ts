@@ -61,6 +61,13 @@ test("CI publishes a dedicated LifeTrace Web image", () => {
   assert.match(workflow, /Validate production Compose config/);
 });
 
+test("Cloud image workflow publishes the same image consumed by production", () => {
+  const workflow = repo(".github/workflows/cloud-image.yml");
+  const production = repo("deploy/cloud/docker-compose.production.yml");
+  assert.match(workflow, /IMAGE_NAME: zhouxingxing1279\/lifetrace-cloud/);
+  assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-cloud:main/);
+});
+
 test("production deploy script updates main, deploys images and verifies health locally", () => {
   const scriptPath = fileURLToPath(repoUrl("deploy/cloud/deploy-production.sh"));
   const script = readFileSync(scriptPath, "utf8");
