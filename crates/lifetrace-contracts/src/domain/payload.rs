@@ -5,6 +5,7 @@
 //! accepts them.
 
 use crate::domain::english::*;
+use crate::domain::execution::*;
 use crate::domain::files::FileMetadata;
 use crate::domain::finance::*;
 use crate::domain::habits::*;
@@ -57,6 +58,10 @@ pub enum EntityPayload {
     FileMetadata(FileMetadata),
     EntityLink(EntityLink),
     UserPreference(UserPreference),
+    ExecutionProject(ExecutionProject),
+    ExecutionTask(ExecutionTask),
+    ExecutionImportantDate(ExecutionImportantDate),
+    ExecutionFocusSession(ExecutionFocusSession),
     RegisteredJson {
         entity_type: &'static str,
         entity_id: EntityId,
@@ -103,6 +108,10 @@ impl EntityPayload {
             EntityPayload::FileMetadata(_) => EntityType::FILE_METADATA,
             EntityPayload::EntityLink(_) => EntityType::ENTITY_LINK,
             EntityPayload::UserPreference(_) => EntityType::USER_PREFERENCE,
+            EntityPayload::ExecutionProject(_) => EntityType::EXECUTION_PROJECT,
+            EntityPayload::ExecutionTask(_) => EntityType::EXECUTION_TASK,
+            EntityPayload::ExecutionImportantDate(_) => EntityType::EXECUTION_IMPORTANT_DATE,
+            EntityPayload::ExecutionFocusSession(_) => EntityType::EXECUTION_FOCUS_SESSION,
             EntityPayload::RegisteredJson { entity_type, .. } => *entity_type,
         })
     }
@@ -145,6 +154,10 @@ impl EntityPayload {
             EntityPayload::FileMetadata(value) => &value.meta.id,
             EntityPayload::EntityLink(value) => &value.meta.id,
             EntityPayload::UserPreference(value) => &value.meta.id,
+            EntityPayload::ExecutionProject(value) => &value.meta.id,
+            EntityPayload::ExecutionTask(value) => &value.meta.id,
+            EntityPayload::ExecutionImportantDate(value) => &value.meta.id,
+            EntityPayload::ExecutionFocusSession(value) => &value.meta.id,
             EntityPayload::RegisteredJson { entity_id, .. } => entity_id,
         }
     }
@@ -190,6 +203,10 @@ impl EntityPayload {
             EntityPayload::FileMetadata(v) => json!(v),
             EntityPayload::EntityLink(v) => json!(v),
             EntityPayload::UserPreference(v) => json!(v),
+            EntityPayload::ExecutionProject(v) => json!(v),
+            EntityPayload::ExecutionTask(v) => json!(v),
+            EntityPayload::ExecutionImportantDate(v) => json!(v),
+            EntityPayload::ExecutionFocusSession(v) => json!(v),
             EntityPayload::RegisteredJson { payload, .. } => payload.clone(),
         }
     }
@@ -255,18 +272,18 @@ impl TryFrom<(&EntityType, JsonValue)> for EntityPayload {
             EntityType::FILE_METADATA => parse::<FileMetadata>(&value, EntityType::FILE_METADATA).map(EntityPayload::FileMetadata),
             EntityType::ENTITY_LINK => parse::<EntityLink>(&value, EntityType::ENTITY_LINK).map(EntityPayload::EntityLink),
             EntityType::USER_PREFERENCE => parse::<UserPreference>(&value, EntityType::USER_PREFERENCE).map(EntityPayload::UserPreference),
+            EntityType::EXECUTION_PROJECT => parse::<ExecutionProject>(&value, EntityType::EXECUTION_PROJECT).map(EntityPayload::ExecutionProject),
+            EntityType::EXECUTION_TASK => parse::<ExecutionTask>(&value, EntityType::EXECUTION_TASK).map(EntityPayload::ExecutionTask),
+            EntityType::EXECUTION_IMPORTANT_DATE => parse::<ExecutionImportantDate>(&value, EntityType::EXECUTION_IMPORTANT_DATE).map(EntityPayload::ExecutionImportantDate),
+            EntityType::EXECUTION_FOCUS_SESSION => parse::<ExecutionFocusSession>(&value, EntityType::EXECUTION_FOCUS_SESSION).map(EntityPayload::ExecutionFocusSession),
             EntityType::EXECUTION_GOAL => registered(value, EntityType::EXECUTION_GOAL),
             EntityType::EXECUTION_WEEKLY_REVIEW => registered(value, EntityType::EXECUTION_WEEKLY_REVIEW),
-            EntityType::EXECUTION_PROJECT => registered(value, EntityType::EXECUTION_PROJECT),
             EntityType::EXECUTION_RECURRENCE_RULE => registered(value, EntityType::EXECUTION_RECURRENCE_RULE),
-            EntityType::EXECUTION_TASK => registered(value, EntityType::EXECUTION_TASK),
             EntityType::EXECUTION_TASK_DEPENDENCY => registered(value, EntityType::EXECUTION_TASK_DEPENDENCY),
             EntityType::EXECUTION_TASK_OCCURRENCE => registered(value, EntityType::EXECUTION_TASK_OCCURRENCE),
             EntityType::EXECUTION_WAITING_ITEM => registered(value, EntityType::EXECUTION_WAITING_ITEM),
             EntityType::EXECUTION_CALENDAR_EVENT => registered(value, EntityType::EXECUTION_CALENDAR_EVENT),
             EntityType::EXECUTION_CALENDAR_OCCURRENCE => registered(value, EntityType::EXECUTION_CALENDAR_OCCURRENCE),
-            EntityType::EXECUTION_IMPORTANT_DATE => registered(value, EntityType::EXECUTION_IMPORTANT_DATE),
-            EntityType::EXECUTION_FOCUS_SESSION => registered(value, EntityType::EXECUTION_FOCUS_SESSION),
             EntityType::EXECUTION_MEMO => registered(value, EntityType::EXECUTION_MEMO),
             EntityType::EXECUTION_MEMO_TAG => registered(value, EntityType::EXECUTION_MEMO_TAG),
             EntityType::EXECUTION_MEMO_TAG_RELATION => registered(value, EntityType::EXECUTION_MEMO_TAG_RELATION),
@@ -314,5 +331,26 @@ mod tests {
         let parsed = EntityPayload::try_from((&EntityType::new(EntityType::FINANCE_LEDGER), value)).unwrap();
         assert_eq!(parsed.entity_id().as_str(), "ledger-1");
         assert_eq!(parsed.entity_type().as_str(), EntityType::FINANCE_LEDGER);
+    }
+
+    #[test]
+    fn execution_task_dispatch_rejects_untyped_shells() {
+        let missing_required_fields: JsonValue = serde_json::json!({
+            "meta": {
+                "id": "task-1",
+                "userId": "user-1",
+                "createdAt": "2026-08-12T00:00:00Z",
+                "updatedAt": "2026-08-12T00:00:00Z",
+                "deletedAt": null,
+                "localVersion": 1,
+                "serverVersion": null,
+                "modifiedByDevice": null
+            }
+        }).into();
+        let result = EntityPayload::try_from((
+            &EntityType::new(EntityType::EXECUTION_TASK),
+            missing_required_fields,
+        ));
+        assert!(result.is_err());
     }
 }
