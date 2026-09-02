@@ -1,0 +1,12 @@
+*
+!.dockerignore
+!crates/
+!crates/**
+!services/
+!services/cloud/
+!services/cloud/**
+.git
+**/target
+**/node_modules
+apps
+docs

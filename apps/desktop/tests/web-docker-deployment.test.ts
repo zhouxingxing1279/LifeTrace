@@ -68,6 +68,15 @@ test("Cloud image workflow publishes the same image consumed by production", () 
   assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-cloud:main/);
 });
 
+test("Cloud Docker build excludes unrelated repository outputs", () => {
+  const dockerignore = repo(".dockerignore");
+  for (const ignored of [".git", "**/target", "**/node_modules", "apps", "docs"]) {
+    assert.match(dockerignore, new RegExp(`^${ignored.replaceAll("*", "\\*")}$`, "m"));
+  }
+  assert.match(dockerignore, /^!crates\/$/m);
+  assert.match(dockerignore, /^!services\/cloud\/$/m);
+});
+
 test("production deploy script updates main, deploys images and verifies health locally", () => {
   const scriptPath = fileURLToPath(repoUrl("deploy/cloud/deploy-production.sh"));
   const script = readFileSync(scriptPath, "utf8");

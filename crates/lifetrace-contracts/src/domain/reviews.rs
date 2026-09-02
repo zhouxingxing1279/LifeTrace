@@ -21,4 +21,8 @@ pub struct DailyReview {
     pub problem: Option<String>,
     pub tomorrow_priority: Option<String>,
     pub note: Option<String>,
+    #[serde(default)]
+    pub completed_task_count: Option<u64>,
+    #[serde(default)]
+    pub total_task_count: Option<u64>,
 }

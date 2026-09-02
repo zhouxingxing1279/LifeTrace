@@ -6,6 +6,7 @@
 
 pub mod english;
 pub mod enums;
+pub mod execution;
 pub mod files;
 pub mod finance;
 pub mod habits;
@@ -19,6 +20,7 @@ pub mod workouts;
 
 pub use english::*;
 pub use enums::*;
+pub use execution::*;
 pub use files::*;
 pub use finance::*;
 pub use habits::*;

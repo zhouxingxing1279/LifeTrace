@@ -127,8 +127,22 @@ async fn finish_before_start_is_server_authoritative_and_atomic_group_aware() {
     let seed = request(
         "execution-p4-seed",
         vec![
-            change("seed-pre", "execution.task", "pre", 0, task_payload("pre", "前置", "todo"), None),
-            change("seed-next", "execution.task", "next", 0, task_payload("next", "后继", "todo"), None),
+            change(
+                "seed-pre",
+                "execution.task",
+                "pre",
+                0,
+                task_payload("pre", "前置", "todo"),
+                None,
+            ),
+            change(
+                "seed-next",
+                "execution.task",
+                "next",
+                0,
+                task_payload("next", "后继", "todo"),
+                None,
+            ),
             change(
                 "seed-dep",
                 "execution.task_dependency",
@@ -210,4 +224,67 @@ async fn finish_before_start_is_server_authoritative_and_atomic_group_aware() {
         .find(|entity| entity.entity_id.as_str() == "next")
         .unwrap();
     assert_eq!(next.payload.0["status"], "in_progress");
+
+    let android_entities = state
+        .store
+        .push(
+            &user,
+            &request(
+                "execution-android-wire",
+                vec![
+                    change(
+                        "android-important-date",
+                        "execution.important_date",
+                        "important-1",
+                        0,
+                        JsonValue(json!({
+                            "id": "important-1",
+                            "userId": "execution-p4-user",
+                            "title": "生日",
+                            "date": "2026-09-02",
+                            "repeat": "yearly",
+                            "kind": "birthday",
+                            "calendar": "solar",
+                            "lunarMonth": null,
+                            "lunarDay": null,
+                            "lunarLeapMonth": false
+                        })),
+                        None,
+                    ),
+                    change(
+                        "android-focus-session",
+                        "execution.focus_session",
+                        "focus-1",
+                        0,
+                        JsonValue(json!({
+                            "id": "focus-1",
+                            "userId": "execution-p4-user",
+                            "taskId": null,
+                            "mode": "short",
+                            "startedAt": "2026-09-02T00:00:00Z",
+                            "endedAt": "2026-09-02T00:25:00Z",
+                            "focusSeconds": 1500,
+                            "completed": true
+                        })),
+                        None,
+                    ),
+                ],
+            ),
+        )
+        .await
+        .unwrap();
+    assert!(android_entities
+        .results
+        .iter()
+        .all(|result| matches!(result, PushChangeResultV1::Accepted { .. })));
+    assert_eq!(
+        state
+            .store
+            .list_entities(&user, "execution.focus_session")
+            .await
+            .unwrap()[0]
+            .payload
+            .0["focusSeconds"],
+        1500
+    );
 }
