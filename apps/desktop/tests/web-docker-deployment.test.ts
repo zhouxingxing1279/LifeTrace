@@ -64,8 +64,8 @@ test("CI publishes a dedicated LifeTrace Web image", () => {
 test("Cloud image workflow publishes the same image consumed by production", () => {
   const workflow = repo(".github/workflows/cloud-image.yml");
   const production = repo("deploy/cloud/docker-compose.production.yml");
-  assert.match(workflow, /IMAGE_NAME: zhouxingxing1279\/lifetrace-cloud/);
-  assert.match(production, /ghcr\.io\/zhouxingxing1279\/lifetrace-cloud:main/);
+  assert.match(workflow, /IMAGE_NAME: \$\{\{ github\.repository_owner \}\}\/lifetrace-cloud/);
+  assert.match(production, /ghcr\.io\/lifetracemanage\/lifetrace-cloud:main/);
 });
 
 test("Cloud Docker build excludes unrelated repository outputs", () => {
