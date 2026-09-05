@@ -3,7 +3,7 @@
 # so production hosts only need Docker Compose and environment variables.
 services:
   lifetrace-cloud:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     environment: &cloud_environment
       LIFETRACE_ENV: production
       LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
@@ -27,7 +27,7 @@ services:
     restart: unless-stopped
 
   lifetrace-mail-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/mail_worker"]
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1"]
@@ -43,7 +43,7 @@ services:
     restart: unless-stopped
 
   lifetrace-execution-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/execution_worker"]
     healthcheck:
       test: ["CMD-SHELL", "kill -0 1"]

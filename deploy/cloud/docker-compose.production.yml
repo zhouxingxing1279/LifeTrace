@@ -19,7 +19,7 @@ services:
       - lifetrace
 
   lifetrace-migrate:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/lifetrace-migrate"]
     restart: "no"
     env_file:
@@ -34,7 +34,7 @@ services:
       - lifetrace
 
   lifetrace-cloud:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     restart: unless-stopped
     env_file:
       - .env.production
@@ -64,7 +64,7 @@ services:
       - lifetrace
 
   lifetrace-mail-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/mail_worker"]
     restart: unless-stopped
     env_file:
@@ -91,7 +91,7 @@ services:
       - lifetrace
 
   lifetrace-execution-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/execution_worker"]
     restart: unless-stopped
     env_file:

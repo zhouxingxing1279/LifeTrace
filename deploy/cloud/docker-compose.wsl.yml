@@ -25,7 +25,7 @@ services:
       retries: 20
 
   lifetrace-cloud:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     environment: &cloud_environment
       LIFETRACE_ENV: development
       LIFETRACE_BIND_ADDRESS: 0.0.0.0:8787
@@ -66,7 +66,7 @@ services:
       retries: 12
 
   lifetrace-mail-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/mail_worker"]
     environment:
       <<: *cloud_environment
@@ -84,7 +84,7 @@ services:
       start_period: 2s
 
   lifetrace-execution-worker:
-    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/zhouxingxing1279/lifetrace-cloud:main}
+    image: ${LIFETRACE_CLOUD_IMAGE:-ghcr.io/lifetracemanage/lifetrace-cloud:main}
     entrypoint: ["/app/execution_worker"]
     environment:
       <<: *cloud_environment

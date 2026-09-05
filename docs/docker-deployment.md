@@ -6,7 +6,7 @@ LifeTrace production deployment is image-first. The server does not build the br
 
 GitHub Actions publishes two images from `main`:
 
-- `ghcr.io/zhouxingxing1279/lifetrace-cloud:main` — API server, database migrator, mail worker, and execution maintenance worker.
+- `ghcr.io/lifetracemanage/lifetrace-cloud:main` — API server, database migrator, mail worker, and execution maintenance worker.
 - `ghcr.io/zhouxingxing1279/lifetrace-web:main` — browser Web build, Photo Challenge PWA static files, and the production Caddy configuration.
 
 The Web image is built by `deploy/cloud/Dockerfile.web`. Its Node stage runs `npm ci` and `npm run browser:build`; the runtime stage is Caddy and contains both `/srv` and `/srv-photo-challenge`.
