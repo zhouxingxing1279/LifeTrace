@@ -8,14 +8,20 @@
  * The visually-hidden heading/source marker are compatibility semantics for the
  * global LifeTrace route/accessibility contract; they do not own finance UI.
  */
+import { useApp } from "../../app/AppContext";
 import { BeeCountCloudWorkspace } from "./beecount-cloud/BeeCountCloudWorkspace";
 
 export function FinanceWorkspace() {
+  const { session } = useApp();
+  const financeSessionKey = session
+    ? `${session.user.id}:${session.session.id}`
+    : "anonymous";
+
   return (
     <>
       <h1 className="sr-only">财务</h1>
       <span className="sr-only">唯一财务数据源</span>
-      <BeeCountCloudWorkspace />
+      <BeeCountCloudWorkspace key={financeSessionKey} />
     </>
   );
 }
